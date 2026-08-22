@@ -281,7 +281,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 
 | | |
 |---|---|
-| Deliverable | A file transport that streams a `PPCPBNDL` through the same `ppcp_host_peer` feed as a socket would, producing Sessions, Shots, Captures and clip files in the same ingest path the live link uses — landing alongside the existing per-swing export (`swing.json`) rather than replacing it. Idempotent re-import (I34); `completeness` honoured as asserted (I10, `ENC` 7d); `capture_committed` queued for the owning peer on its next connection (5.14h). A "Import session…" entry in the UI that does nothing more than pick a file. |
+| Deliverable | A file transport that streams a `PPCPBNDL` through the same `ppcp_host_peer` feed as a socket would, producing Sessions, Shots, Captures and clip files in the same ingest path the live link uses — landing alongside the existing per-swing export (`swing.json`) rather than replacing it. Idempotent re-import (I34); `completeness` honoured as asserted (I10, `ENC` 7d); `capture_committed` queued for the owning peer on its next connection (5.14h). ~~A "Import session…" entry in the UI that does nothing more than pick a file.~~ **No UI** (§9, 22 Aug): the host chooses from sessions a connected device offers; H3 is the engine only. |
 | Spec | `CORE` §9, §8.5c, §5.14h; `ENC` §7 |
 | Unlocks | CT-I12, CT-I15, CT-I16, CT-I34 (host column), interop row "device, no host → bundle → host import" |
 | Depends | L8 |
@@ -518,6 +518,7 @@ Append-only. Newest last.
 | 2026-08-22 | D (S2) | **F-D2-1: `tb:hosttime` cannot be `mach_continuous_time`** as D2's text says — AVFoundation stamps with `mach_absolute_time`, which halts across sleep. D declares `tb:hosttime` as `monotonic` and a separate `tb:continuous` for `CORE` 5.5b | **Accepted**: D2's text is amended by this entry; a capture device declares what its frames are actually stamped with. A13 unchanged |
 | 2026-08-22 | D (S2) | CT-I28's device test asserted two `measured` capabilities where `CORE` 5.6d makes a distinct lens a distinct Source; the correct count is one | Test corrected; row still passes |
 | 2026-08-22 | D (S2) | `make test-app` hangs in or before `LinkBindLoopbackTests` (the `.serialized` E1 suite); the hanging test is not identified | **Open** — first item of S3-D. No RT row advanced on it |
+| 2026-08-22 | user | **Sessions are not imported from files.** H3 shipped a menu item and a file picker; PinPointStudio has no menus and no native dialogs, and the user's intent is that a *connected* capture device offers its recorded sessions and the host chooses from a list | **Decided**: the bundle path is the engine, never a UI. The user-facing flow is `MSG` §9 `session_offer`/`session_accept`/`session_manifest` over the live link — S3, H4–H7 (and D4–D6 on the device side, which must be able to offer its stored bundles). H3's UI removed (PinPointStudio `00f50e2`); H3 stays done on its CT rows |
 
 ---
 
