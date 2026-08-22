@@ -22,15 +22,13 @@ This is the companion specification that [`PPCP-CORE` §12](ppcp-core.md#12-secu
 
 **Draft 2** carries the first-pass findings from both implementation teams. Draft 1 asked for [§4](#4-rv-2--the-pairing-code) to get the hardest reading and the least benefit of the doubt, and it needed it: the host reviewer recomputed the deterministic key ordering that §4.3 relies on and found that **`v` was not in fact the first key whenever a display name was present** — a defect invisible in the only worked example, in the one part of the document that cannot be corrected after a code is printed. That is [§4.3b](#43-payload), and it is the argument for putting test vectors in a specification and for exercising them with every optional field rather than none.
 
-**Draft 5** carries the third-pass findings. All six were in [§5](#5-rv-3--key-derivation-and-tls), and all six were consequences of Draft 4's relaxation that had not been carried into the clauses around it: a conformance test still refusing the newly-legal handshake, the clause that became load-bearing acquiring no test, the achieved outcome becoming a per-connection variable that nothing reported, and a server-sent field becoming reachable on a path nothing exercised. [§4](#4-rv-2--the-pairing-code), [§6](#6-rv-4--network-join) and [§7](#7-rv-5--security-model) are approved without reservation by both teams.
+This is the companion specification that [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations) delegates its security model to. Until it is agreed, **PPCP's security model is not delegated — it is absent**, and no cross-implementation pairing is testable.
 
-**Draft 4** resolved the one thing Draft 3 left blocked. The platform check was run and failed: TLS 1.3 with an external pre-shared key is not reachable through the mobile platform's interface, and neither is the TLS 1.2 ECDHE_PSK fallback — plain PSK is all it offers ([§5.4.1](#541-what-was-measured)).
+**[§4](#4-rv-2--the-pairing-code) is the part that cannot be corrected later at all.** A pairing code carries an opaque fixed payload that both sides must parse with no chance to negotiate first, and printed codes outlive releases. It has now survived three review passes and three independent recomputations of its vectors — the first pass found a defect in it that was invisible in the worked example, which is why the vectors are in the document and why one of them exercises every optional field.
 
-The protocol owner has taken the decision, on the grounds that the data carried is not highly sensitive: **forward secrecy becomes best-effort rather than required.** [§5.4.3](#543-the-decision) records it in full, including what was given up, what both reviewers said about it, and what now carries more weight as a result.
+**[§5.2](#52-tls-profile) is the part still open.** A platform measurement ruled out the assumed mechanism and the owner relaxed forward secrecy to best-effort on the sensitivity of the data carried; [§5.4](#54-resolved-the-mechanism) records the measurement, the decision, what was given up and what both reviewers said about it.
 
-**Only forward secrecy is relaxed.** The channel is still encrypted and still mutually authenticated; an unpaired peer still receives nothing; nothing stable still crosses in the clear. Two of the three properties of [5.2h](#52-tls-profile) are unchanged, and [5.2f](#52-tls-profile) — never fall back to an unencrypted connection, under any circumstances including a user instruction — is unchanged and unaffected.
-
-**One item was already decided by shipping.** The mobile application declares `_ppcp._tcp` in its bundle, chosen before this document existed. [§3.1](#31-service-type) ratifies it rather than picking a different name; see [Annex A1](#annex-a--decisions-and-alternatives). Both reviewers endorsed that.
+**The change history is [Annex C](#annex-c--change-history)**, at the back.
 
 ---
 
@@ -709,3 +707,19 @@ The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in 
 | **B12** | **Forward secrecy is now best-effort, and nothing replaces it on the leg that lacks it.** A per-session **ratchet** — re-deriving `PRK` at each session close and erasing its predecessor — would restore the property for every session after the first, at the cost of persistent state that both ends must keep in step and recover from when they fall out of it. It is not specified, and it is the cheapest route back to property 2 without changing the transport. | Open — worth revisiting if the payload is ever reassessed, or if a peer wants it independently. |
 | **B9** | **`role` in a TXT record is unverified before pairing.** A peer advertising `role: host` is taken at its word by a browser deciding whether to dial. It costs only a wasted connection — the handshake authenticates — but a browser should not treat it as more than a filter hint. | Open. |
 | **B7** | **Interoperability is untestable until a second implementation exists.** Every test in [§9](#9-conformance) can pass against a single implementation's own assumptions, which is exactly the failure mode [`PPCP-CONF` §5c](ppcp-conformance.md#5-interoperability) records for PPCP itself. | Open — structural. |
+
+---
+
+# Annex C — Change history
+
+*Non-normative. Newest first.*
+
+**Draft 5** carries the third-pass findings. All six were in [§5](#5-rv-3--key-derivation-and-tls), and all six were consequences of Draft 4's relaxation that had not been carried into the clauses around it: a conformance test still refusing the newly-legal handshake, the clause that became load-bearing acquiring no test, the achieved outcome becoming a per-connection variable that nothing reported, and a server-sent field becoming reachable on a path nothing exercised. [§4](#4-rv-2--the-pairing-code), [§6](#6-rv-4--network-join) and [§7](#7-rv-5--security-model) are approved without reservation by both teams.
+
+**Draft 4** resolved the one thing Draft 3 left blocked. The platform check was run and failed: TLS 1.3 with an external pre-shared key is not reachable through the mobile platform's interface, and neither is the TLS 1.2 ECDHE_PSK fallback — plain PSK is all it offers ([§5.4.1](#541-what-was-measured)).
+
+The protocol owner has taken the decision, on the grounds that the data carried is not highly sensitive: **forward secrecy becomes best-effort rather than required.** [§5.4.3](#543-the-decision) records it in full, including what was given up, what both reviewers said about it, and what now carries more weight as a result.
+
+**Only forward secrecy is relaxed.** The channel is still encrypted and still mutually authenticated; an unpaired peer still receives nothing; nothing stable still crosses in the clear. Two of the three properties of [5.2h](#52-tls-profile) are unchanged, and [5.2f](#52-tls-profile) — never fall back to an unencrypted connection, under any circumstances including a user instruction — is unchanged and unaffected.
+
+**One item was already decided by shipping.** The mobile application declares `_ppcp._tcp` in its bundle, chosen before this document existed. [§3.1](#31-service-type) ratifies it rather than picking a different name; see [Annex A1](#annex-a--decisions-and-alternatives). Both reviewers endorsed that.

@@ -51,7 +51,7 @@ Build order matters here: each of these is needed to test the layer above it, an
 
 ## 3. The invariant test matrix
 
-Thirty-six invariants, thirty-seven tests — I36 carries two, because the coverage rule and the preview-shedding rule fail in different ways. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
+Thirty-eight invariants, thirty-nine tests — I36 carries two, because the coverage rule and the preview-shedding rule fail in different ways. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
 
 | Test | Invariant | Profile | Method | Assertion |
 |---|---|---|---|---|
@@ -90,6 +90,8 @@ Thirty-six invariants, thirty-seven tests — I36 carries two, because the cover
 | **CT-I26** | I26 | Detect | static | A Candidate whose `source_id` names no declared Source, or a Source with no declared Timebase, is rejected. Assert a filesystem-imported record is not emitted as a Candidate. |
 | **CT-I27** | I27 | Capture | static | Every Capture's `anchor` carries exactly one key of `shot_id`, `candidate_id`, `stream`. Assert that zero keys and two keys are both rejected and neither is constructible, and that `{stream: true}` is refused on a `shot_windowed` Stream. |
 | **CT-I36** | I36 | Capture | fixture | Replay a session with a `continuous` Stream. Assert the announced segments and their gaps account for the whole interval from `opened_at` onward, with no overlap. Then four cases the rule turns on: **(a)** remove one segment from the middle without declaring a gap — a **defect**, in any Session; **(b)** an `absent` segment carrying an `interval` and an `absent_reason` **satisfies** coverage rather than breaching it; **(c)** a **truncated** fixture in a Session asserted `partial` — the unaccounted tail is the declared incompleteness, **not** a defect; **(d)** the same truncation in a Session asserted `complete` — a defect. |
+| **CT-I37** | I37 | Markup | static | An Annotation reaches no Shot, Candidate, calibration or computed quantity — assert by API surface, not behaviour. Assert `kind: nav_anchor` is never written as phase data. Round-trip an Annotation whose `format` the implementation does not recognise and assert `body` returns **byte-identical**, and that a lower `revision` for a known `id` is ignored. |
+| **CT-I38** | I38 | Capture | paired | Withhold `capture_committed` and assert the owner does not evict the Capture and does not set `confirmed` itself. Then send it and assert `transfer` becomes `confirmed` and the Capture becomes evictable. Assert an owner never sets `confirmed` on its own authority. |
 | **CT-I36a** | I36 | Capture | paired | A `preview` Stream under induced contention. Assert shed intervals are announced as `absent` segments with `absent_reason: not_retained` and **never** as `gaps`; assert no preview Capture is ever announced `transfer: pending`; assert none reaches the bundle. |
 | **CT-I28** | I28 | Capture | static | A profile with no self-test carries no `measured`. Assert the implementation never synthesises one from claimed values or a device-profile table, and that a short onboarding sample is emitted as `method: cold_sample`. |
 

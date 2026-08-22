@@ -8,7 +8,7 @@
 | Version | **1.0** |
 | Wire version | `ppcp/1.0` |
 | Status | **APPROVED for implementation**, 22 August 2026 |
-| Revision | 6 — revision 5 reviewed by both teams |
+| Revision | 7 — requirements-traceability gaps closed |
 | Date | 22 August 2026 |
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
@@ -28,110 +28,18 @@
 | 2 | Draft 1 | 4 host + 4 mobile | Draft 2 |
 | 3 | Draft 2 | 4 host + 5 consistency, 3 mobile | Draft 3 |
 | 4 | Draft 3 | 3 host + 2 consistency, 2 mobile | **Approved** |
+| 5 | Revision 5 | 6 host, 5 mobile | Revision 6 |
+| — | Requirements traceability audit | 6 findings | Revision 7 |
 
 **Approved is not the same as stable.** Implementation proceeds against this text. `ppcp/1.0` is declared **stable** — and this document frozen against anything but errata — when the conformance suite of [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings of [`PPCP-CONF` §5](ppcp-conformance.md#5-interoperability) are demonstrated. [Annex B](#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
 
-[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval. It is Draft 1, unreviewed, and has its own review cycle.
+[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval. It is at Draft 5 with its own review cycle, and its §5 is still open.
 
 **Where this document and any earlier draft disagree, this document wins.** `docs/specification/` is the single authority on PPCP, and the specification is self-contained: the rationale motivating each decision is restated here rather than referenced out.
 
 **Invariant identifiers are stable.** I1–I21 keep the numbering used before the specification existed, even where their text has been amended. New invariants append. Conformance documents get quoted by number; renumbering is a cost with no benefit.
 
-### 0.1 What changed in Draft 1
-
-| # | Review point | Disposition |
-|---|---|---|
-| 1 | `nominal_frame_start` obligation with nowhere to write it | **Accepted.** `timing.frame_start_to_exposure_offset_ns` added ([§5.7](#57-captureprofile)); conversion restated as `t + offset + d/2` ([§6.1](#61-canonical-instant)); I17 amended to name three inputs; I22 added. |
-| 2 | Device-minted shot issuance has no profile | **Accepted.** New **Mint** profile ([§2.2](#22-conformance-profiles)) separates *issuing* a Shot from *arbitrating* between Candidates. I6 reassigned from Detect to Mint. |
-| 3 | Profiles gate emission, not comprehension | **Accepted.** Stated normatively in [§2.2.2](#222-what-a-profile-confers); explicit dependency table replaces "depends on Core and nothing else"; I24 added. |
-| 4 | Cross-session time has no home | **Resolved rather than recorded.** `SessionLink` added ([§5.17](#517-sessionlink)); I25 added. Marked provisional — see [Annex B](#annex-b--open-issues). |
-| 5 | Stale invariant count | **Fixed.** Twenty-eight invariants, counted in one place ([§11](#11-invariants)). |
-| R2 | Requirements review: file-imported launch monitor records are not Candidates | **Accepted.** [§8.1](#81-nomination) restricts nomination to live nominators; I26 added. |
-| R4a | Requirements review: `measured` cannot be obtained honestly at onboarding | **Accepted.** `MeasuredCapability.method` and `.duration_ns` are mandatory; absence of `measured` means not measured ([§5.8](#58-capability)); I28 added. |
-| — | Found while writing: Captures anchored to Candidates had nowhere to attach | **Fixed.** `Capture.anchor` is exactly one of a Shot or a Candidate ([§5.14](#514-capture)); `Candidate.id` added; I27 added. |
-| — | Found while writing: rolling-shutter row formula was ambiguous | **Fixed.** `readout_ns` and the row formula defined exactly ([§6.2](#62-rolling-shutter)). |
-
-The full disposition, including points deliberately **not** actioned, is in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md).
-
-### 0.2 What changed in Draft 2
-
-From the two implementation-team reviews of Draft 1. Both teams approved; these are the changes they asked for.
-
-| # | Finding | Disposition |
-|---|---|---|
-| PPS-F1 | **I23 turned every diagnostic Candidate into a Shot.** A ball-into-screen transient ~9 ms after impact is inside the conformance suite's own 10 ms assertion, so a correct offline device minted two Shots per swing — and passed. | **Accepted.** The Candidate-to-Shot *identity* is broken; a Mint peer **promotes** a subset of its own Candidates. No coincidence window, one Candidate per Shot, every Candidate still emitted and retained. I23 rewritten, I8 extended to Mint. [§8.3](#83-the-zero-host-regime) |
-| PPS-F2 | **The protocol never modelled *when* a host may issue a Shot**, so a nominating peer had no deadline after which to mint, and `coincidence_window_ns` was silently doing two jobs. | **Accepted.** `Session.issue_hold_ns` added and separated from the pairwise tolerance; I32 added giving a nominating peer a deterministic mint deadline. [§8.2](#82-arbitration) |
-| PPS-F4 | **The hardened launch-monitor path does not match the launch monitor that exists** — a two-line CSV rewritten in place, no trustworthy timestamp, attributable only by arrival order. `sequence_alignment` presumes a multi-record export. | **Accepted.** A third association shape added: a live record with an observing Peer and **no clock**, associated by `ShotLink` with `basis: arrival_pairing`. Annex B4 reopened. [§8.5](#85-reconciliation) |
-| PPS-F5 | The exposure-convention rationale rested on protecting a clock-bias estimator that does not exist in the host today. | **Accepted.** The justification no longer depends on any estimator existing. [§6.1](#61-canonical-instant) |
-| PPS-F8 | Host session ids are filesystem paths and shot ids are ordinals; idempotent re-import keys on neither. | **Accepted.** An `Id` minted by a peer must not be derived from mutable local state. [§5.1](#51-notation-and-primitive-types) |
-| PPC-1.1 | **Online time-of-flight estimation conflicted with I5.** The only home for the converging estimate was `Calibration`, and changing a Calibration closes the Stream — up to fifty stream cycles per range session. | **Accepted, resolved differently from the reviewer's first preference.** The *applied* correction moves onto the Candidate, where it is consumed; `Calibration` keeps the surveyed position. I5 is untouched. [§5.12](#512-candidate), [§5.9](#59-calibration) |
-| PPC-1.2 | `tof_correction_ns` was the one estimate in the specification carrying no uncertainty. | **Accepted.** `tof_correction { value_ns, sigma_ns }`, both mandatory together. I29 added. |
-| PPC-2.1 | **`capture_announce` was called the small message and was ~44–70 KB**, carrying per-frame arrays on the latency-critical channel the two-channel design exists to protect. | **Accepted.** `AchievedCapability` splits into a summary on control and per-frame series with the payload; constant-valued series may be sent as a scalar. I30 added. [§5.8](#58-capability) |
-| PPC-2.2 | **A declared `frame_start_to_exposure_offset_ns` of `0` was indistinguishable from an unmeasured one** — and no device model has been through the rig. Same for `readout_ns`. | **Accepted.** Both carry provenance, as `MeasuredCapability.method` does. I31 added, extended to per-frame exposure. [§5.7](#57-captureprofile) |
-| PPC-3 | Per-frame exposure may not be attachable per sample buffer on iOS; the specification should state the honest conformance position. | **Answered.** `exposure_provenance` distinguishes a value attached to the frame from a sampled device property from a locked constant. [§5.8](#58-capability) |
-| Q5 | Both teams answered the support-window question compatibly. | **Settled**, closing Annex B6. [§10.1](#101-version-negotiation) |
-| PPS-F3, F6, F7, PPC-3 (partial) | Host-side and application-side work items, and requirements-document defects. | **No specification change.** Recorded in the disposition and referred on. |
-
-### 0.3 What changed in Draft 3
-
-From the second round of reviews. Both teams approved again; both independently found the same defect in the fix that closed the first round's most serious one.
-
-| # | Finding | Disposition |
-|---|---|---|
-| PPS-R1 / PPC-1.1 | **The issue-hold fix reintroduced "every Candidate becomes a Shot" in the live regime**, and `CT-I32` certified it. Nothing obliges a host to answer a Candidate it declines, so after the deadline a peer minted a Shot for every nomination the host had rejected. Separately, a deadline narrows the mint/issue race rather than closing it: a host `shot` arriving after the deadline produces two immutable, unmergeable Shots with no withdraw message to reach for. | **Accepted in full, from both angles.** The mint is now conditioned on the peer's own promotion policy; the host's issue window is bounded so it cannot overlap the mint window; a host that receives a device-minted Shot attaches to it instead of competing; and where both fire, they are linked by `shared_candidate`. I32 amended, I35 added, [§7.1](#71-roles) gains the third row. |
-| PPS-R3 | **`Candidate.at` had no stated convention**, and §8.2a told the host to apply the canonical-instant conversion with an input — that frame's exposure — that a Candidate does not carry. Harmless for acoustic by accident; a ~1 ms systematic error for a `motion` candidate, inside any plausible window, so arbitration still succeeds and `t0` is quietly wrong. | **Accepted.** The nominator converts before emission ([§5.12e](#512-candidate)); §8.2a drops the clause. I33 added, and `canonical_correction_ns` keeps the correction visible. |
-| PPS-R2 | **`PPCP-MSG` 8.2b permitted what I30 and 5.8g forbade** — a straight contradiction between two normative documents, which the suite did not catch. | **Accepted.** I30 and 5.8g narrowed to admit the one exception, which is right: a `complete` + `failed` capture is a session whose link died, and the frame timeline is what says what was lost. |
-| PPS-R4 | **The scalar form was ambiguous for `intrinsics`** — the one field it was added for — because its element type is itself an array. | **Accepted.** [`PPCP-ENC` 4.1d](ppcp-encoding.md#41-composite-types) disambiguates by the type of the first element. |
-| PPC-1.2 | **`Capture.digest` was the stated identity for idempotent re-import**, and an absent capture has no payload to hash. | **Accepted.** Identity is `Capture.id` scoped by session and owning peer; the digest is a content check. I34 added. |
-| PPC-1.3 | **Two arbitration parameters were mandatory on sessions that never arbitrate.** | **Accepted.** Present if and only if the Session has a host ([§5.10e](#510-session)) — I23 expressed structurally. |
-| PPC-3 | 5.8d was unsatisfiable for an absent capture. | **Accepted.** Conditioned on the Capture having frames. |
-| PPS §6 | **The same failure mode twice: an invariant that constrains a choice rather than a shape.** | **Accepted and promoted.** [§11.1](#111-the-rule-for-writing-an-invariant) is now a rule for writing invariants in this document. |
-| PPS §3 | `ShotLink.confirmed` had come to carry two epistemic states. | **Accepted.** `confirmed_by: observer \| user` ([§5.16e](#516-shotlink)). Closes Annex B9. |
-| PPC §2 | The coincidence window's floor and ceiling may be incompatible, so a per-`basis` tolerance may be needed. | **Not added speculatively; the measurement redesigned.** Only an arbitrating host consumes the window, so a per-basis override is additive in a MINOR version. Annex B8 now asks for the floor **per nominator class**. |
-| PPS §2 | Five consistency items — counts, stale field names, support-window wording. | **All accepted.** |
-
-### 0.4 What changed on approval
-
-The closing round. Both teams signed off; these are the findings they attached to their sign-off, and all are carried here.
-
-| # | Finding | Disposition |
-|---|---|---|
-| PPS-S1 | **A peer told to mint may have no expressible `t0`.** The commonest reason a host stays silent is that it excluded the Candidate under 8.2d — for a missing, `unrelated` or too-uncertain relation to `timebase_ref` — which is exactly the condition under which the peer cannot express `t0` there either. The required `unrelated` interoperability pairing puts every candidate in that state. | **Accepted.** [§8.2i1](#82-arbitration): a peer that cannot express `t0` does not mint, and retains the Candidate with no Shot. |
-| PPS-S1(b) / PPC-2.1 | **The zero-host regime has two entry conditions** — no host in the roster, and a host that has stopped answering — described in the same words, with I23 reading as though only the first existed. | **Accepted.** [§8.3g](#83-the-zero-host-regime) separates them, [§8.3h](#83-the-zero-host-regime) states that I23 binds at issuance rather than for ever, and I23 and Annex C are reworded. |
-| PPS-S2 | **Mint and Arbitrate carried MUSTs discharged through `shot_link`, which only Offline conferred** — a direct C2/I24 contradiction, and the third occurrence of the family that produced the Mint profile. | **Accepted, by the reviewer's preferred fix.** `ShotLink` origination moves to **Core** and I9 with it; `SessionLink` stays in Offline. The alternative — adding Offline to Mint and Arbitrate — would make a live-only host implement a bundle container to resolve a socket race. |
-| PPS-S3 | **§8.2k has one peer amend another peer's Shot, with no rule for who may.** Before Draft 3 exactly one peer ever sent `shot` for a given id. | **Accepted, wording adopted.** [§5.13d–e](#513-shot) fix the ownership of `id`, `t0`, `authority` and `issued_by`, make `candidates` extensible by any holder, and state that extension is additive and order-independent so the two ends converge. |
-| PPS §2.1 | `confirmed_by: observer` was defined in arrival-pairing language and did not describe `shared_candidate`. | **Accepted.** Broadened to *observed the association*; 5.16g states the value. |
-| PPS §2.2 / PPC-2.2 | The `intrinsics` scalar rule had no answer for an empty array. | **Accepted.** [`PPCP-ENC` 4.1d](ppcp-encoding.md#41-composite-types): an empty array MUST NOT be emitted and is `malformed` on receipt. |
-| PPS §3 | `canonical_correction_ns` is a bare integer beside an `Estimate`, and the asymmetry looks like an oversight. | **No change, and the reason recorded** in [§5.12f](#512-candidate) so it is not "fixed" during implementation. |
-| PPC §3 | Positions recorded for implementation: `locked_constant` under the exposure lock, `assumed` provenance until the rig exists, and the mint deadline being a user-visible latency. | **No specification change.** All are consequences the document intends. |
-
-### 0.5 What changed in revision 5
-
-One defect, found by tracing a host-side requirement rather than by review, and the capability it was blocking.
-
-| # | Finding | Disposition |
-|---|---|---|
-| **B11** | **A `continuous` Stream could carry nothing.** Every payload message is keyed on `capture_id` and every Capture anchored to a Shot or a Candidate (I27) — so the interval a continuity flag exists to describe was the one interval with no carriage. Three stated obligations were unmeetable: continuous attitude and gravity on a `metadata` Stream that [§5.11](#511-stream) calls *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry; and `imu`/`wrist` running continuously while armed. | **Fixed.** `Capture.anchor` gains a third form, `{ stream: true }` ([§5.14](#514-capture)). I27 amended, **I36** added for the coverage rule. No new message. |
-| — | **A consumer had no way to see that a capture peer reflects what the user is doing.** Heartbeat proves the link is live; only frames prove the rest. | **`preview` defined** ([§5.11.2](#5112-preview-streams)) — a second Stream from an existing Source, low rate, `continuous`, never used for measurement, carried on its own bulk channel and the first thing dropped under contention. It is [§5.11.1](#5111-how-a-continuous-stream-is-carried) applied to a camera, and needs nothing new. |
-
-The change is additive: no field is removed, no type narrowed, and no existing field changes meaning. It lands in `1.0` rather than a MINOR bump because `1.0` is approved and **not yet frozen** ([Annex B0](#annex-b--open-issues)) — and because a flag with nothing behind it is a defect rather than a missing feature.
-
-### 0.6 What changed in revision 6
-
-Both teams reviewed revision 5 and both approved it. Three findings were made independently by both.
-
-| # | Finding | Disposition |
-|---|---|---|
-| Both | **A deliberately-shed interval was indistinguishable from a failed one**, and a Stream that recorded *nothing* for a span had no way to say so — `interval` was required absent on an `absent` Capture and required present on a stream-anchored one. | **Accepted.** `interval` is mandatory on every stream-anchored Capture including `absent` ([§5.14d](#514-capture)); [5.11c2](#5111-how-a-continuous-stream-is-carried) separates the two accounts — `gaps` mean **loss**, an `absent` segment means **nothing was captured** — and [5.11c3](#5111-how-a-continuous-stream-is-carried) makes deliberate non-retention an `absent` segment, never a gap. |
-| Both | **A preview profile is a derived view, not a mode a Source can enter.** No camera runs two configurations at once; the preview is decimated from the active capture stream. | **Accepted.** [5.11k–m](#5112-preview-streams): realised rate and format are derived while a capture Stream is open, the profile is activatable only on a `preview` Stream, and it declares `intrinsics: none` because scaling changes the matrix. |
-| Both | `preview` was missing from the `Stream.kind` enumeration. | **Accepted.** |
-| PPS-S2 | **I36 read an honestly truncated bundle as a defect** — and the bundle is the v1 path. | **Accepted.** [5.11c1](#5111-how-a-continuous-stream-is-carried): the obligation binds a `complete` Session; a hole **between** segments is a defect in any Session, time **after** the last one is the incompleteness already declared. Nothing truncates a bundle in the middle. |
-| PPS-S3 | **Preview Captures would be queued and bundled**, because `pending` is where an announced Capture starts — the inversion 5.11i forbids, arriving through the transfer queue. | **Accepted.** [5.11j](#5112-preview-streams): preview is **live-only**, never queued, never bundled, and what was dropped is announced absent. |
-| PPS-S5 | A concurrent preview makes `MeasuredCapability` optimistic, and the acceptance decision is taken before the preview is opened. | **Accepted.** [5.8k](#58-capability): a measurement describes its profile **running alone** unless the peer says otherwise. |
-| PPS-S4 | 5.8d appeared to require per-frame exposure on preview Captures. | **Already addressed** at 5.8j in revision 5, which sits below the clauses that follow 5.8d and was easy to miss. 5.8d now points at it. |
-| PPS c2 | Two different `evidence_ref` fields meant different things, and revision 5 made the first usable for the first time — so it will now be implemented by someone reading the other's definition. | **Accepted.** Renamed `evidence_stream_id` and `evidence_capture_id`. |
-| PPC-3 | Unclear whether a producer may close a preview it has open — the thermal case. | **Accepted.** [5.11a1](#511-stream): either peer may close, with a reason. |
-| PPC-4 | Control traffic now scales with session length, and window length has one voice. | **Answered.** [5.11e–e1](#5111-how-a-continuous-stream-is-carried): the window is the producer's and is not negotiable in `1.0`; the volume is stated and accepted, because the control channel is protected against large payloads rather than against message count. |
+**The change history is [Annex D](#annex-d--change-history)**, at the back. What changed between drafts matters to the people who argued about it and to nobody reading this for the first time.
 
 ---
 
@@ -182,11 +90,12 @@ An implementation need not implement all of PPCP. Requiring that would be hostil
 | Profile | Confers the ability to originate | Requires | Invariants |
 |---|---|---|---|
 | **Core** | Peer, Timebase, TimebaseRelation, ClockDiscontinuity declaration; version and extension negotiation; **`ShotLink`** | — | I1, I2, I3, I4, **I9**, I13, I14, I18, I19, I24 |
-| **Capture** | Source, CaptureProfile, Stream, Capture; arm/disarm response; readiness | Core | I5, I10, I11, I12, I17, I22, I27, I28, I30, I31, I36 |
+| **Capture** | Source, CaptureProfile, Stream, Capture; arm/disarm response; readiness | Core | I5, I10, I11, I12, I17, I22, I27, I28, I30, I31, I36, I38 |
 | **Detect** | Candidate | Core | I26, I29, I33 |
 | **Mint** | Shot issuance from the peer's **own** Candidates, `authority: device` | Core, Detect | I6, I7, I8, I23, I32 |
 | **Arbitrate** | Shot issuance from **any peer's** Candidates: coincidence window, canonical t₀, `authority: host` | Core | I6, I7, I8, I20, I35 |
 | **Live** | Sync exchange, heartbeat, event/payload split, session control over a live link | Core | I21 |
+| **Markup** | `Annotation` — user artefacts and device-advisory navigation anchors, in either direction | Core | I37 |
 | **Offline** | Bundle read and write, SessionLink, session-level reconciliation | Core | I15, I16, I25, I34 |
 
 **Core is mandatory.** Every other profile has the dependencies stated above and no others.
@@ -235,8 +144,8 @@ This is why a third-party host may declare `Core + Arbitrate + Live + Offline` w
 | Implementation | Profiles |
 |---|---|
 | Offline-only video capture device (v1 PinPointCapture) | Core + Capture + Detect + **Mint** + Offline |
-| Full mobile capture device | Core + Capture + Detect + Mint + Live + Offline |
-| PinPointStudio host | Core + Capture + Detect + Arbitrate + Live + Offline |
+| Full mobile capture device | Core + Capture + Detect + Mint + Live + Offline + Markup |
+| PinPointStudio host | Core + Capture + Detect + Arbitrate + Live + Offline + Markup |
 | Second-screen observer (UC-5) | Core + Live |
 | Third-party host with no cameras | Core + Arbitrate + Live + Offline |
 | Bundle-reading analysis tool | Core + Offline |
@@ -245,7 +154,7 @@ Note that the v1 device's profile set changed: **Mint is new and is what v1 actu
 
 ### 2.3 Invariants are conformance tests
 
-The thirty-six invariants of [§11](#11-invariants) are the conformance surface. An implementation that violates one is non-conformant, whatever else it does. [`PPCP-CONF`](ppcp-conformance.md) maps each to a required test.
+The thirty-eight invariants of [§11](#11-invariants) are the conformance surface. An implementation that violates one is non-conformant, whatever else it does. [`PPCP-CONF`](ppcp-conformance.md) maps each to a required test.
 
 ---
 
@@ -435,11 +344,17 @@ The physical capture source: a camera, a microphone, an IMU, a relayed BLE senso
 | `physical` | `bool` | 1 | `false` for a virtual multi-lens device. See below. |
 | `profiles` | `[CaptureProfile]` | 1..n | Supported profiles, each carrying its own measured results. |
 | `calibration` | `Calibration` | 0..1 | |
+| `optics` | `Kind` | 0..1 | Which lens this Source is — `wide`, `ultra_wide`, `telephoto`, … Open registry. |
+| `viewpoint` | `{ label: Kind, confidence: float, method: declared \| classified }` | 0..1 | Where this Source is looking from — `dtl`, `face_on`, `rear`, … Open registry. |
 | `label` | string | 0..1 | Human-readable, informational. |
 
 - **(5.6a) MUST** Every Source declares `timebase_id`, and every CaptureProfile it offers declares `timing`, `geometry` and `intrinsics` — **regardless of which peer owns the Source** (I19). No convention is implied by peer role, product or platform.
 - **(5.6b) SHOULD NOT** A capture peer open a virtual multi-lens device. Where it does, it MUST declare `physical: false`, because such devices switch physical lenses automatically on scene and focus distance, silently changing intrinsics mid-session.
 - **(5.6c) MUST** Where a device and a host are both capable of owning a sensor connection, ownership is settled at session start and expressed solely by `peer_id`. The same wrist sensor is the same Source whichever peer holds the BLE connection.
+- **(5.6d) MUST** **A physically distinct lens is a distinct Source.** A peer MUST NOT present two lenses as one Source, and `optics` names which one. Lens choice is calibration-affecting, so it is fixed for a Stream's lifetime by I5 like everything else about a Source — but a consumer that cannot tell *which* lens produced a bundle cannot interpret its calibration, and a device offering the same profile on both a wide and an ultra-wide lens makes that ambiguity real.
+- **(5.6e) MUST** `viewpoint`, where present, is a **declaration carrying its confidence and how it was arrived at** — `declared` where a user or an installer stated it, `classified` where the peer worked it out. A consumer MAY disagree with it. It is a self-report, not a fact, and it is carried on those terms because [§1](#1-introduction)'s stance forbids a peer emitting a conclusion as though it were a measurement.
+
+`viewpoint` answers a requirement that a device classify where it is looking from and *report* it, rather than asking a user to configure it. Handedness is not part of it: which way the golfer swings is a property of the session, not of a camera, and it is a `ContextChange` ([§5.10](#510-session)).
 
 **Why the layer exists.** A phone Peer has a camera and a microphone with *different* calibrations, *different* profile sets and potentially *different* timebases. Only one of those can hang off the Peer.
 
@@ -639,8 +554,11 @@ The resolution is not to weaken I5. Exempting `method: estimated_online` from I5
 |---|---|---|
 | `id` | `Id` | 1 |
 | `at` | `Instant` | 1 |
-| `kind` | `club` \| `shot_type` \| … (open registry) | 1 |
+| `kind` | `club` \| `shot_type` \| `handedness` \| `location` \| `weather` \| … (open registry) | 1 |
 | `value` | string | 1 |
+
+- **(5.10f) MUST** `location` and `weather` are **labels**. Like `Session.epoch` they are recorded and never used to compute anything (I15's principle, applied to context rather than to time). They are carried from v1 whether or not anything consumes them, because they cannot be recovered afterwards.
+- **(5.10g) MUST** `handedness` is a property of the session, not of a Source. Which way a golfer swings does not belong on a camera.
 
 ### 5.11 Stream
 
@@ -804,13 +722,17 @@ The **realisation** of a Shot or a Candidate on one Stream.
 | `gaps` | `[Interval]` | 0..n | Meaningful only on `continuous` streams (I11). |
 | `achieved_summary` | `AchievedSummary` | 0..1 | Travels on control, in `capture_announce`. |
 | `achieved_frames` | `AchievedFrames` | 0..1 | Travels with the payload, never on control (I30). |
-| `transfer` | `pending` \| `in_flight` \| `present` \| `failed` | 1 | |
+| `transfer` | `pending` \| `in_flight` \| `present` \| `confirmed` \| `failed` | 1 | The **owner's** view. See 5.14f. |
 | `digest` | `Digest` | 0..1 | Of the payload bytes. Present once known; the basis of idempotent re-import. |
 | `bytes` | int64 | 0..1 | Payload size. |
 
 - **(5.14a) MUST** `completeness` and `transfer` are independent axes. A Capture may be `complete` + `pending` (captured fine, not yet sent) or `partial` + `present` (arrived intact, sensor dropped mid-swing).
 - **(5.14d) MUST** `anchor` carries **exactly one** key (I27). `{ stream: true }` is permitted only on a Stream whose `continuity` is `continuous`, and `interval` is then mandatory **including when `completeness: absent`** — a segment with no interval says nothing about what it covers, and an `absent` segment *with* an interval is how a peer states that a named span was not recorded.
 - **(5.14e) MUST NOT** A stream-anchored Capture overlap another on the same Stream. Segments abut or leave a declared gap; they do not overlap, because two accounts of one interval are two answers to one question.
+- **(5.14f) MUST** `transfer` is the **owner's** view of where a payload has got to. `pending` is held locally and unsent; `in_flight` and `present` are sent; **`confirmed` means the receiver has asserted that it holds the payload durably**, which only the receiver can say ([`PPCP-MSG` §8.4](ppcp-messages.md#84-capture_committed)).
+- **(5.14g) MUST NOT** A peer evict a Capture whose `transfer` is not `confirmed`, whatever its retention policy (I38).
+
+5.14f and 5.14g close a hole that made a stated obligation unsatisfiable. A capture peer is required to keep an independent store with per-shot sync state — *local, sent, confirmed* — and to evict nothing unconfirmed. But `payload_ack` acknowledges a **chunk arriving**, `payload_end` travels from sender to receiver, and until revision 7 nothing came back at all. The third state was unreachable, so "evict nothing unconfirmed" was satisfiable only by evicting nothing ever: safe, and unbounded across a season of sessions.
 - **(5.14b) MUST NOT** Gaps be interpolated across or implicitly spanned (I11).
 - **(5.14c) MUST** `achieved_frames` carries the per-frame exposure durations on which [§6.1](#61-canonical-instant) depends, and reaches a consumer before it converts. The split between the two halves is [§5.8](#58-capability).
 
@@ -884,6 +806,36 @@ That relationship is not a `TimebaseRelation`: no peer declared it, and neither 
 - **(5.17c) MUST NOT** A SessionLink be composed with a TimebaseRelation to derive a further relation (I18 applies).
 
 This is a derived measurement over retained evidence, which is why it is expressible at all: it carries its uncertainty and its basis, and it is a link that can be withdrawn. Support is OPTIONAL within the Offline profile at v1.
+
+### 5.18 Annotation
+
+A **user artefact**: something a person drew, wrote or marked, or a coarse navigation target a peer derived for scrubbing. It is not an observation, and the distinction is the point of the type existing.
+
+| Field | Type | Card. | Notes |
+|---|---|---|---|
+| `id` | `Id` | 1 | Minted by the authoring peer, unique within the Session. |
+| `session_id` | `Id` | 1 | |
+| `shot_id` | `Id` | 1 | The Shot this annotation is about. |
+| `at` | `Instant` | 1 | The frame instant within that Shot that it anchors to. |
+| `author_peer_id` | `Id` | 1 | Who authored it. |
+| `provenance` | `user` \| `device_advisory` | 1 | See 5.18b. |
+| `kind` | `Kind` | 1 | Open registry — `line`, `plane`, `text`, `nav_anchor`, … |
+| `format` | `Kind` | 1 | How to interpret `body`. |
+| `body` | bytes | 1 | Opaque to the protocol, **at most 64 KiB**. |
+| `created_at` | `Instant` | 1 | |
+| `revision` | uint | 1 | Increments on edit. A higher revision for the same `id` supersedes. |
+| `deleted` | `bool` | 0..1 | A revision may retract rather than replace. |
+
+- **(5.18a) MUST** An Annotation is carried **losslessly**: `body` is opaque, and a peer that does not understand its `format` stores and returns it unchanged rather than dropping or rewriting it. Round-tripping is the requirement; interpreting it is not.
+- **(5.18b) MUST** `provenance` distinguishes a **user** artefact from a **device-advisory** one — a coarse scrub target a peer derived, such as an impact marker or a top-of-backswing anchor.
+- **(5.18c) MUST NOT** An Annotation of any provenance contribute to a Shot, a Candidate, a calibration, or any computed quantity (I37). It is never derived data in the sense the rest of this model means, and `kind: nav_anchor` in particular is **never** persisted or interpreted as phase data.
+- **(5.18d) MUST** Annotations flow in **either direction**. This is the only content in PPCP that does: every payload elsewhere describes a Capture the sender owns, and an annotation authored on one peer must reach the other.
+- **(5.18e) MUST** Supersession is by `id` plus `revision`. A peer holding revision *n* and receiving *n* or lower ignores it; receiving higher replaces. Two peers editing concurrently converge on the higher revision, and the protocol does not merge — consistent with I9.
+- **(5.18f)** `body` over 64 KiB is out of scope at `ppcp/1.0`. A finger-drawn plane is a few hundred bytes; anything approaching the cap is probably a different feature.
+
+**Why this is a distinct type and not a Stream.** Every payload elsewhere in PPCP is a `Capture`, and a Capture realises a Shot, a Candidate or an interval of a Stream — all of them observations produced by a `Source`, which has a clock, a calibration and an owning peer. **A person has none of those.** Modelling markup as a `Source` of some virtual kind would put a human being in the position the model reserves for instruments, and blur the one distinction it is most careful about: that Sources observe and everything else interprets.
+
+The cost of a separate type is one entity and one message. The cost of the alternative is the model's spine.
 
 ---
 
@@ -1202,7 +1154,7 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 
 ## 11. Invariants
 
-**Thirty-six invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2, I33–I35 in Draft 3 and I36 in revision 5. I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
+**Thirty-eight invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2, I33–I35 in Draft 3, I36 in revision 5 and I37–I38 in revision 7. I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
 
 ### 11.1 The rule for writing an invariant
 
@@ -1248,6 +1200,8 @@ Both read as constraints and were in fact instructions to decide. The corrected 
 | **I25** | Cross-session alignment is a `SessionLink`. It mutates neither Session and is never composed with a `TimebaseRelation`. | Offline |
 | **I26** | A Candidate references a Source owned by a Peer in the Session with a declared Timebase. A record without one is reconciled by `ShotLink`, never nominated. | Detect |
 | **I27** | Every Capture anchors to exactly one of a Shot, a Candidate, or an interval of its own Stream. *(Amended in revision 5: the third form was missing, so a `continuous` Stream could carry nothing.)* | Capture |
+| **I37** | An Annotation never contributes to a Shot, a Candidate, a calibration or any computed quantity, and `kind: nav_anchor` is never persisted or interpreted as phase data. | Markup |
+| **I38** | A Capture whose `transfer` is not `confirmed` is never evicted. `confirmed` is asserted by the receiver and by nobody else. | Capture |
 | **I36** | On a `continuous` Stream in a Session asserted `complete`, the announced stream-anchored Captures — present and `absent` alike — and their declared gaps account for its whole open interval. Time unaccounted for **between** announced Captures is a defect, not a dropout, in any Session. *(Amended in revision 6: as first written it read an honestly truncated bundle, and an honestly shed preview, as implementation errors.)* | Capture |
 | **I28** | `MeasuredCapability`, where present, declares `method` and `duration_ns`; its absence means not measured and MUST NOT be inferred or synthesised. | Capture |
 | **I29** | `Candidate.tof_correction`, where present, carries both `value_ns` and `sigma_ns`. No applied estimate travels without its dispersion. | Detect |
@@ -1333,7 +1287,7 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 | # | Issue | Status |
 |---|---|---|
 | ~~**B11**~~ | ~~A `continuous` Stream has no way to carry its data.~~ | **Closed in revision 5.** `Capture.anchor` gains a third form ([§5.14](#514-capture)), I27 amended, I36 added, and `preview` defined as the stream kind a live consumer wants ([§5.11.2](#5112-preview-streams)). |
-| **B14** | **Six requirements are not met**, found by a traceability audit against `capture-companion-requirements.md` and recorded in [`requirements-traceability.md`](requirements-traceability.md). Two are MUSTs with no carriage at all and need a design decision: **REQ-MARK-1/2**, user-authored artefacts and any host→device content path; and **REQ-SESS-3/4**, a commit acknowledgement without which `confirmed` is unobtainable and nothing can safely be evicted. Four are open-registry values that are expressible and undefined, so two implementations would diverge: navigation anchors (REQ-NAV-1/2), lens identity (REQ-CLIP-1), viewpoint classification (REQ-SETUP-2) and location/weather (REQ-META-2). | **Open — awaiting the implementation teams.** No normative text changed on the strength of the audit. |
+| ~~**B14**~~ | ~~Six requirements are not met.~~ | **Closed in revision 7.** All six gaps of [`requirements-traceability.md`](requirements-traceability.md) are answered: `Annotation` and the **Markup** profile ([§5.18](#518-annotation)) cover user artefacts, bidirectional content and navigation anchors; `transfer: confirmed` with a receiver-asserted commit ([§5.14f–g](#514-capture)) covers the sync-state obligation; `Source.optics`, `Source.viewpoint` and three `ContextChange` values cover the rest. |
 | **B15** | **The specification has no traceability to the requirements.** Only seven requirement identifiers appear anywhere in the set, because the document deliberately restates reasoning rather than citing sources — which is right for a third-party implementer and means nothing was checking the requirements were all answered. The audit of [`requirements-traceability.md`](requirements-traceability.md) is a point-in-time substitute; keeping it current is manual. | Open — decide whether the matrix is maintained or the citations return. |
 | **B0** | **Approved is not stable.** `ppcp/1.0` freezes when [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings are demonstrated. Until then this document takes errata. | Open by design. |
 | **B1** | **`PPCP-RV` is drafted but not agreed.** [Draft 1](ppcp-rv.md) specifies the service type, TXT contents, pairing-code payload, key derivation, TLS profile and security model, with test vectors. Until the implementation teams agree it, two conformant peers still cannot be relied on to find one another. | **Blocking interoperability**, not blocking implementation. Awaiting review. |
@@ -1365,5 +1319,123 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 | **Canonical instant** | Mid-exposure, per [§6.1](#61-canonical-instant). |
 | **Stream-anchored Capture** | A Capture realising an interval of a `continuous` Stream rather than an event. `anchor: { stream: true }`. |
 | **Preview** | A `continuous`, low-rate Stream from a capture Source, for live monitoring and never for measurement. |
+| **Annotation** | A user artefact, or a device-advisory navigation anchor, anchored to a Shot and a frame instant. Never an observation. |
 | **Bundle** | A Session serialised as a recorded PPCP message stream. Not a distinct entity. |
 | **Declaration** | The symmetric exchange in which each peer states its timebases, sources, profiles and calibration. |
+
+---
+
+# Annex D — Change history
+
+*Non-normative. How the specification reached its present form, newest last. Retained so a decision that was argued over is not silently re-litigated.*
+
+## What changed in Draft 1
+
+| # | Review point | Disposition |
+|---|---|---|
+| 1 | `nominal_frame_start` obligation with nowhere to write it | **Accepted.** `timing.frame_start_to_exposure_offset_ns` added ([§5.7](#57-captureprofile)); conversion restated as `t + offset + d/2` ([§6.1](#61-canonical-instant)); I17 amended to name three inputs; I22 added. |
+| 2 | Device-minted shot issuance has no profile | **Accepted.** New **Mint** profile ([§2.2](#22-conformance-profiles)) separates *issuing* a Shot from *arbitrating* between Candidates. I6 reassigned from Detect to Mint. |
+| 3 | Profiles gate emission, not comprehension | **Accepted.** Stated normatively in [§2.2.2](#222-what-a-profile-confers); explicit dependency table replaces "depends on Core and nothing else"; I24 added. |
+| 4 | Cross-session time has no home | **Resolved rather than recorded.** `SessionLink` added ([§5.17](#517-sessionlink)); I25 added. Marked provisional — see [Annex B](#annex-b--open-issues). |
+| 5 | Stale invariant count | **Fixed.** Twenty-eight invariants, counted in one place ([§11](#11-invariants)). |
+| R2 | Requirements review: file-imported launch monitor records are not Candidates | **Accepted.** [§8.1](#81-nomination) restricts nomination to live nominators; I26 added. |
+| R4a | Requirements review: `measured` cannot be obtained honestly at onboarding | **Accepted.** `MeasuredCapability.method` and `.duration_ns` are mandatory; absence of `measured` means not measured ([§5.8](#58-capability)); I28 added. |
+| — | Found while writing: Captures anchored to Candidates had nowhere to attach | **Fixed.** `Capture.anchor` is exactly one of a Shot or a Candidate ([§5.14](#514-capture)); `Candidate.id` added; I27 added. |
+| — | Found while writing: rolling-shutter row formula was ambiguous | **Fixed.** `readout_ns` and the row formula defined exactly ([§6.2](#62-rolling-shutter)). |
+
+The full disposition, including points deliberately **not** actioned, is in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md).
+
+## What changed in Draft 2
+
+From the two implementation-team reviews of Draft 1. Both teams approved; these are the changes they asked for.
+
+| # | Finding | Disposition |
+|---|---|---|
+| PPS-F1 | **I23 turned every diagnostic Candidate into a Shot.** A ball-into-screen transient ~9 ms after impact is inside the conformance suite's own 10 ms assertion, so a correct offline device minted two Shots per swing — and passed. | **Accepted.** The Candidate-to-Shot *identity* is broken; a Mint peer **promotes** a subset of its own Candidates. No coincidence window, one Candidate per Shot, every Candidate still emitted and retained. I23 rewritten, I8 extended to Mint. [§8.3](#83-the-zero-host-regime) |
+| PPS-F2 | **The protocol never modelled *when* a host may issue a Shot**, so a nominating peer had no deadline after which to mint, and `coincidence_window_ns` was silently doing two jobs. | **Accepted.** `Session.issue_hold_ns` added and separated from the pairwise tolerance; I32 added giving a nominating peer a deterministic mint deadline. [§8.2](#82-arbitration) |
+| PPS-F4 | **The hardened launch-monitor path does not match the launch monitor that exists** — a two-line CSV rewritten in place, no trustworthy timestamp, attributable only by arrival order. `sequence_alignment` presumes a multi-record export. | **Accepted.** A third association shape added: a live record with an observing Peer and **no clock**, associated by `ShotLink` with `basis: arrival_pairing`. Annex B4 reopened. [§8.5](#85-reconciliation) |
+| PPS-F5 | The exposure-convention rationale rested on protecting a clock-bias estimator that does not exist in the host today. | **Accepted.** The justification no longer depends on any estimator existing. [§6.1](#61-canonical-instant) |
+| PPS-F8 | Host session ids are filesystem paths and shot ids are ordinals; idempotent re-import keys on neither. | **Accepted.** An `Id` minted by a peer must not be derived from mutable local state. [§5.1](#51-notation-and-primitive-types) |
+| PPC-1.1 | **Online time-of-flight estimation conflicted with I5.** The only home for the converging estimate was `Calibration`, and changing a Calibration closes the Stream — up to fifty stream cycles per range session. | **Accepted, resolved differently from the reviewer's first preference.** The *applied* correction moves onto the Candidate, where it is consumed; `Calibration` keeps the surveyed position. I5 is untouched. [§5.12](#512-candidate), [§5.9](#59-calibration) |
+| PPC-1.2 | `tof_correction_ns` was the one estimate in the specification carrying no uncertainty. | **Accepted.** `tof_correction { value_ns, sigma_ns }`, both mandatory together. I29 added. |
+| PPC-2.1 | **`capture_announce` was called the small message and was ~44–70 KB**, carrying per-frame arrays on the latency-critical channel the two-channel design exists to protect. | **Accepted.** `AchievedCapability` splits into a summary on control and per-frame series with the payload; constant-valued series may be sent as a scalar. I30 added. [§5.8](#58-capability) |
+| PPC-2.2 | **A declared `frame_start_to_exposure_offset_ns` of `0` was indistinguishable from an unmeasured one** — and no device model has been through the rig. Same for `readout_ns`. | **Accepted.** Both carry provenance, as `MeasuredCapability.method` does. I31 added, extended to per-frame exposure. [§5.7](#57-captureprofile) |
+| PPC-3 | Per-frame exposure may not be attachable per sample buffer on iOS; the specification should state the honest conformance position. | **Answered.** `exposure_provenance` distinguishes a value attached to the frame from a sampled device property from a locked constant. [§5.8](#58-capability) |
+| Q5 | Both teams answered the support-window question compatibly. | **Settled**, closing Annex B6. [§10.1](#101-version-negotiation) |
+| PPS-F3, F6, F7, PPC-3 (partial) | Host-side and application-side work items, and requirements-document defects. | **No specification change.** Recorded in the disposition and referred on. |
+
+## What changed in Draft 3
+
+From the second round of reviews. Both teams approved again; both independently found the same defect in the fix that closed the first round's most serious one.
+
+| # | Finding | Disposition |
+|---|---|---|
+| PPS-R1 / PPC-1.1 | **The issue-hold fix reintroduced "every Candidate becomes a Shot" in the live regime**, and `CT-I32` certified it. Nothing obliges a host to answer a Candidate it declines, so after the deadline a peer minted a Shot for every nomination the host had rejected. Separately, a deadline narrows the mint/issue race rather than closing it: a host `shot` arriving after the deadline produces two immutable, unmergeable Shots with no withdraw message to reach for. | **Accepted in full, from both angles.** The mint is now conditioned on the peer's own promotion policy; the host's issue window is bounded so it cannot overlap the mint window; a host that receives a device-minted Shot attaches to it instead of competing; and where both fire, they are linked by `shared_candidate`. I32 amended, I35 added, [§7.1](#71-roles) gains the third row. |
+| PPS-R3 | **`Candidate.at` had no stated convention**, and §8.2a told the host to apply the canonical-instant conversion with an input — that frame's exposure — that a Candidate does not carry. Harmless for acoustic by accident; a ~1 ms systematic error for a `motion` candidate, inside any plausible window, so arbitration still succeeds and `t0` is quietly wrong. | **Accepted.** The nominator converts before emission ([§5.12e](#512-candidate)); §8.2a drops the clause. I33 added, and `canonical_correction_ns` keeps the correction visible. |
+| PPS-R2 | **`PPCP-MSG` 8.2b permitted what I30 and 5.8g forbade** — a straight contradiction between two normative documents, which the suite did not catch. | **Accepted.** I30 and 5.8g narrowed to admit the one exception, which is right: a `complete` + `failed` capture is a session whose link died, and the frame timeline is what says what was lost. |
+| PPS-R4 | **The scalar form was ambiguous for `intrinsics`** — the one field it was added for — because its element type is itself an array. | **Accepted.** [`PPCP-ENC` 4.1d](ppcp-encoding.md#41-composite-types) disambiguates by the type of the first element. |
+| PPC-1.2 | **`Capture.digest` was the stated identity for idempotent re-import**, and an absent capture has no payload to hash. | **Accepted.** Identity is `Capture.id` scoped by session and owning peer; the digest is a content check. I34 added. |
+| PPC-1.3 | **Two arbitration parameters were mandatory on sessions that never arbitrate.** | **Accepted.** Present if and only if the Session has a host ([§5.10e](#510-session)) — I23 expressed structurally. |
+| PPC-3 | 5.8d was unsatisfiable for an absent capture. | **Accepted.** Conditioned on the Capture having frames. |
+| PPS §6 | **The same failure mode twice: an invariant that constrains a choice rather than a shape.** | **Accepted and promoted.** [§11.1](#111-the-rule-for-writing-an-invariant) is now a rule for writing invariants in this document. |
+| PPS §3 | `ShotLink.confirmed` had come to carry two epistemic states. | **Accepted.** `confirmed_by: observer \| user` ([§5.16e](#516-shotlink)). Closes Annex B9. |
+| PPC §2 | The coincidence window's floor and ceiling may be incompatible, so a per-`basis` tolerance may be needed. | **Not added speculatively; the measurement redesigned.** Only an arbitrating host consumes the window, so a per-basis override is additive in a MINOR version. Annex B8 now asks for the floor **per nominator class**. |
+| PPS §2 | Five consistency items — counts, stale field names, support-window wording. | **All accepted.** |
+
+## What changed on approval
+
+The closing round. Both teams signed off; these are the findings they attached to their sign-off, and all are carried here.
+
+| # | Finding | Disposition |
+|---|---|---|
+| PPS-S1 | **A peer told to mint may have no expressible `t0`.** The commonest reason a host stays silent is that it excluded the Candidate under 8.2d — for a missing, `unrelated` or too-uncertain relation to `timebase_ref` — which is exactly the condition under which the peer cannot express `t0` there either. The required `unrelated` interoperability pairing puts every candidate in that state. | **Accepted.** [§8.2i1](#82-arbitration): a peer that cannot express `t0` does not mint, and retains the Candidate with no Shot. |
+| PPS-S1(b) / PPC-2.1 | **The zero-host regime has two entry conditions** — no host in the roster, and a host that has stopped answering — described in the same words, with I23 reading as though only the first existed. | **Accepted.** [§8.3g](#83-the-zero-host-regime) separates them, [§8.3h](#83-the-zero-host-regime) states that I23 binds at issuance rather than for ever, and I23 and Annex C are reworded. |
+| PPS-S2 | **Mint and Arbitrate carried MUSTs discharged through `shot_link`, which only Offline conferred** — a direct C2/I24 contradiction, and the third occurrence of the family that produced the Mint profile. | **Accepted, by the reviewer's preferred fix.** `ShotLink` origination moves to **Core** and I9 with it; `SessionLink` stays in Offline. The alternative — adding Offline to Mint and Arbitrate — would make a live-only host implement a bundle container to resolve a socket race. |
+| PPS-S3 | **§8.2k has one peer amend another peer's Shot, with no rule for who may.** Before Draft 3 exactly one peer ever sent `shot` for a given id. | **Accepted, wording adopted.** [§5.13d–e](#513-shot) fix the ownership of `id`, `t0`, `authority` and `issued_by`, make `candidates` extensible by any holder, and state that extension is additive and order-independent so the two ends converge. |
+| PPS §2.1 | `confirmed_by: observer` was defined in arrival-pairing language and did not describe `shared_candidate`. | **Accepted.** Broadened to *observed the association*; 5.16g states the value. |
+| PPS §2.2 / PPC-2.2 | The `intrinsics` scalar rule had no answer for an empty array. | **Accepted.** [`PPCP-ENC` 4.1d](ppcp-encoding.md#41-composite-types): an empty array MUST NOT be emitted and is `malformed` on receipt. |
+| PPS §3 | `canonical_correction_ns` is a bare integer beside an `Estimate`, and the asymmetry looks like an oversight. | **No change, and the reason recorded** in [§5.12f](#512-candidate) so it is not "fixed" during implementation. |
+| PPC §3 | Positions recorded for implementation: `locked_constant` under the exposure lock, `assumed` provenance until the rig exists, and the mint deadline being a user-visible latency. | **No specification change.** All are consequences the document intends. |
+
+## What changed in revision 5
+
+One defect, found by tracing a host-side requirement rather than by review, and the capability it was blocking.
+
+| # | Finding | Disposition |
+|---|---|---|
+| **B11** | **A `continuous` Stream could carry nothing.** Every payload message is keyed on `capture_id` and every Capture anchored to a Shot or a Candidate (I27) — so the interval a continuity flag exists to describe was the one interval with no carriage. Three stated obligations were unmeetable: continuous attitude and gravity on a `metadata` Stream that [§5.11](#511-stream) calls *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry; and `imu`/`wrist` running continuously while armed. | **Fixed.** `Capture.anchor` gains a third form, `{ stream: true }` ([§5.14](#514-capture)). I27 amended, **I36** added for the coverage rule. No new message. |
+| — | **A consumer had no way to see that a capture peer reflects what the user is doing.** Heartbeat proves the link is live; only frames prove the rest. | **`preview` defined** ([§5.11.2](#5112-preview-streams)) — a second Stream from an existing Source, low rate, `continuous`, never used for measurement, carried on its own bulk channel and the first thing dropped under contention. It is [§5.11.1](#5111-how-a-continuous-stream-is-carried) applied to a camera, and needs nothing new. |
+
+The change is additive: no field is removed, no type narrowed, and no existing field changes meaning. It lands in `1.0` rather than a MINOR bump because `1.0` is approved and **not yet frozen** ([Annex B0](#annex-b--open-issues)) — and because a flag with nothing behind it is a defect rather than a missing feature.
+
+## What changed in revision 6
+
+Both teams reviewed revision 5 and both approved it. Three findings were made independently by both.
+
+| # | Finding | Disposition |
+|---|---|---|
+| Both | **A deliberately-shed interval was indistinguishable from a failed one**, and a Stream that recorded *nothing* for a span had no way to say so — `interval` was required absent on an `absent` Capture and required present on a stream-anchored one. | **Accepted.** `interval` is mandatory on every stream-anchored Capture including `absent` ([§5.14d](#514-capture)); [5.11c2](#5111-how-a-continuous-stream-is-carried) separates the two accounts — `gaps` mean **loss**, an `absent` segment means **nothing was captured** — and [5.11c3](#5111-how-a-continuous-stream-is-carried) makes deliberate non-retention an `absent` segment, never a gap. |
+| Both | **A preview profile is a derived view, not a mode a Source can enter.** No camera runs two configurations at once; the preview is decimated from the active capture stream. | **Accepted.** [5.11k–m](#5112-preview-streams): realised rate and format are derived while a capture Stream is open, the profile is activatable only on a `preview` Stream, and it declares `intrinsics: none` because scaling changes the matrix. |
+| Both | `preview` was missing from the `Stream.kind` enumeration. | **Accepted.** |
+| PPS-S2 | **I36 read an honestly truncated bundle as a defect** — and the bundle is the v1 path. | **Accepted.** [5.11c1](#5111-how-a-continuous-stream-is-carried): the obligation binds a `complete` Session; a hole **between** segments is a defect in any Session, time **after** the last one is the incompleteness already declared. Nothing truncates a bundle in the middle. |
+| PPS-S3 | **Preview Captures would be queued and bundled**, because `pending` is where an announced Capture starts — the inversion 5.11i forbids, arriving through the transfer queue. | **Accepted.** [5.11j](#5112-preview-streams): preview is **live-only**, never queued, never bundled, and what was dropped is announced absent. |
+| PPS-S5 | A concurrent preview makes `MeasuredCapability` optimistic, and the acceptance decision is taken before the preview is opened. | **Accepted.** [5.8k](#58-capability): a measurement describes its profile **running alone** unless the peer says otherwise. |
+| PPS-S4 | 5.8d appeared to require per-frame exposure on preview Captures. | **Already addressed** at 5.8j in revision 5, which sits below the clauses that follow 5.8d and was easy to miss. 5.8d now points at it. |
+| PPS c2 | Two different `evidence_ref` fields meant different things, and revision 5 made the first usable for the first time — so it will now be implemented by someone reading the other's definition. | **Accepted.** Renamed `evidence_stream_id` and `evidence_capture_id`. |
+| PPC-3 | Unclear whether a producer may close a preview it has open — the thermal case. | **Accepted.** [5.11a1](#511-stream): either peer may close, with a reason. |
+| PPC-4 | Control traffic now scales with session length, and window length has one voice. | **Answered.** [5.11e–e1](#5111-how-a-continuous-stream-is-carried): the window is the producer's and is not negotiable in `1.0`; the volume is stated and accepted, because the control channel is protected against large payloads rather than against message count. |
+
+## What changed in revision 7
+
+The six findings of the [requirements traceability audit](requirements-traceability.md), which cross-checked all 172 numbered requirements against the specification set. Two were MUSTs with no carriage at all.
+
+| # | Finding | Disposition |
+|---|---|---|
+| G1 | **No carriage for user-authored artefacts, and no host→device content path at all.** Every payload in PPCP is a Capture, and a Capture realises an observation by a Source — which has a clock, a calibration and an owning peer. A person has none of those. | **`Annotation`** ([§5.18](#518-annotation)) and the **Markup** profile. One entity, one message, either direction. I37 added. |
+| G2 | **No commit acknowledgement**, so a peer required to track *local / sent / confirmed* could not reach the third state, and "evict nothing unconfirmed" was satisfiable only by evicting nothing ever. | **`transfer: confirmed`** and a receiver-asserted `capture_committed` ([§5.14f–g](#514-capture)). I38 added. |
+| G3 | Navigation anchors had no home in the schema and no distinct naming. | `Annotation` with `provenance: device_advisory`, `kind: nav_anchor` — structurally the same shape as markup, differing only in who authored it. |
+| G4 | Lens identity was the one sidecar item not carried. | `Source.optics`, and **5.6d**: a physically distinct lens is a distinct Source. |
+| G5 | A device classifies its own viewpoint and "reports it", with nowhere to report it. | `Source.viewpoint`, carrying a **confidence and a method** — a self-classification is a conclusion, and this model carries measurements a consumer may disagree with. |
+| G6 | Location and weather had no home. | `ContextChange.kind: location` / `weather`, labels only, never computed from. |
+
+Also `ContextChange.kind: handedness` — which way a golfer swings is a property of the session, not of a camera.

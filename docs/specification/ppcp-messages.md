@@ -387,6 +387,7 @@ A Shot may therefore have zero Candidates from a peer and a Capture from that sa
 |---|---|---|---|---|
 | `capture_announce` | Event | owner → any | control | Capture |
 | `capture_update` | Event | owner → any | control | Capture |
+| `capture_committed` | Event | **receiver → owner** | control | Capture |
 | `payload_begin` | Event | sender → receiver | bulk | Capture |
 | `payload_chunk` | Event | sender → receiver | bulk | Capture |
 | `payload_ack` | Event | receiver → sender | bulk | Capture |
@@ -427,6 +428,19 @@ capture_update { capture_id, completeness, transfer, gaps, digest, achieved_fram
 - **(8.2a) MUST** `completeness` and `transfer` are updated independently. `complete` + `pending` and `partial` + `present` are both normal.
 - **(8.2b) MAY** `capture_update` carry `achieved_frames` for a Capture whose payload will not transfer — a `complete` + `failed` clip whose frame timing is still worth having. This is the **one exception** I30 admits, and it is a fallback rather than the normal path: for any Capture whose payload will transfer, the series ride with it.
 
+### 8.4 `capture_committed`
+
+```
+capture_committed { capture_id, digest: Digest }
+```
+
+- **(8.4a) MUST** A **receiver** sends `capture_committed` when it holds a Capture's payload **durably** — written and flushed, not merely received. The owner sets `transfer: confirmed` on it ([`PPCP-CORE` §5.14f](ppcp-core.md#514-capture)).
+- **(8.4b) MUST NOT** An owner set `confirmed` on its own authority. Only the receiver can say it, which is the whole reason the message exists.
+- **(8.4c) MUST NOT** An owner evict a Capture that is not `confirmed` (I38).
+- **(8.4d)** It travels on the **control** channel: it is small, it is what releases storage on the other end, and it must not queue behind the next clip.
+
+`payload_ack` acknowledges a **chunk arriving**; `payload_end` travels from owner to receiver. Neither says the receiver has committed anything, so before revision 7 a capture peer required to track *local / sent / confirmed* could never reach the third state, and "evict nothing unconfirmed" was satisfiable only by evicting nothing ever.
+
 ### 8.3 The `payload_*` family
 
 ```
@@ -453,11 +467,23 @@ payload_resume { capture_id, from_index: uint32 }
 
 | Message | Class | Direction | Channel | Profile |
 |---|---|---|---|---|
+| `annotation` | Event | **any → any** | control | **Markup** |
 | `session_offer` | Request | exporter → importer | control | Offline |
 | `session_accept` | Response | importer → exporter | control | Offline |
 | `session_manifest` | Event | exporter → importer | control | Offline |
 | `shot_link` | Event | any → any | control | **Core** |
 | `session_link` | Event | importer → any | control | Offline |
+
+### 9.0 `annotation`
+
+```
+annotation { annotation: Annotation }
+```
+
+- **(9.0a) MUST** `annotation` travels **either direction** ([`PPCP-CORE` §5.18d](ppcp-core.md#518-annotation)). It is the only content in PPCP that does; every payload message elsewhere describes a Capture the sender owns.
+- **(9.0b) MUST** `body` is opaque and is stored and returned unchanged by a peer that does not understand its `format` (5.18a). Round-tripping is the requirement.
+- **(9.0c) MUST** A later `revision` for the same `id` supersedes an earlier one; an equal or lower revision is ignored. There is no merge (5.18e).
+- **(9.0d) MUST NOT** An annotation of any provenance feed a Shot, a Candidate, a calibration, or any computed quantity (I37).
 
 ### 9.1 `session_offer` / `session_accept`
 
@@ -546,7 +572,7 @@ error { code: Kind, message: string, in_reply_to: uint (optional), detail: map (
 
 ## 11. Message index
 
-Forty-two messages. `R` request, `S` response, `E` event.
+Forty-four messages. `R` request, `S` response, `E` event.
 
 | Message | | Channel | Profile to originate | Section |
 |---|---|---|---|---|
@@ -580,6 +606,8 @@ Forty-two messages. `R` request, `S` response, `E` event.
 | `capture_request` | R | control | Arbitrate | [7.3](#73-capture_request) |
 | `capture_announce` | E | control | Capture | [8.1](#81-capture_announce) |
 | `capture_update` | E | control | Capture | [8.2](#82-capture_update) |
+| `capture_committed` | E | control | Capture | [8.4](#84-capture_committed) |
+| `annotation` | E | control | **Markup** | [9.0](#90-annotation) |
 | `payload_begin` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
 | `payload_chunk` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
 | `payload_ack` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |

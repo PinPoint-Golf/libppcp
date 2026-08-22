@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **APPROVED for implementation**, 22 August 2026. Revision 6 — one defect fixed since approval and reviewed by both teams ([`CORE` §0.5](ppcp-core.md#05-what-changed-in-revision-5), [§0.6](ppcp-core.md#06-what-changed-in-revision-6)) |
+| Status | **APPROVED for implementation**, 22 August 2026. Revision 7 — see [`CORE` Annex D](ppcp-core.md#annex-d--change-history) |
 | Date | 22 August 2026 |
 | Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
@@ -35,7 +35,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 | Read | Document | Authority | What it settles |
 |---|---|---|---|
-| 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-six invariants |
+| 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-eight invariants |
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
@@ -45,6 +45,47 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | — | [**reviews/**](reviews/) | Input | All fourteen reviews as submitted |
 
 If you have an hour, read `PPCP-CORE` §2 (profiles), §5 (the model) and §6.1 (the canonical instant), then `PPCP-MSG` Annex A. If you have twenty minutes, read the review disposition and `PPCP-CORE` §6.1.
+
+## The seven questions Draft 1 asked
+
+All answered, and both teams agreed on every one. Four are now closed.
+
+| | Question | Outcome |
+|---|---|---|
+| **Q1** | CBOR with text keys | **Closed — keep.** Agreed without reservation. Field diagnosis happens on a phone at a driving range and in a user-attached bundle; a wire readable in a hex dump is worth more than 40% of a message class totalling ~4 KB per burst. |
+| **Q2** | `SessionLink` defined now | **Closed — keep, provisional.** The original objection was withdrawn. The host would trade it if effort were scarce, preferring the issue-timing hole — which Draft 2 fixes anyway. |
+| **Q3** | `t + offset + d/2` | **Closed — confirmed** by both teams independently. |
+| **Q4** | 50 ms coincidence default | **Open, and sharpened again.** The floor must be measured **per nominator class** — acoustic-to-acoustic is tight, a live external nominator with a coarse clock may be an order of magnitude wider — because if the second exceeds the adjacent-bay ceiling there is no single conformant value. A per-`basis` override is additive rather than breaking, so it is not added speculatively; the measurement design is what had to change. [Annex B8](ppcp-core.md#annex-b--open-issues) |
+| **Q5** | Version support window | **Closed.** Two MINOR back or twelve months, whichever is longer. |
+| **Q6** | Unbounded candidate audio retention | **Closed — confirmed** by both. The application owns the bound; the protocol owns expressibility and assertable absence. |
+| **Q7** | `PPCP-RV` does not exist | **Open — drafted, reviewed twice, mechanism decided.** [Draft 4](ppcp-rv.md) is complete; forward secrecy is best-effort by product decision ([§5.4.3](ppcp-rv.md#543-the-decision)), which overrides both reviewers' stated position and goes back to them as such. The pairing code — the irreversible part — has survived two passes and two independent recomputations. The deadline stands: `_ppcp._tcp` has shipped in an application bundle, and the code is gated by the first store submission. |
+
+## What is still open
+
+[`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) has the full list. The ones needing someone to act:
+
+- **`PPCP-RV`** — [Draft 4](ppcp-rv.md) is complete and needs a third pass. The platform check ruled out TLS 1.3 external PSK, and the owner has taken the decision: **forward secrecy is best-effort rather than required**, on the judgement that the payload is not highly sensitive ([§5.4.3](ppcp-rv.md#543-the-decision)). Both reviewers had said they would not relax it, so that goes back to them as a decision taken. Still needed before the first store submission.
+- **Two timing defaults**, neither measured: the coincidence window and the issue hold. The window's floor must be measured per nominator class, not pooled — see [Annex B8](ppcp-core.md#annex-b--open-issues). Rig work.
+- **The rig itself.** `frame_start_to_exposure_offset_ns` and `readout_ns` are `assumed` on every device until it exists; provenance now makes that visible rather than silent.
+- **The synthetic peer simulator.** Four of the seven silent-failure tests are untestable without a peer that declares something the reference implementation would not.
+
+## Two things that are easy to miss
+
+**The transport must supply two independently flow-controlled channels.** Not one connection with interleaving — two. A 25 MB capture in flight on a single stream head-of-line blocks the next shot's event. This is expensive to retrofit and invisible in every sequence diagram, because both channels are drawn as one lifeline. [`CORE` §3.1](ppcp-core.md#31-why-two-channels-is-not-negotiable)
+
+**Four of the seven silent-failure tests pass by accident when an implementation is tested only against itself.** Host-side declaration, the zero-host path, comprehension-versus-origination and timing-constant provenance all require a synthetic peer that declares something the reference implementation would not. Building that simulator early is what makes them testable at all. [`CONF` §2c](ppcp-conformance.md#2-required-test-infrastructure)
+
+## Changing this specification
+
+The invariants are the conformance surface, and their identifiers are stable — I1–I21 keep the numbers model draft 4 and its review used, even where the text was amended. New invariants append.
+
+If implementation shows something here to be wrong, that is the expected outcome rather than a failure of the specification — but **the change belongs in the specification first and the code second**, or the document stops describing the system.
+
+---
+
+# Change history
+
+*Newest first. What changed between drafts, kept at the back because a first reader does not need it.*
 
 ## What changed in revision 6
 
@@ -114,41 +155,6 @@ Thirty-two invariants at that point; I1–I28 kept their numbers.
 | **7** | **Provenance on timing constants nobody has measured yet.** A declared `frame_start_to_exposure_offset_ns` of `0` was indistinguishable from an unmeasured one; same for `readout_ns` and per-frame exposure. I31 added. | Capture |
 | **8** | **Support window settled** — two MINOR versions back or twelve months, whichever is longer, with the supported range carried in `unsupported_version` so a user learns which end is stale. Closes Annex B6. | Both |
 
-Draft 1's own changes — the `nominal_frame_start` offset, the `Mint` profile, origination-not-comprehension, `SessionLink`, `Capture.anchor` — are in [`PPCP-CORE` §0.1](ppcp-core.md#01-what-changed-in-draft-1).
+Draft 1's own changes — the `nominal_frame_start` offset, the `Mint` profile, origination-not-comprehension, `SessionLink`, `Capture.anchor` — are in [`PPCP-CORE` Annex D](ppcp-core.md#annex-d--change-history).
 
 The full disposition of all three rounds, including what was **not** actioned and why, is in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md).
-
-## The seven questions Draft 1 asked
-
-All answered, and both teams agreed on every one. Four are now closed.
-
-| | Question | Outcome |
-|---|---|---|
-| **Q1** | CBOR with text keys | **Closed — keep.** Agreed without reservation. Field diagnosis happens on a phone at a driving range and in a user-attached bundle; a wire readable in a hex dump is worth more than 40% of a message class totalling ~4 KB per burst. |
-| **Q2** | `SessionLink` defined now | **Closed — keep, provisional.** The original objection was withdrawn. The host would trade it if effort were scarce, preferring the issue-timing hole — which Draft 2 fixes anyway. |
-| **Q3** | `t + offset + d/2` | **Closed — confirmed** by both teams independently. |
-| **Q4** | 50 ms coincidence default | **Open, and sharpened again.** The floor must be measured **per nominator class** — acoustic-to-acoustic is tight, a live external nominator with a coarse clock may be an order of magnitude wider — because if the second exceeds the adjacent-bay ceiling there is no single conformant value. A per-`basis` override is additive rather than breaking, so it is not added speculatively; the measurement design is what had to change. [Annex B8](ppcp-core.md#annex-b--open-issues) |
-| **Q5** | Version support window | **Closed.** Two MINOR back or twelve months, whichever is longer. |
-| **Q6** | Unbounded candidate audio retention | **Closed — confirmed** by both. The application owns the bound; the protocol owns expressibility and assertable absence. |
-| **Q7** | `PPCP-RV` does not exist | **Open — drafted, reviewed twice, mechanism decided.** [Draft 4](ppcp-rv.md) is complete; forward secrecy is best-effort by product decision ([§5.4.3](ppcp-rv.md#543-the-decision)), which overrides both reviewers' stated position and goes back to them as such. The pairing code — the irreversible part — has survived two passes and two independent recomputations. The deadline stands: `_ppcp._tcp` has shipped in an application bundle, and the code is gated by the first store submission. |
-
-## What is still open
-
-[`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) has the full list. The ones needing someone to act:
-
-- **`PPCP-RV`** — [Draft 4](ppcp-rv.md) is complete and needs a third pass. The platform check ruled out TLS 1.3 external PSK, and the owner has taken the decision: **forward secrecy is best-effort rather than required**, on the judgement that the payload is not highly sensitive ([§5.4.3](ppcp-rv.md#543-the-decision)). Both reviewers had said they would not relax it, so that goes back to them as a decision taken. Still needed before the first store submission.
-- **Two timing defaults**, neither measured: the coincidence window and the issue hold. The window's floor must be measured per nominator class, not pooled — see [Annex B8](ppcp-core.md#annex-b--open-issues). Rig work.
-- **The rig itself.** `frame_start_to_exposure_offset_ns` and `readout_ns` are `assumed` on every device until it exists; provenance now makes that visible rather than silent.
-- **The synthetic peer simulator.** Four of the seven silent-failure tests are untestable without a peer that declares something the reference implementation would not.
-
-## Two things that are easy to miss
-
-**The transport must supply two independently flow-controlled channels.** Not one connection with interleaving — two. A 25 MB capture in flight on a single stream head-of-line blocks the next shot's event. This is expensive to retrofit and invisible in every sequence diagram, because both channels are drawn as one lifeline. [`CORE` §3.1](ppcp-core.md#31-why-two-channels-is-not-negotiable)
-
-**Four of the seven silent-failure tests pass by accident when an implementation is tested only against itself.** Host-side declaration, the zero-host path, comprehension-versus-origination and timing-constant provenance all require a synthetic peer that declares something the reference implementation would not. Building that simulator early is what makes them testable at all. [`CONF` §2c](ppcp-conformance.md#2-required-test-infrastructure)
-
-## Changing this specification
-
-The invariants are the conformance surface, and their identifiers are stable — I1–I21 keep the numbers model draft 4 and its review used, even where the text was amended. New invariants append.
-
-If implementation shows something here to be wrong, that is the expected outcome rather than a failure of the specification — but **the change belongs in the specification first and the code second**, or the document stops describing the system.

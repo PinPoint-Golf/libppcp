@@ -8,7 +8,7 @@
 | Date | 22 August 2026 |
 | Against | `PinPointCapture/docs/capture-companion-requirements.md`, 21 August 2026 (172 numbered requirements) |
 | Covering | `PPCP-CORE` revision 6, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF`, `PPCP-RV` Draft 5 |
-| Result | **164 covered or deliberately out of scope. 8 requirements across 6 findings are not met.** |
+| Result | **All 172 covered or deliberately out of scope.** Eight were not met when this audit was first run; all six findings were closed in `PPCP-CORE` revision 7. |
 
 ---
 
@@ -18,18 +18,18 @@ The specification is deliberately self-contained: it restates the reasoning behi
 
 This document restores that check. It is a semantic audit rather than an identifier match: each requirement was read against the clause that answers it.
 
-**Six findings, eight requirements.** Two are MUSTs on the protocol with no carriage at all, and both need a design decision rather than a drafting fix. Four are cases where an open registry makes the requirement *expressible* but no value is defined, so two implementations would diverge — the same class of defect that produced the launch-monitor and `Stream.kind` findings in earlier rounds.
+**Six findings, eight requirements — all now closed.** Two were MUSTs on the protocol with no carriage at all; four were cases where an open registry made the requirement *expressible* but no value was defined, so two implementations would diverge — the same class of defect that produced the launch-monitor and `Stream.kind` findings in earlier rounds. [§3](#3-the-findings) records each finding and what answers it.
 
 | # | Requirement | Level | Finding |
 |---|---|---|---|
-| **G1** | REQ-MARK-1, REQ-MARK-2 | MUST | **No carriage for user-authored artefacts, and no host→device content path at all.** |
-| **G2** | REQ-SESS-3, REQ-SESS-4 | MUST | **No commit acknowledgement**, so `confirmed` is unobtainable and nothing can ever be safely evicted. |
-| **G3** | REQ-NAV-1, REQ-NAV-2 | MUST | Navigation anchors have no home in the schema and no distinct naming. |
-| **G4** | REQ-CLIP-1 (part) | MUST | Lens identity is not carried. |
-| **G5** | REQ-SETUP-2 | SHOULD | A device classifies its own viewpoint and "reports it" — with no field to report it in. |
-| **G6** | REQ-META-2 | SHOULD | Location and weather have no home. |
+| **G1** | REQ-MARK-1, REQ-MARK-2 | MUST | No carriage for user-authored artefacts, and no host→device content path at all. → **`Annotation` and the Markup profile** |
+| **G2** | REQ-SESS-3, REQ-SESS-4 | MUST | No commit acknowledgement, so `confirmed` was unobtainable. → **`capture_committed` and `transfer: confirmed`** |
+| **G3** | REQ-NAV-1, REQ-NAV-2 | MUST | Navigation anchors had no home. → **`Annotation` with `provenance: device_advisory`, `kind: nav_anchor`** |
+| **G4** | REQ-CLIP-1 (part) | MUST | Lens identity was not carried. → **`Source.optics`, and a lens is a distinct Source (5.6d)** |
+| **G5** | REQ-SETUP-2 | SHOULD | No field to report a viewpoint in. → **`Source.viewpoint`, with confidence and method** |
+| **G6** | REQ-META-2 | SHOULD | Location and weather had no home. → **`ContextChange.kind: location` / `weather`** |
 
-Each is set out in [§3](#3-the-findings) with a proposed shape. **No normative text has been changed on the strength of this audit** — the findings go to the implementation teams with everything else.
+**All six are closed in revision 7**, and none has been reviewed by the implementation teams. The two that needed a design decision — G1 and G2 — are set out in [§3](#3-the-findings) with the reasoning for the shape taken, because those are the ones to disagree with.
 
 ---
 
@@ -86,8 +86,8 @@ Each is set out in [§3](#3-the-findings) with a proposed shape. **No normative 
 | REQ-MIC-4 | ✓ | Online estimation carried per-Candidate as `tof_correction` with mandatory sigma (**I29**), which is what makes convergence visible |
 | REQ-MIC-5 | — | Classifier design, device-internal |
 | REQ-MIC-6 | ✓ | `confidence` + basis-specific `classifier` on Candidate |
-| REQ-NAV-1 | ✗ | **[G3](#g3--navigation-anchors-have-no-home-in-the-schema)** |
-| REQ-NAV-2 | ✗ | **[G3](#g3--navigation-anchors-have-no-home-in-the-schema)** |
+| REQ-NAV-1 | ✓ | `Annotation`, `provenance: device_advisory`, `kind: nav_anchor` ([`CORE` §5.18](ppcp-core.md#518-annotation)) |
+| REQ-NAV-2 | ✓ | **I37** — never persisted or interpreted as phase data |
 | REQ-NAV-3 | ✓ | The impact anchor is the acoustic Candidate's instant / `Shot.t0` |
 
 ### Session, state and resources
@@ -96,8 +96,8 @@ Each is set out in [§3](#3-the-findings) with a proposed shape. **No normative 
 |---|---|---|
 | REQ-SESS-1 | ✓ | [`CORE` §5.10](ppcp-core.md#510-session) — roster, `contexts`, state, completeness |
 | REQ-SESS-2 | ✓ | **I20**, [`CORE` §7.1](ppcp-core.md#71-roles), [§8.3](ppcp-core.md#83-the-zero-host-regime) |
-| REQ-SESS-3 | ✗ | **[G2](#g2--no-commit-acknowledgement-so-confirmed-is-unobtainable)** |
-| REQ-SESS-4 | ✗ | **[G2](#g2--no-commit-acknowledgement-so-confirmed-is-unobtainable)** |
+| REQ-SESS-3 | ✓ | `transfer: pending \| in_flight \| present \| confirmed \| failed` ([`CORE` §5.14f](ppcp-core.md#514-capture)) |
+| REQ-SESS-4 | ✓ | **I38**, and `capture_committed` is the only way `confirmed` is reached |
 | REQ-SESS-5 | ✓ | [`CORE` §3.1](ppcp-core.md#31-why-two-channels-is-not-negotiable), [`MSG` §8.1](ppcp-messages.md#81-capture_announce) with a thumbnail ≤64 KiB |
 | REQ-SESS-6 | ✓ | [`MSG` §8.3](ppcp-messages.md#83-the-payload_-family), T2 |
 | REQ-STATE-1 | ✓ | [`CORE` §7.3a](ppcp-core.md#73-streams-and-capture-control) |
@@ -140,11 +140,11 @@ Each is set out in [§3](#3-the-findings) with a proposed shape. **No normative 
 | REQ-PRIV-5 | ✓ | [`CORE` §5.12.1a](ppcp-core.md#5121-candidate-evidence) — separate Stream, never muxed |
 | REQ-PRIV-6 | ◐ | [`CORE` §13c](ppcp-core.md#13-privacy-considerations) states the count is unbounded by anything the user does; the arithmetic is the application's |
 | REQ-PRIV-7 | — | Application retention format |
-| REQ-CLIP-1 | ✗ | Every listed item is carried **except lens identity** — **[G4](#g4--lens-identity-is-not-carried)** |
+| REQ-CLIP-1 | ✓ | Every listed item, lens identity now included via `Source.optics` and 5.6d |
 | REQ-CLIP-2 | ✓ | [`ENC` §7a](ppcp-encoding.md#7-bundle-container) |
 | REQ-CLIP-3 | ✓ | Timing rides in the message stream, which is also the on-disk form |
 | REQ-META-1 | ✓ | A `metadata` Stream carried by stream-anchored Captures — **the requirement B11 made unmeetable, and revision 5 fixed** |
-| REQ-META-2 | ✗ | **[G6](#g6--location-and-weather-have-no-home)** |
+| REQ-META-2 | ✓ | `ContextChange.kind: location` and `weather`, labels only ([`CORE` §5.10f](ppcp-core.md#510-session)) |
 | REQ-STANDALONE-1 | ✓ | The zero-host regime is a regime, not a degraded mode |
 | REQ-STANDALONE-2 | ✓ | [`ENC` §7a](ppcp-encoding.md#7-bundle-container) |
 | REQ-STANDALONE-3 | ✓ | A bundle carries declaration, profiles and calibration alongside payload |
@@ -180,9 +180,9 @@ Out of protocol scope by design, and listed so the exclusion is visible rather t
 | REQ-ENC-1…4 | — | Encoder configuration |
 | REQ-POSE-1…4 | — | Advisory pose, v2, device-local and never ingested |
 | REQ-SETUP-1, 3 | — | Framing validation, application |
-| REQ-SETUP-2 | ✗ | **[G5](#g5--a-viewpoint-classification-is-reported-with-nowhere-to-report-it)** |
+| REQ-SETUP-2 | ✓ | `Source.viewpoint { label, confidence, method }` ([`CORE` §5.6e](ppcp-core.md#56-source)) |
 | REQ-REPLAY-1…4 | — | Application replay |
-| REQ-MARK-1, 2 | ✗ | **[G1](#g1--no-carriage-for-user-authored-artefacts)** |
+| REQ-MARK-1, 2 | ✓ | `Annotation` ([`CORE` §5.18](ppcp-core.md#518-annotation)) — lossless `body`, either direction |
 | REQ-MARK-3 | — | Application UI |
 | REQ-OBS-1…3 | ◐ | Application output; [`RV` 7.2b](ppcp-rv.md#72-handling-the-pairing-secret) constrains what it may contain, and `RT-9` tests it |
 | REQ-OBS-4 | ✓ | Explicitly excluded from the protocol by **I14**, which is the requirement's own position |
@@ -283,10 +283,17 @@ Time is covered by `Session.epoch`. Location and weather are not. `ContextChange
 
 ---
 
-## 4. Recommendation
+## 4. What was done, and what to disagree with
 
-**G1 and G2 need a decision** before they can be drafted: G1 adds either an entity or a strained use of `Source`, and G2 adds a message. Both answer MUSTs, and both should go to the implementation teams with this audit rather than be landed unreviewed.
+All six are closed in `PPCP-CORE` revision 7. **None has been reviewed**, and two of them took a design decision that the implementation teams should weigh.
 
-**G3 to G6 are one-line registry definitions** of exactly the kind this specification has fixed four times already — the value is expressible, nobody has defined it, and two implementations will pick differently. They are cheap and can land as soon as the teams have seen them.
+**G1 — `Annotation` as a distinct type, not a `Source`.** The alternative was a `Source` of `kind: user`, which needs no new entity or message and reuses the whole announce-and-payload path. It was rejected because it puts a person in the position the model reserves for instruments. Every payload elsewhere in PPCP is a Capture; a Capture realises an observation; a `Source` has a clock, a calibration and an owning peer. A human being has none of those. **The cost of a separate type is one entity and one message. The cost of the alternative is the model's spine.** If the teams disagree, this is the place.
 
-Nothing in this audit changes normative text. The findings are recorded in [`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) so they are visible from the specification itself and not only from here.
+**G2 — a receiver-asserted `capture_committed`.** The shape was already determined and the only question was whether to add a message to an approved catalogue. It is one event on the control channel and one enum value, and it makes a stated obligation satisfiable that was not: a peer required to track *local / sent / confirmed* could not reach the third state, so "evict nothing unconfirmed" meant evicting nothing ever.
+
+**G3–G6 are registry values and two optional fields**, of exactly the kind this specification has defined four times before. `Source.optics` and `Source.viewpoint` are new optional fields; `nav_anchor`, `location`, `weather` and `handedness` are values in registries that were already open.
+
+Two things worth noting about the shape of the result:
+
+- **`Annotation` answered two findings, not one.** A navigation anchor is a derived marker anchored to a shot and a frame instant — structurally identical to markup, differing only in provenance. `provenance: user | device_advisory` is the discriminator, and it is the same move the requirements make for advisory pose.
+- **`Source.viewpoint` carries a confidence and a method** because a self-classified viewpoint is a *conclusion*, and this model carries measurements. A consumer may disagree with it.
