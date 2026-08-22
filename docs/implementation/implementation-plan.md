@@ -377,7 +377,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §9, §7.3b, §5.14; `ENC` §7; A9 |
 | Unlocks | CT-S4 assertion 1 (the bundle half), CT-I12, CT-I34, interop row "device, no host → bundle" |
 | Depends | L8 |
-| Status | ☑ done — S2 (`ebfbc48`). CT-I12/I34 pass (device); CT-S4 (1) bundle half passes. Nothing in `Sources/` composes a `DevicePeer`/`SessionBundleWriter` yet (D4/D6/D8); `SessionLibraryScreen` still takes one `Session`. **`make test-app` hangs in or before `LinkBindLoopbackTests` — unresolved, first item of S3-D** |
+| Status | ☑ done — S2 (`ebfbc48`). CT-I12/I34 pass (device); CT-S4 (1) bundle half passes. Nothing in `Sources/` composes a `DevicePeer`/`SessionBundleWriter` yet (D4/D6/D8); `SessionLibraryScreen` still takes one `Session`. `make test-app` hang fixed in `5ffa2ad` (uncancellable continuations in the listener — §9) |
 
 ### D4 — Capture path into Captures
 
@@ -517,7 +517,7 @@ Append-only. Newest last.
 | 2026-08-22 | D (S2) | **`ppcp_link_binder_offer`'s `stream_channel` cannot be supplied by a stream-per-connection transport** — a freshly accepted TCP connection carries no channel number outside the `link_bind` frame header the library then checks it against | **L9 queue**: read the channel from the header inside `offer`. Until then the device listener assembles links in its own actor |
 | 2026-08-22 | D (S2) | **F-D2-1: `tb:hosttime` cannot be `mach_continuous_time`** as D2's text says — AVFoundation stamps with `mach_absolute_time`, which halts across sleep. D declares `tb:hosttime` as `monotonic` and a separate `tb:continuous` for `CORE` 5.5b | **Accepted**: D2's text is amended by this entry; a capture device declares what its frames are actually stamped with. A13 unchanged |
 | 2026-08-22 | D (S2) | CT-I28's device test asserted two `measured` capabilities where `CORE` 5.6d makes a distinct lens a distinct Source; the correct count is one | Test corrected; row still passes |
-| 2026-08-22 | D (S2) | `make test-app` hangs in or before `LinkBindLoopbackTests` (the `.serialized` E1 suite); the hanging test is not identified | **Open** — first item of S3-D. No RT row advanced on it |
+| 2026-08-22 | D (S2) | `make test-app` hung in `LinkBindLoopbackTests` ("a first frame that is not link_bind closes the stream"): `accept()`, `channelBound()` and the three `NWConnection` awaits parked on continuations with no cancellation handling, so no timeout could ever fire — a live production bug too (a peer that completed TLS then said nothing would park an intake task forever) | **Fixed** PinPointCapture `5ffa2ad`: cancellation-aware waiters, connection torn down on cancel. 14/14 app tests, 89/89 core. No RT row moved |
 | 2026-08-22 | user | **Sessions are not imported from files.** H3 shipped a menu item and a file picker; PinPointStudio has no menus and no native dialogs, and the user's intent is that a *connected* capture device offers its recorded sessions and the host chooses from a list | **Decided**: the bundle path is the engine, never a UI. The user-facing flow is `MSG` §9 `session_offer`/`session_accept`/`session_manifest` over the live link — S3, H4–H7 (and D4–D6 on the device side, which must be able to offer its stored bundles). H3's UI removed (PinPointStudio `00f50e2`); H3 stays done on its CT rows |
 
 ---
