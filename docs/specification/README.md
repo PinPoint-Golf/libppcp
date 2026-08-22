@@ -40,6 +40,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
 | — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 5** — three review passes; §4, §6 and §7 approved without reservation, §5 awaiting a device measurement. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Not covered by the PPCP approval |
+| — | [**Requirements traceability**](requirements-traceability.md) | Audit | All 172 requirements against the specification set — 164 covered or deliberately out of scope, **six findings** |
 | — | [**Review disposition**](review-disposition-2026-08-22.md) | Record | Every review comment across all three rounds, what was done with it, and the calls a reviewer may want to reverse |
 | — | [**reviews/**](reviews/) | Input | All fourteen reviews as submitted |
 
