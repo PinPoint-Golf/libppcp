@@ -89,7 +89,7 @@ static const sim_scenario g_scenarios[] = {
       "A host delayed past the mint deadline: it arbitrates, but only after the "
       "device was entitled to mint, so 8.2k's attach-rather-than-issue fires.",
       SIM_F_SESSION_OPEN | SIM_F_SYNC | SIM_F_HEARTBEAT | SIM_F_ARM | SIM_F_ARBITRATE,
-      0, 0, 0, 2000 },
+      0, 0, 0, 3000 },
 
     { "acoustic-host", "host",
       "IOP-6, CT-I8",
@@ -200,6 +200,7 @@ typedef struct sim {
     size_t shot_count;
 
     bool   captures_open;
+    bool   segments_announced;
     size_t announced_shots;
 
     ppcp_capture_index cap_index;
@@ -368,6 +369,23 @@ static bool flush_tx(sim *s, uint8_t ch)
     }
 }
 
+static void drain_events(sim *s);
+
+/* ⚠ ONE FRAME PER FEED, AND THE REASON IS A LIBRARY DEFECT.
+ *
+ * ppcp_peer_feed() consumes as many whole frames as the caller's buffer holds,
+ * but the engine's event ring is PPCP_PEER_EVENT_QUEUE (four) deep and
+ * overflow DROPS THE OLDEST EVENT with nothing the embedding can read to find
+ * out.  A single socket read carrying a replayed bundle — session_open,
+ * declare, stream_open, capture_announce, session_manifest, three payload
+ * frames — silently lost the `capture_announce` here, which is how this was
+ * found (finding F-L13-1, plan §9).
+ *
+ * So this loop hands the engine exactly one frame and drains the events it
+ * raised before handing it the next.  That is what every embedding must do
+ * today, and it is why the finding matters to PinPointStudio's bundle import,
+ * which feeds a whole file.
+ */
 static bool pump_rx(sim *s, uint8_t ch)
 {
     sim_chan   *c = &s->link.ch[ch];
@@ -391,24 +409,39 @@ static bool pump_rx(sim *s, uint8_t ch)
     /* Bytes the LISTENER already holds — everything that arrived in the same
      * read as the `link_bind` — are fed here too, so a `hello` riding behind
      * its binding frame is not left waiting for a byte that never comes. */
-    if (c->rx_len == 0)
-        return true;
+    while (c->rx_len >= PPCP_FRAME_HEADER_BYTES) {
+        ppcp_frame_header hdr;
+        size_t            need;
 
-    rc = ppcp_peer_feed(s->p, ch, c->rx, c->rx_len, &consumed);
-    if (consumed > 0) {
-        sim_log_frames(NULL, "RX", ch, c->rx, consumed);
-        s->c.frames_rx++;
-        memmove(c->rx, c->rx + consumed, c->rx_len - consumed);
-        c->rx_len -= consumed;
-    }
-    if (rc == PPCP_ERR_MALFORMED) {
-        sim_violation("a malformed frame arrived on channel %u (ENC §4)", (unsigned)ch);
-        return false;
-    }
-    if (rc == PPCP_ERR_FATAL_LIMIT) {
-        sim_violation("a frame past channel %u's ENC §8 limit arrived; the stream "
-                      "cannot be resynchronised", (unsigned)ch);
-        return false;
+        if (ppcp_frame_header_parse(c->rx, &hdr) != PPCP_OK) {
+            sim_violation("an unreadable frame header arrived on channel %u (ENC §3)",
+                          (unsigned)ch);
+            return false;
+        }
+        need = PPCP_FRAME_HEADER_BYTES + (size_t)hdr.payload_len;
+        if (need > c->rx_len)
+            break;                       /* the tail is the caller's to keep */
+
+        consumed = 0;
+        rc = ppcp_peer_feed(s->p, ch, c->rx, need, &consumed);
+        if (consumed > 0) {
+            sim_log_frames(NULL, "RX", ch, c->rx, consumed);
+            s->c.frames_rx++;
+            memmove(c->rx, c->rx + consumed, c->rx_len - consumed);
+            c->rx_len -= consumed;
+        }
+        if (rc == PPCP_ERR_MALFORMED) {
+            sim_violation("a malformed frame arrived on channel %u (ENC §4)", (unsigned)ch);
+            return false;
+        }
+        if (rc == PPCP_ERR_FATAL_LIMIT) {
+            sim_violation("a frame past channel %u's ENC §8 limit arrived; the stream "
+                          "cannot be resynchronised", (unsigned)ch);
+            return false;
+        }
+        if (consumed == 0)
+            break;
+        drain_events(s);
     }
     if (c->rx_len == SIM_RX_CAP) {
         sim_violation("channel %u sent a frame larger than this simulator's buffer",

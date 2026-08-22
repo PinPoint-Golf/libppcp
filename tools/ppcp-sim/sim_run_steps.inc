@@ -330,9 +330,54 @@ static void emit_candidate(sim *s)
     s->nominated++;
 }
 
+/* 5.11b and 5.11c3 — the two Captures a Stream that is not shot-windowed
+ * produces: a stream-anchored SEGMENT on the `continuous` Stream, which is what
+ * I36's coverage accounting is stated over, and the discarded `preview`
+ * segment, which 5.11c3 requires a peer to announce as `absent` /
+ * `not_retained` and which 5.11j keeps out of any bundle.
+ *
+ * The preview one is also the shape MSG 8.1i cannot express (plan §9, L, S2):
+ * it holds no payload, so it has no transfer state to carry, and the library
+ * exempts it rather than making it unannounceable. */
+static void announce_segments(sim *s)
+{
+    size_t k;
+
+    for (k = 0; k < ppcp_peer_stream_count(s->p); k++) {
+        const ppcp_stream *st = ppcp_peer_stream_at(s->p, k);
+        ppcp_capture       cap;
+        ppcp_interval      iv;
+        char               id[96];
+        int64_t            t;
+        bool               preview;
+
+        if (st == NULL || st->continuity != PPCP_CONTINUOUS)
+            continue;
+        preview = ppcp_stream_is_preview(st);
+        t = now_in(s, st->timebase_id.v);
+        if (ppcp_interval_make(&iv, st->timebase_id.v, st->timebase_id.len,
+                               t - 1000000000, t) != PPCP_OK)
+            continue;
+        snprintf(id, sizeof(id), "%s/seg/%zu", s->d->peer_id, k);
+        if (ppcp_capture_make_segment(&cap, id, st->id.v,
+                                      preview ? PPCP_ABSENT : PPCP_COMPLETE, &iv) != PPCP_OK)
+            continue;
+        if (preview &&
+            ppcp_capture_set_absent_reason(&cap, PPCP_ABSENT_NOT_RETAINED) != PPCP_OK)
+            continue;
+        if (ppcp_peer_capture_announce(s->p, &cap, preview, NULL, NULL, 0) != PPCP_OK)
+            sim_violation("the engine refused a %s segment on Stream `%s`",
+                          preview ? "preview" : "continuous", st->id.v);
+    }
+    s->segments_announced = true;
+}
+
 static void announce_captures(sim *s)
 {
     size_t i;
+
+    if ((s->sc->flags & SIM_F_PREVIEW) != 0 && !s->segments_announced)
+        announce_segments(s);
 
     for (i = s->announced_shots; i < s->shot_count; i++) {
         ppcp_capture    cap;
