@@ -3,11 +3,15 @@
 #
 # ppcp-sim — the synthetic peer of PPCP-CONF §2c.  Work package L13.
 #
-# POSIX sockets in C11, no dependency except the library itself.  The one
-# exception is the RT-4 mode, which needs a TLS stack to offer `psk_ke` alone;
-# it is OPTIONAL at configure time and its absence disables that mode and
-# nothing else.  libppcp itself never links OpenSSL — purity.cmake gates the
-# library, and this target is not the library.
+# POSIX sockets in C11 and no dependency at all, including for the RT-4 mode.
+#
+# That mode was written against OpenSSL first, as the work package allowed, and
+# OpenSSL turned out not to be able to do it: its client always advertises
+# `psk_dhe_ke`, and forcing an empty group list makes the LOCAL stack refuse to
+# build a ClientHello before a byte reaches the wire — a failure indistinguishable
+# from the host refusal RT-4 is trying to observe.  So sim_tls.c builds the
+# ClientHello itself and computes the PSK binder with the library's own
+# HKDF-SHA256, and the dependency went away with the defect.
 
 add_executable(ppcp-sim
     main.c
@@ -28,19 +32,6 @@ target_include_directories(ppcp-sim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(ppcp-sim PRIVATE _POSIX_C_SOURCE=200809L)
 if(APPLE)
     target_compile_definitions(ppcp-sim PRIVATE _DARWIN_C_SOURCE)
-endif()
-
-option(PPCP_SIM_TLS "Build ppcp-sim's psk_ke-only mode (needs OpenSSL 1.1.1+)" ON)
-if(PPCP_SIM_TLS)
-    find_package(OpenSSL 1.1.1 QUIET)
-    if(OpenSSL_FOUND)
-        target_link_libraries(ppcp-sim PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-        target_compile_definitions(ppcp-sim PRIVATE PPCP_SIM_TLS=1)
-        message(STATUS "ppcp-sim: --psk-ke-only enabled (OpenSSL ${OPENSSL_VERSION})")
-    else()
-        message(STATUS "ppcp-sim: OpenSSL not found — --psk-ke-only is unavailable "
-                       "in this build (RT-4 stays `impl`)")
-    endif()
 endif()
 
 # The scenario declarations sit beside the binary too, so a consumer that
