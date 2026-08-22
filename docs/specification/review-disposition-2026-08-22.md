@@ -4,9 +4,9 @@
 
 | | |
 |---|---|
-| Status | Record of decisions. Non-normative. |
+| Status | Record of decisions. Non-normative. Complete: the specification is **approved**. |
 | Date | 22 August 2026 |
-| Rounds covered | **Round 1** — the reviews of the protocol overview and the companion requirements, which produced Draft 1. **Round 2** — the two implementation-team reviews of Draft 1, which produced Draft 2. **Round 3** — the two reviews of Draft 2, which produced Draft 3. All four team reviews are in [`reviews/`](reviews/). |
+| Rounds covered | **Round 1** — the reviews of the protocol overview and the companion requirements, which produced Draft 1. **Round 2** — the reviews of Draft 1, which produced Draft 2. **Round 3** — the reviews of Draft 2, which produced Draft 3. **Round 4** — the closing reviews of Draft 3, which produced the approved text. All six team reviews are in [`reviews/`](reviews/). |
 
 Every point is dispositioned. Points **not** actioned are listed with reasons, because a review that gets a silent partial response is a review that gets repeated.
 
@@ -477,3 +477,107 @@ The tell is the same both times: a MUST that names what an implementation should
 | **D14** | **The device's Shot wins the residual race**; the host attaches to it | The host's Shot wins, which would need a withdraw or supersede message | [`CORE` §8.2k](ppcp-core.md#82-arbitration) |
 | **D15** | **No per-`basis` coincidence window added now** | Add the variant type as insurance. Rejected because only an arbitrating host consumes the field, so the change is additive rather than breaking — but the measurement design was changed, which is the part that could not wait | [`CORE` Annex B8](ppcp-core.md#annex-b--open-issues) |
 | **D16** | **`canonical_correction_ns` added** beyond the one clause requested | State the rule and leave the correction invisible. Rejected on the reviewer's own symmetry argument with `tof_correction` | [`CORE` §5.12f](ppcp-core.md#512-candidate) |
+
+
+---
+
+# Round 4 — the closing reviews, and approval
+
+Both teams signed off on Draft 3. Both attached closing findings, and all of them are carried in the approved text. This section records them and closes the disposition.
+
+The host review's own summary of the three rounds is worth preserving, because it is the argument for having done it this way:
+
+> Round 1 found defects in the **model** — things the entity graph could not express. Round 2 found defects in the **fixes** — a new invariant that constrained a choice, a contradiction between two documents. Round 3 finds defects in the **seams around the fixes** — a peer obliged to emit a value it cannot compute, an obligation discharged through a message its profile does not confer, an amendment with no stated owner. Each round's findings are smaller and further from the centre than the last, which is what convergence looks like.
+
+## 12. Round 4 — PinPointStudio
+
+### 12.1 S1 — a peer told to mint may have no expressible `t0`
+
+**Accepted in full, and it is the most valuable of the three** because the conformance suite reaches it by design rather than by accident.
+
+The chain is short and airtight. 8.2d excludes a Candidate whose relation to `timebase_ref` is missing, `unrelated` or too uncertain — and that is *the commonest reason a host stays silent*. Silence expires the deadline, 8.2i fires, and the peer is told to mint. But 5.13c requires `t0` in `Session.timebase_ref`, and the very condition that caused the exclusion is the condition under which the peer cannot convert into that timebase either. 5.4b rightly forbids the obvious shortcut of a zero offset. The peer was required to mint and unable to produce a conformant Shot.
+
+The reviewer's observation that `CONF` §5 already requires the pairing *"host ↔ peer declaring `unrelated` timebases"* is what makes this urgent rather than theoretical: in that pairing **every** candidate from the device is excluded, so a device with a working detector reaches the undefined state on every swing. The pairing written to prove an honest degraded peer is handled honestly landed on an undefined one.
+
+[`CORE` §8.2i1](ppcp-core.md#82-arbitration): a peer that cannot express `t0` does not mint, and retains the Candidate with no Shot — a state the model already had, and the honest answer. `CT-I32` gains the negative assertion, and the interoperability pairing now names the expected outcome.
+
+### 12.2 S1(b) and the mobile team's 2.1 — the regime has two entry conditions
+
+**Accepted.** Both teams found this, from opposite ends.
+
+A *hostless session* has no host in its roster. A *host-unreachable interval* still has one, and still has its `timebase_ref`, which is immutable under I16 — the host has merely stopped answering. 8.3a and 8.3f used the same words for both, so I23's precondition did not cover the case 8.3f sends a peer into, and §7.1's zero-host row does not apply because `timebase_ref` stays the host's.
+
+The mobile team traced the consequence further: an implementer could read I23 as *permanent* — a minted Shot must carry exactly one Candidate for ever — and therefore refuse the host's attachment under 8.2k on reconnect. They also traced that it never actually fires, because 8.2k needs a *shared* Candidate the host cannot have received while the link was down. Correct on both counts, and the wording is fixed anyway: two clauses using one set of words for two conditions is precisely the shape [§11.1](ppcp-core.md#111-the-rule-for-writing-an-invariant) was written to catch.
+
+[`CORE` §8.3g](ppcp-core.md#83-the-zero-host-regime) separates the conditions and states what does **not** change during an outage; [§8.3h](ppcp-core.md#83-the-zero-host-regime) states that I23 binds at issuance; I23 and Annex C are reworded; `CT-S4` gains a seventh assertion for the outage path.
+
+### 12.3 S2 — obligations discharged through a message the profile did not confer
+
+**Accepted, and the reviewer's preferred fix taken over the blunt one.**
+
+Three Draft 3 clauses discharge through `ShotLink` — 8.2i, 8.2l/I35 and 8.3f — binding Mint and Arbitrate. `shot_link` was conferred by **Offline**, which neither requires. So `Core + Arbitrate + Live`, a legal profile set, could not satisfy I35 without violating C2. Every worked example in §2.2.3 happens to declare Offline, which is exactly why testing would not have surfaced it — the reference implementations pass by accident, in the manner `CONF` §2c warns about.
+
+**This is the third occurrence of the family that produced the Mint profile.** Draft 1's disposition records the first as *"the v1 device performed an operation none of its declared profiles granted."*
+
+The blunt fix — adding Offline to Mint's and Arbitrate's dependencies — was rejected for the reviewer's own reason: Offline confers bundle read and write and carries I15, I16, I25 and I34, so a live-only third-party host would implement a file container to resolve a race that happens on a socket. Instead **`ShotLink` origination moves to Core and I9 with it**. Of its six bases, `arrival_pairing` and `shared_candidate` are asserted live at capture time and `manual` may be; only three are retrospective. `SessionLink` stays in Offline, because relating two sessions genuinely is an import-time operation.
+
+### 12.4 S3 — no rule for who may amend a Shot
+
+**Accepted, wording adopted almost verbatim.**
+
+Draft 3's 8.2k made two peers able to send `shot` for one `shot.id`. Before that exactly one ever did and the question could not arise. I7 protected `t0`; `authority`, `issued_by` and `id` had no stated owner and `candidates` had no stated amender.
+
+[`CORE` §5.13d](ppcp-core.md#513-shot) fixes the ownership and makes `candidates` extensible by any peer holding a Candidate that belongs to the Shot, with the issuer obliged to adopt an extension. [§5.13e](ppcp-core.md#513-shot) carries the reviewer's convergence sentence, which is the part worth having: extension is additive and order-independent, so neither end reasons about who saw what first. `MSG` §7's direction cell becomes `issuer or attaching peer → any`, and `CT-I35` asserts that only `candidates` changes and that two extensions converge in either order.
+
+### 12.5 Consistency items
+
+| | Item | Fix |
+|---|---|---|
+| 1 | `confirmed_by: observer` was defined as *"saw the arrival"*, which does not describe `shared_candidate` — a host observing a collision, not an arrival — while `confirmed` is mandatory, so the new basis had no correct value for a new MUST | Broadened to *observed the association*; [5.16g](ppcp-core.md#516-shotlink) states the value |
+| 2 | The `intrinsics` scalar rule was undecidable for an empty array | An empty array MUST NOT be emitted and is `malformed` on receipt ([`ENC` 4.1d](ppcp-encoding.md#41-composite-types)) |
+
+### 12.6 The one thing to leave alone
+
+The reviewer asked that `canonical_correction_ns` stay a bare integer beside `tof_correction`'s `Estimate`, and that the reason be recorded so it is not "fixed" during implementation. **Agreed, and it is now in [`CORE` §5.12f](ppcp-core.md#512-candidate).** Time of flight is a converging estimate whose dispersion changes shot to shot; the canonical correction is arithmetic over declared values, and its trustworthiness is `frame_start_to_exposure_offset_provenance` on the profile — carried once under I31 rather than invented per candidate.
+
+## 13. Round 4 — PinPointCapture
+
+### 13.1 Two minor points
+
+**2.1 — the two entry conditions.** Same finding as the host's S1(b); dispositioned at [§12.2](#122-s1b-and-the-mobile-teams-21--the-regime-has-two-entry-conditions).
+
+**2.2 — the empty `intrinsics` array.** Same as the host's consistency item 2. Both suggested the same fix; the text takes both halves — a writer MUST NOT emit one, and a decoder rejects it as malformed rather than indexing out of bounds.
+
+### 13.2 Positions recorded, needing nothing
+
+- `exposure_provenance`: `locked_constant` under the exposure lock, `sampled` for an unlocked source, `per_frame` not claimed until the platform is verified. Exactly what the field was added to make expressible.
+- Timing-constant provenance: `assumed` on every profile until the LED rig exists. **I31 is what stops that being silent**, which is the whole reason it was added.
+- **The mint deadline is a user-visible latency.** With the defaults a declined Candidate has no Shot for up to 1.2 s, so the capture screen shows a candidate before it can show a shot ordinal. A direct consequence of 8.2i, correctly identified as an application concern, and recorded here so it does not arrive later as a surprise.
+- Promotion policy and the two-channel requirement: both confirmed, no change.
+
+### 13.3 On the finding they missed
+
+Recorded because the reviewer recorded it: they traced the mint/issue race where a host answers *late* and stopped, without following the branch where a host correctly declines and answers *never*. The host review found that half. **The two reviews caught different halves of the same clause**, which is the argument for having both seats review independently rather than in sequence.
+
+## 14. Found by audit, not by review
+
+`CONF` §5b1 now requires a **profile-boundary audit** before `ppcp/1.0` freezes: for every normative clause requiring a message to be originated, the profile binding the clause must confer that message.
+
+Running it against the approved text immediately found a **fourth** instance of the family, which no reviewer had raised: [`CORE` §7.3b](ppcp-core.md#73-streams-and-capture-control) said a hostless peer's bundle was *"otherwise identical"* to the live path's message sequence — but `arm` and `disarm` are conferred by **Live**, which the v1 offline device does not declare. A bundle recording them would have been non-conformant by C2.
+
+The fix is the honest one rather than a profile change: with nobody controlling, there is no command to record. The bundle carries the *effect* — Streams, `readiness`, Captures — and `readiness` is conferred by Capture, so a hostless peer records it without declaring Live.
+
+Four occurrences, three found by reviewers and one by a script that took minutes to write. That is the argument for 5b1 being mechanical and mandatory.
+
+## 15. Approval
+
+Both teams have signed off. The specification moves to **APPROVED for implementation** at revision 4, 22 August 2026.
+
+**Approved is not stable.** `ppcp/1.0` freezes — errata only — when [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings of `CONF` §5 are demonstrated. Two pieces of test infrastructure gate that, and both teams named them independently:
+
+- **The LED timecode rig.** It gates `measured` provenance on every timing constant under I31, and both Annex B8 defaults. Longest lead time of anything on the critical path, and nothing substitutes for it.
+- **The synthetic peer simulator.** It gates four of the seven silent-failure tests. A reference implementation tested against itself passes them by construction.
+
+Neither is a specification problem, and neither is the protocol team's to build.
+
+[`PPCP-RV`](ppcp-rv.md) is not covered by this approval. It is Draft 1, unreviewed, and has its own cycle.

@@ -6,18 +6,20 @@ A mobile phone has a 120–240 fps camera, a microphone, an IMU and a hardware e
 
 | | |
 |---|---|
-| Specification | [`docs/specification/`](docs/specification/) — **Draft 1, for approval to implement** |
+| Specification | [`docs/specification/`](docs/specification/) — **PPCP 1.0, APPROVED for implementation** (22 August 2026) |
 | Wire version | `ppcp/1.0` |
 | Licence | Specification: open. Library: MIT. |
 | Companion spec | `PPCP-RV` — rendezvous, pairing and the security model, versioned independently. [Draft 1](docs/specification/ppcp-rv.md); unreviewed. |
 
 ## Start here
 
-[`docs/specification/README.md`](docs/specification/README.md) — what the draft settles, what changed since the protocol overview, and the seven questions it is asking reviewers to decide.
+[`docs/specification/README.md`](docs/specification/README.md) — what the specification settles, how it got here across four review rounds, and what remains open.
+
+The specification is approved by both first-party implementation teams. It is **not yet frozen**: `ppcp/1.0` becomes stable when the conformance suite passes on both implementations and the interoperability pairings are demonstrated.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `docs/specification/` | **The single authority on PPCP.** Core model, message catalogue, wire encoding, conformance |
-| `src/`, `tests/`, `tools/` | Reference implementation. Empty until the draft is approved. |
+| `src/`, `tests/`, `tools/` | Reference implementation. Empty — the specification is approved and this is where the work starts. |

@@ -5,8 +5,8 @@
 | | |
 |---|---|
 | Document | `PPCP-MSG` |
-| Version | **1.0, Draft 3** |
-| Status | **Draft — for approval to implement** |
+| Version | **1.0** |
+| Status | **APPROVED for implementation**, 22 August 2026 |
 | Date | 22 August 2026 |
 | Depends on | [`PPCP-CORE`](ppcp-core.md) for the entity model, [`PPCP-ENC`](ppcp-encoding.md) for framing and encoding |
 
@@ -337,7 +337,7 @@ sync_residual { shot_id: Id, timebase_id: Id, residual_ns: int64, basis: Kind }
 | Message | Class | Direction | Channel | Profile |
 |---|---|---|---|---|
 | `candidate` | Event | any → any | control | Detect |
-| `shot` | Event | issuer → any | control | Mint (device) / Arbitrate (host) |
+| `shot` | Event | issuer **or attaching peer** → any | control | Mint (device) / Arbitrate (host) |
 | `capture_request` | Request | any → owner | control | Arbitrate |
 
 ### 7.1 `candidate`
@@ -363,6 +363,8 @@ shot { shot: Shot }
 - **(7.2d) MUST NOT** A peer that has sent a Candidate to a host mint a Shot for it before `issue_hold_ns` plus one `heartbeat_interval_ms` has elapsed with no `shot` referencing it, **and then only for a Candidate its own promotion policy would have promoted hostless** (I32). Host silence is not a promotion: nothing obliges a host to answer a Candidate it declined, so the silent branch is the one that fires for every nomination it rejected.
 - **(7.2e) MUST** A minting peer sends `shot` immediately on minting ([`PPCP-CORE` §8.2j](ppcp-core.md#82-arbitration)).
 - **(7.2f) MUST** A host that receives a device-minted `shot` referencing a Candidate it is still holding attaches to it — re-sending `shot` with an extended `candidates` list and the unchanged `t0` — rather than issuing a competing Shot (I35). Where both were nevertheless issued, the host links them with `shot_link`, `basis: shared_candidate`, and neither is withdrawn.
+- **(7.2g) MUST** `shot` is therefore sent by the issuer **or by a peer attaching Candidates to a Shot it did not issue**. `id`, `t0`, `authority` and `issued_by` are the issuer's and are never changed; only `candidates` is extended, and a peer receiving an extension to a Shot it issued adopts it ([`PPCP-CORE` §5.13d](ppcp-core.md#513-shot)). Extension is additive and order-independent, so both ends converge without either reasoning about arrival order.
+- **(7.2h) MUST NOT** A peer mint a Shot whose `t0` it cannot express in `Session.timebase_ref` ([`PPCP-CORE` §8.2i1](ppcp-core.md#82-arbitration)). It sends the `candidate` and no `shot`.
 - **(7.2c) MUST NOT** A second `shot` for the same `shot.id` carry a different `t0` (I7). A late Candidate is attached by re-sending `shot` with an extended `candidates` list and the **unchanged** `t0`.
 
 ### 7.3 `capture_request`
@@ -449,7 +451,7 @@ payload_resume { capture_id, from_index: uint32 }
 | `session_offer` | Request | exporter → importer | control | Offline |
 | `session_accept` | Response | importer → exporter | control | Offline |
 | `session_manifest` | Event | exporter → importer | control | Offline |
-| `shot_link` | Event | importer → any | control | Offline |
+| `shot_link` | Event | any → any | control | **Core** |
 | `session_link` | Event | importer → any | control | Offline |
 
 ### 9.1 `session_offer` / `session_accept`
@@ -491,6 +493,7 @@ shot_link { link: ShotLink }
 - **(9.3d) MUST NOT** `basis: sequence_alignment` be used for a single-record source. There is no sequence in a file holding one row (`CORE` §8.5g).
 - **(9.3e) MUST NOT** A `shot_link` of any basis influence `t0` or be converted into a `TimebaseRelation`.
 - **(9.3f) MUST** `confirmed_by` accompanies `confirmed: true` and distinguishes an observer's live assertion from a human decision ([`PPCP-CORE` §5.16e](ppcp-core.md#516-shotlink)). A consumer MUST NOT treat them as equivalent.
+- **(9.3g)** `shot_link` is documented in this section because reconciliation is where most links are made, but it is a **Core** message: `arrival_pairing` and `shared_candidate` links are asserted live, on a socket, by peers that may implement no bundle handling at all ([`PPCP-CORE` §2.2](ppcp-core.md#22-conformance-profiles)).
 
 ### 9.4 `session_link`
 
@@ -581,7 +584,7 @@ Forty-two messages. `R` request, `S` response, `E` event.
 | `session_offer` | R | control | Offline | [9.1](#91-session_offer--session_accept) |
 | `session_accept` | S | control | Offline | [9.1](#91-session_offer--session_accept) |
 | `session_manifest` | E | control | Offline | [9.2](#92-session_manifest) |
-| `shot_link` | E | control | Offline | [9.3](#93-shot_link) |
+| `shot_link` | E | control | **Core** | [9.3](#93-shot_link) |
 | `session_link` | E | control | Offline | [9.4](#94-session_link) |
 | `error` | R/S/E | either | — | [10](#10-errors) |
 

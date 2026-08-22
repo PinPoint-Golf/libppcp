@@ -1,13 +1,13 @@
-# PPCP specification — Draft 3
+# PPCP specification — 1.0, approved
 
 **PinPoint Capture Protocol. An open protocol for time-synchronised capture devices.**
 
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **Draft 3 — approved to implement by both first-party teams, twice** |
+| Status | **APPROVED for implementation**, 22 August 2026 |
 | Date | 22 August 2026 |
-| Reviews | [`reviews/`](reviews/) — two rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
+| Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
 
 ---
@@ -18,7 +18,18 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 **This folder is the single authority on PPCP.** Earlier drafts and working documents are not carried here; any copy still in circulation is superseded by what follows.
 
-**Both implementation teams have now reviewed twice and returned *approve to implement* each time**, with changes requested. Draft 3 carries the second round. The host reviewer states that Draft 3 carrying its four findings and five consistency items leaves it with no further findings and that PinPointStudio will build against it as it stands. Implementation may proceed; `ppcp/1.0` is declared stable when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated.
+**Both implementation teams reviewed three times and signed off at every round.** Their closing findings are carried in this text, and both have confirmed they build against it as it stands.
+
+| Round | Reviewed | Findings | Outcome |
+|---|---|---|---|
+| 1 | The protocol overview and the companion requirements | 5 + 3 | Draft 1 |
+| 2 | Draft 1 | 4 host + 4 mobile | Draft 2 |
+| 3 | Draft 2 | 4 host + 5 consistency, 3 mobile | Draft 3 |
+| 4 | Draft 3 | 3 host + 2 consistency, 2 mobile | **Approved** |
+
+**Approved is not stable.** Implementation proceeds against this text. `ppcp/1.0` freezes — errata only — when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated. [Annex B](ppcp-core.md#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
+
+[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval — it is Draft 1, unreviewed, with its own cycle.
 
 ## The documents
 
@@ -34,9 +45,22 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 If you have an hour, read `PPCP-CORE` §2 (profiles), §5 (the model) and §6.1 (the canonical instant), then `PPCP-MSG` Annex A. If you have twenty minutes, read the review disposition and `PPCP-CORE` §6.1.
 
+## What changed on approval
+
+The closing round. All findings attached to both sign-offs are carried. Thirty-five invariants, all numbers unchanged; I9 moved profile.
+
+| | Change | Raised by |
+|---|---|---|
+| **1** | **A peer told to mint may have had no expressible `t0`.** The commonest reason a host stays silent is that it excluded the Candidate for a missing or too-uncertain clock relation — which is exactly the condition under which the peer cannot express `t0` either. A peer that cannot express it now mints nothing and retains the Candidate. The interoperability pairing that found this is also the one that proves it closed. | Studio |
+| **2** | **`ShotLink` moves from Offline to Core**, and I9 with it. Mint and Arbitrate both carried obligations discharged through `shot_link`, which only Offline conferred — a live-only host could not satisfy I35 without violating C2. The alternative would have made it implement a bundle container to resolve a socket race. | Studio |
+| **3** | **The zero-host regime has two entry conditions** — no host in the roster, and a host that stopped answering — and they were described in the same words. Now separated, with I23 binding a Shot at issuance rather than for ever. | Both |
+| **4** | **Who owns which `Shot` field.** Draft 3 let two peers send `shot` for one id; `id`, `t0`, `authority` and `issued_by` are the issuer's, `candidates` is extensible, and extension is additive and order-independent so both ends converge. | Studio |
+| **5** | An empty `intrinsics` array had no defined behaviour; `confirmed_by: observer` was worded for arrival pairing and did not cover `shared_candidate`. | Both |
+| **6** | **A fourth profile-boundary defect, found by audit rather than review**: a hostless peer would have recorded `arm` into its bundle, and `arm` is conferred by Live. The audit is now required before `ppcp/1.0` freezes. | This pass |
+
 ## What changed in Draft 3
 
-Both teams reviewed again, both approved again, and both independently found the same defect in the fix that closed the first round's most serious one. Thirty-five invariants; every earlier number is unchanged.
+Both teams reviewed again, both approved again, and both independently found the same defect in the fix that closed the first round's most serious one.
 
 | | Change | Raised by |
 |---|---|---|
