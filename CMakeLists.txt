@@ -109,6 +109,7 @@ set(PPCP_SOURCES
     src/ppcp_model_event.c
     src/ppcp_message.c
     src/ppcp_peer.c
+    src/ppcp_sync.c
     src/ppcp_transfer.c
     src/ppcp_bundle.c)
 

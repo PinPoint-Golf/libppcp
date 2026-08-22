@@ -171,6 +171,7 @@ static void test_link_binding(void)
     uint8_t      link_id[PPCP_LINK_ID_BYTES];
     uint8_t      buf[4096];
     size_t       n = 0, consumed = 0, link = 99, link2 = 99;
+    uint8_t      bound_ch = 0xFF;
 
     memset(link_id, 0xc3, sizeof(link_id));
     dialler = make_peer(&mem, PPCP_ROLE_CAPTURE, "peer:dev", prof, 2, false,
@@ -192,9 +193,11 @@ static void test_link_binding(void)
     CHECK_EQ_I(ppcp_peer_set_link_id(dialler, link_id), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_hello(dialler), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_drain(dialler, PPCP_CHANNEL_CONTROL, buf, sizeof(buf), &n), PPCP_OK);
-    CHECK_EQ_I(ppcp_link_binder_offer(&b, PPCP_CHANNEL_CONTROL, buf, n, &consumed, &link),
-               PPCP_OK);
+    CHECK_EQ_I(ppcp_link_binder_offer(&b, buf, n, &consumed, &link, &bound_ch), PPCP_OK);
     CHECK(consumed < n);          /* the `hello` follows in the same drain */
+    /* 2.1b — the channel came out of the frame header, which is the only place
+     * a freshly accepted stream carries one. */
+    CHECK_EQ_I(bound_ch, PPCP_CHANNEL_CONTROL);
     CHECK(ppcp_link_binder_is_ready(&b, link));
     CHECK_EQ_I(ppcp_link_binder_count(&b), 1);
     CHECK(memcmp(ppcp_link_binder_id(&b, link), link_id, PPCP_LINK_ID_BYTES) == 0);
@@ -202,14 +205,14 @@ static void test_link_binding(void)
     TEST("2.1d — a bulk channel joins the same link, later in the session");
     CHECK_EQ_I(ppcp_peer_open_channel(dialler, PPCP_CHANNEL_BULK), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_drain(dialler, PPCP_CHANNEL_BULK, buf, sizeof(buf), &n), PPCP_OK);
-    CHECK_EQ_I(ppcp_link_binder_offer(&b, PPCP_CHANNEL_BULK, buf, n, &consumed, &link2),
-               PPCP_OK);
+    CHECK_EQ_I(ppcp_link_binder_offer(&b, buf, n, &consumed, &link2, &bound_ch), PPCP_OK);
+    CHECK_EQ_I(bound_ch, PPCP_CHANNEL_BULK);
     CHECK_EQ_I(link2, link);      /* the same link, not a second one */
     CHECK_EQ_I(ppcp_link_binder_count(&b), 1);
     CHECK(ppcp_link_binder_has_channel(&b, link, PPCP_CHANNEL_BULK));
 
     TEST("2.1c — a link_id already holding that channel is refused");
-    CHECK_EQ_I(ppcp_link_binder_offer(&b, PPCP_CHANNEL_BULK, buf, n, &consumed, &link2),
+    CHECK_EQ_I(ppcp_link_binder_offer(&b, buf, n, &consumed, &link2, &bound_ch),
                PPCP_ERR_MALFORMED);
 
     TEST("2.1c — a first frame that is not `link_bind` is refused");
@@ -223,7 +226,7 @@ static void test_link_binding(void)
         CHECK_EQ_I(ppcp_peer_hello(bare), PPCP_OK);     /* no link_id: no link_bind */
         CHECK_EQ_I(ppcp_peer_drain(bare, PPCP_CHANNEL_CONTROL, buf, sizeof(buf), &n),
                    PPCP_OK);
-        CHECK_EQ_I(ppcp_link_binder_offer(&b2, PPCP_CHANNEL_CONTROL, buf, n, &c2, &l2),
+        CHECK_EQ_I(ppcp_link_binder_offer(&b2, buf, n, &c2, &l2, NULL),
                    PPCP_ERR_MALFORMED);
         ppcp_peer_free(bare);
         free(m3);
@@ -240,15 +243,16 @@ static void test_link_binding(void)
         m.body.link_bind.channel = PPCP_CHANNEL_BULK;          /* says 1 ... */
         CHECK_EQ_I(ppcp_msg_encode(buf, sizeof(buf), PPCP_CHANNEL_CONTROL, &m, &written),
                    PPCP_OK);                                    /* ... in a channel-0 frame */
-        CHECK_EQ_I(ppcp_link_binder_offer(&b2, PPCP_CHANNEL_CONTROL, buf, written, &c2, &l2),
+        CHECK_EQ_I(ppcp_link_binder_offer(&b2, buf, written, &c2, &l2, NULL),
                    PPCP_ERR_MALFORMED);
 
-        TEST("ENC 2c — the header's channel must match the stream it arrived on");
+        TEST("2.1b — the binder reports the header's channel, and that is what is fed");
         m.body.link_bind.channel = PPCP_CHANNEL_CONTROL;
         CHECK_EQ_I(ppcp_msg_encode(buf, sizeof(buf), PPCP_CHANNEL_CONTROL, &m, &written),
                    PPCP_OK);
-        CHECK_EQ_I(ppcp_link_binder_offer(&b2, PPCP_CHANNEL_BULK, buf, written, &c2, &l2),
-                   PPCP_ERR_MALFORMED);
+        bound_ch = 0xFF;
+        CHECK_EQ_I(ppcp_link_binder_offer(&b2, buf, written, &c2, &l2, &bound_ch), PPCP_OK);
+        CHECK_EQ_I(bound_ch, PPCP_CHANNEL_CONTROL);
     }
 
     TEST("2.1c — an unknown link_id opens a NEW link, and discard removes it");
@@ -262,8 +266,8 @@ static void test_link_binding(void)
         m.body.link_bind.channel = PPCP_CHANNEL_CONTROL;
         CHECK_EQ_I(ppcp_msg_encode(buf, sizeof(buf), PPCP_CHANNEL_CONTROL, &m, &written),
                    PPCP_OK);
-        CHECK_EQ_I(ppcp_link_binder_offer(&b, PPCP_CHANNEL_CONTROL, buf, written,
-                                          &consumed, &link2), PPCP_OK);
+        CHECK_EQ_I(ppcp_link_binder_offer(&b, buf, written,
+                                          &consumed, &link2, &bound_ch), PPCP_OK);
         CHECK(link2 != link);
         CHECK_EQ_I(ppcp_link_binder_count(&b), 2);
         CHECK_EQ_I(ppcp_link_binder_discard(&b, link2), PPCP_OK);

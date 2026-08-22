@@ -18,9 +18,44 @@
  * here unconditionally; profiles gate origination, never comprehension.  That
  * is CT-S6 assertion 4 and it is why the decoder has no profile parameter.
  *
- * `ppcp_msg` is around five kilobytes because it holds a Shot's candidate list
- * and a Capture's gap list inline.  It is the caller's storage like everything
- * else in this library, and a peer holds one at a time.
+ * `ppcp_msg` is a large object — about 48 KB — because it holds a Shot's
+ * candidate list, a Capture's gap list and a `session_manifest`'s 256 entries
+ * inline.  It is the caller's storage like everything else in this library,
+ * and a peer holds one at a time.
+ *
+ * ⚠ SWIFT: DO NOT PUT A `ppcp_msg` ON THE STACK, AND DO NOT ASSIGN THROUGH ITS
+ * `body`.
+ *
+ * The Swift importer presents a C union as a set of COMPUTED properties, so
+ * `msg.body.session_manifest.session_id = x` is not a field store: it reads the
+ * whole 48 KB union into a temporary, mutates it and writes it back.  An
+ * ordinary synchronous test doing that hit SIGBUS on a device (plan §9, D,
+ * 22 August 2026).  The pattern that works, and the reason each step is there:
+ *
+ *     let raw = UnsafeMutableRawPointer.allocate(          // heap, not stack
+ *         byteCount: MemoryLayout<ppcp_msg>.size,
+ *         alignment: MemoryLayout<ppcp_msg>.alignment)
+ *     defer { raw.deallocate() }
+ *     raw.initializeMemory(as: UInt8.self, repeating: 0,
+ *                          count: MemoryLayout<ppcp_msg>.size)
+ *     let m = raw.assumingMemoryBound(to: ppcp_msg.self)
+ *     ppcp_msg_init(m, PPCP_MT_SESSION_MANIFEST, 1)
+ *     withUnsafeMutablePointer(to: &m.pointee.body) { bodyPtr in
+ *         bodyPtr.withMemoryRebound(to: ppcp_body_session_manifest.self,
+ *                                   capacity: 1) { b in
+ *             b.pointee.capture_count = 0                  // a real field store
+ *         }
+ *     }
+ *
+ * `body` is a NAMED union (`ppcp_msg_body`) precisely so the rebind above has
+ * a stable type to name.  Where an arm is small — `heartbeat`, `sync_probe`,
+ * `payload_ack` — the ordinary Swift path is fine; it is the large arms
+ * (`declare`, `session_manifest`, `capture_announce`, `shot`) that copy.
+ *
+ * Better still, prefer the `ppcp_peer_*` originators in peer.h: every one of
+ * them takes the body's own struct — `ppcp_body_session_manifest`,
+ * `ppcp_capture`, `ppcp_shot` — and never a whole `ppcp_msg`, so a Swift caller
+ * touches at most one arm.
  */
 #ifndef PPCP_MESSAGE_H
 #define PPCP_MESSAGE_H
@@ -270,6 +305,15 @@ typedef struct ppcp_body_stream_open_ack {
 
 typedef struct ppcp_body_stream_close {
     ppcp_id      stream_id;
+    /* ⚠ CORE 5.11 has `Stream.closed_at` at cardinality 0..1 and MSG §11 lists
+     * it as a field of `stream_close` with no marking; 5.1d lets EITHER peer
+     * close, and a consumer closing a Stream it does not own has no reading of
+     * the owner's timebase to put here.  Erratum queued (F-H4-2): either
+     * 5.11a1 names the closing peer's timebase, or `closed_at` is optional.
+     * Until it is settled the library ENCODES it when present and TOLERATES
+     * its absence on receipt, which is the only reading under which a
+     * consumer-originated close is expressible at all. */
+    bool         has_closed_at;
     ppcp_instant closed_at;
     ppcp_id      reason;   /* 5.1d: thermal_limit, storage_full, not_needed, … */
 } ppcp_body_stream_close;

@@ -32,29 +32,9 @@
 extern "C" {
 #endif
 
-/* ======================================================================
- * L9 — clock synchronisation and liveness (CORE §5.4.1, §6.3, §7.4, §8.3g)
- * ====================================================================== */
-
-typedef struct ppcp_sync_estimator ppcp_sync_estimator;   /* L9 */
-
-/* L9 — not yet implemented.  One estimator per declared Timebase: I21 and
- * CORE 6.3b run the exchange once per timebase and declare each relation
- * directly.  There is no composition here either. */
-PPCP_API size_t      ppcp_sync_estimator_sizeof(void);
-PPCP_API ppcp_result ppcp_sync_estimator_new(void *storage, size_t storage_len,
-                                             const char *local_tb, const char *remote_tb,
-                                             ppcp_sync_estimator **out);
-/* L9 — not yet implemented.  The four timestamps of CORE §6.3: t1 send, t2
- * receive, t3 send, t4 receive. */
-PPCP_API ppcp_result ppcp_sync_estimator_observe(ppcp_sync_estimator *e,
-                                                 int64_t t1, int64_t t2,
-                                                 int64_t t3, int64_t t4);
-/* L9 — not yet implemented.  Publishes the current estimate as a relation with
- * both sigmas.  Filtered, never stepped (6.3e): a stepped offset mid-session
- * produces a discontinuity in fused output that is very hard to diagnose. */
-PPCP_API ppcp_result ppcp_sync_estimator_relation(const ppcp_sync_estimator *e,
-                                                  ppcp_timebase_relation *out);
+/* L9 landed: the sync estimator, the relation set and liveness are in
+ * ppcp/sync.h and ppcp/peer.h, and the bundle replay of MSG §9.1 is in
+ * ppcp/bundle.h.  Nothing about clock synchronisation is planned any more. */
 
 /* ======================================================================
  * L10 — Detect, Mint, Arbitrate (CORE §5.12, §5.13, §5.16, §8)

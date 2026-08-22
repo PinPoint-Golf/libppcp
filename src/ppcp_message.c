@@ -893,7 +893,12 @@ static ppcp_result dec_stream(ppcp_cbor_reader *r, ppcp_msg *m)
         f[n++] = ppcp_rf("reason", PPCP_F_ID, &b->reason, &s_reason);
         rc = ppcp_rec_read(r, f, n);
         if (rc != PPCP_OK) return rc;
-        if (!s_sid || !s_at || !s_reason) return PPCP_ERR_MALFORMED;
+        /* F-H4-2 — `closed_at` is tolerated absent.  See message.h: 5.1d lets a
+         * consumer close a Stream whose timebase it cannot read, and refusing
+         * the frame would make that close unexpressible rather than merely
+         * unstamped. */
+        b->has_closed_at = s_at;
+        if (!s_sid || !s_reason) return PPCP_ERR_MALFORMED;
         return PPCP_OK;
     }
     case PPCP_MT_ARM:
@@ -1577,7 +1582,8 @@ static ppcp_result enc_stream(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     case PPCP_MT_STREAM_CLOSE: {
         const ppcp_body_stream_close *b = &m->body.stream_close;
         f[n++] = ppcp_wf_id("stream_id", &b->stream_id);
-        f[n++] = ppcp_wf_sub("closed_at", ppcp_sub_write_instant, &b->closed_at);
+        if (b->has_closed_at)
+            f[n++] = ppcp_wf_sub("closed_at", ppcp_sub_write_instant, &b->closed_at);
         /* 5.1d: EITHER peer may originate this — the owner because it can no
          * longer produce, the consumer because it no longer wants the data —
          * and `reason` says which. */

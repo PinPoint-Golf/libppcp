@@ -608,3 +608,226 @@ bool ppcp_bundle_reader_manifest_ordered(const ppcp_bundle_reader *r)
 {
     return (r == NULL) ? false : r->manifest_ordered;
 }
+
+/* ================================= MSG §9.1 — replaying a bundle onto a link
+ *
+ * See include/ppcp/bundle.h for the call sequence.  The whole of this is: read
+ * frames out of the file, decide whether 9.1a lets us skip the payload, and
+ * put the rest through ppcp_peer_send().  There is no translation step,
+ * because ENC 7a says there is nothing to translate.
+ */
+
+struct ppcp_bundle_replay {
+    ppcp_peer *tx;
+    bool       header_done;
+    uint16_t   minor;
+    size_t     sent;
+    size_t     skipped;
+
+    /* 9.1a — the digests the importer said it holds, and the Capture ids they
+     * turned out to name in this bundle. */
+    ppcp_digest have[PPCP_MAX_HAVE_DIGESTS];
+    size_t      have_count;
+    ppcp_id     held[PPCP_REPLAY_SKIP_MAX];
+    size_t      held_count;
+
+    ppcp_msg   msg;
+    ppcp_arena arena;
+    uint8_t    arena_buf[PPCP_BUNDLE_ARENA_BYTES];
+};
+
+size_t ppcp_bundle_replay_sizeof(void) { return sizeof(struct ppcp_bundle_replay); }
+
+ppcp_result ppcp_bundle_replay_new(void *storage, size_t storage_len, ppcp_peer *tx,
+                                   const ppcp_digest *have, size_t have_count,
+                                   ppcp_bundle_replay **out)
+{
+    ppcp_bundle_replay *r;
+    size_t              i;
+
+    if (storage == NULL || out == NULL || tx == NULL)
+        return PPCP_ERR_INVALID;
+    if (storage_len < sizeof(*r))
+        return PPCP_ERR_NOSPACE;
+    if (have_count > PPCP_MAX_HAVE_DIGESTS)
+        return PPCP_ERR_LIMIT;
+    if (have_count > 0 && have == NULL)
+        return PPCP_ERR_INVALID;
+
+    r = (ppcp_bundle_replay *)storage;
+    memset(r, 0, sizeof(*r));
+    r->tx = tx;
+    for (i = 0; i < have_count; i++)
+        r->have[i] = have[i];
+    r->have_count = have_count;
+    ppcp_arena_init(&r->arena, r->arena_buf, sizeof(r->arena_buf));
+    *out = r;
+    return PPCP_OK;
+}
+
+static bool replay_has_digest(const ppcp_bundle_replay *r, const ppcp_digest *d)
+{
+    size_t i;
+    if (d == NULL || !d->present)
+        return false;
+    for (i = 0; i < r->have_count; i++)
+        if (ppcp_digest_equal(&r->have[i], d))
+            return true;
+    return false;
+}
+
+static bool replay_is_held(const ppcp_bundle_replay *r, const ppcp_id *capture_id)
+{
+    size_t i;
+    for (i = 0; i < r->held_count; i++)
+        if (ppcp_id_equal(&r->held[i], capture_id))
+            return true;
+    return false;
+}
+
+static void replay_hold(ppcp_bundle_replay *r, const ppcp_id *capture_id)
+{
+    if (!ppcp_id_is_set(capture_id) || replay_is_held(r, capture_id))
+        return;
+    if (r->held_count == PPCP_REPLAY_SKIP_MAX)
+        return;   /* the importer keeps the payload it already had; no harm done */
+    r->held[r->held_count++] = *capture_id;
+}
+
+/* Which Captures in this frame does the importer already hold?  Learned from
+ * the manifest (9.2, and ENC 7c puts it before any payload) and from each
+ * `capture_announce` that carries a digest. */
+static void replay_learn(ppcp_bundle_replay *r, const ppcp_msg *m)
+{
+    size_t i;
+    switch (m->type) {
+    case PPCP_MT_SESSION_MANIFEST:
+        for (i = 0; i < m->body.session_manifest.capture_count; i++)
+            if (replay_has_digest(r, &m->body.session_manifest.captures[i].digest))
+                replay_hold(r, &m->body.session_manifest.captures[i].capture_id);
+        break;
+    case PPCP_MT_CAPTURE_ANNOUNCE:
+        if (replay_has_digest(r, &m->body.capture_announce.capture.digest))
+            replay_hold(r, &m->body.capture_announce.capture.id);
+        break;
+    default:
+        break;
+    }
+}
+
+/* 9.1a — a payload frame for a Capture the importer holds is not re-sent.  The
+ * announce and the manifest entry still are: the importer needs the Capture
+ * record and it is only the bytes that are redundant. */
+static bool replay_skip(const ppcp_bundle_replay *r, const ppcp_msg *m)
+{
+    const ppcp_id *id = NULL;
+    switch (m->type) {
+    case PPCP_MT_PAYLOAD_BEGIN:  id = &m->body.payload_begin.capture_id;  break;
+    case PPCP_MT_PAYLOAD_CHUNK:  id = &m->body.payload_chunk.capture_id;  break;
+    case PPCP_MT_PAYLOAD_END:    id = &m->body.payload_end.capture_id;    break;
+    case PPCP_MT_PAYLOAD_ABORT:  id = &m->body.payload_abort.capture_id;  break;
+    case PPCP_MT_PAYLOAD_RESUME: id = &m->body.payload_resume.capture_id; break;
+    default: return false;
+    }
+    return replay_is_held(r, id);
+}
+
+ppcp_result ppcp_bundle_replay_feed(ppcp_bundle_replay *r, const uint8_t *bytes, size_t len,
+                                    size_t *out_consumed)
+{
+    size_t      off = 0;
+    ppcp_result rc;
+
+    if (r == NULL || out_consumed == NULL || (len > 0 && bytes == NULL))
+        return PPCP_ERR_INVALID;
+    *out_consumed = 0;
+
+    if (!r->header_done) {
+        ppcp_bundle_header h;
+        if (len < PPCP_BUNDLE_HEADER_BYTES)
+            return PPCP_OK;
+        rc = ppcp_bundle_header_parse(bytes, &h);
+        if (rc != PPCP_OK)
+            return rc;
+        r->minor       = h.minor;
+        r->header_done = true;
+        off            = PPCP_BUNDLE_HEADER_BYTES;
+    }
+
+    while (off + PPCP_FRAME_HEADER_BYTES <= len) {
+        ppcp_frame_header hdr;
+        const uint8_t    *payload;
+        size_t            consumed = 0;
+
+        rc = ppcp_frame_header_parse(bytes + off, &hdr);
+        if (rc != PPCP_OK) {
+            *out_consumed = off;
+            return rc;
+        }
+        rc = ppcp_frame_read(bytes + off, len - off, &hdr, &payload, &consumed);
+        if (rc == PPCP_ERR_TRUNCATED)
+            break;
+        if (rc != PPCP_OK) {
+            *out_consumed = off;
+            return rc;
+        }
+
+        ppcp_arena_reset(&r->arena);
+        memset(&r->msg, 0, sizeof(r->msg));
+        rc = ppcp_msg_decode(payload, hdr.payload_len,
+                             ppcp_cbor_limits_for_channel(hdr.channel), &r->arena, &r->msg);
+        if (rc != PPCP_OK) {
+            /* A frame this library cannot decode is a frame it cannot decide
+             * about.  Sent verbatim would be a lie about `msg_id`; skipping it
+             * silently would lose data.  It stops the replay. */
+            *out_consumed = off;
+            return rc;
+        }
+
+        replay_learn(r, &r->msg);
+
+        /* ENC 7g — there is no `link_bind` in a bundle, and if one is there it
+         * belongs to a link that no longer exists. */
+        if (r->msg.type == PPCP_MT_LINK_BIND) {
+            off += consumed;
+            continue;
+        }
+        if (replay_skip(r, &r->msg)) {
+            r->skipped++;
+            off += consumed;
+            continue;
+        }
+
+        rc = ppcp_peer_send(r->tx, hdr.channel, &r->msg);
+        if (rc == PPCP_ERR_NOSPACE) {
+            /* The link is behind.  Stop where we are and tell the caller how
+             * far we got; it drains and re-presents the tail.  An engine that
+             * buffered the rest would be buffering a whole session. */
+            break;
+        }
+        if (rc != PPCP_OK) {
+            *out_consumed = off;
+            return rc;
+        }
+        r->sent++;
+        off += consumed;
+    }
+
+    *out_consumed = off;
+    return PPCP_OK;
+}
+
+size_t ppcp_bundle_replay_sent(const ppcp_bundle_replay *r)
+{
+    return (r == NULL) ? 0 : r->sent;
+}
+
+size_t ppcp_bundle_replay_skipped(const ppcp_bundle_replay *r)
+{
+    return (r == NULL) ? 0 : r->skipped;
+}
+
+size_t ppcp_bundle_replay_held_count(const ppcp_bundle_replay *r)
+{
+    return (r == NULL) ? 0 : r->held_count;
+}

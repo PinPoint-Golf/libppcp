@@ -250,7 +250,10 @@ static ppcp_result build(ppcp_msg *m, ppcp_msg_type t, scratch *s)
         break;
     case PPCP_MT_STREAM_CLOSE:
         set_id(&m->body.stream_close.stream_id, "st:1");
-        m->body.stream_close.closed_at = inst("tb:dev", 9000);
+        /* F-H4-2 — `closed_at` is optional on the wire: the owner stamps it,
+         * a consumer closing a Stream whose clock it cannot read does not. */
+        m->body.stream_close.has_closed_at = true;
+        m->body.stream_close.closed_at     = inst("tb:dev", 9000);
         set_id(&m->body.stream_close.reason, "not_needed");
         break;
     case PPCP_MT_ARM:

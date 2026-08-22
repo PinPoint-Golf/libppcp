@@ -136,6 +136,63 @@ PPCP_API size_t   ppcp_bundle_reader_frame_count(const ppcp_bundle_reader *r);
  * misordered frame is not a reason to lose a session — and says so here. */
 PPCP_API bool ppcp_bundle_reader_manifest_ordered(const ppcp_bundle_reader *r);
 
+/* ================================= MSG §9.1 — replaying a bundle onto a link
+ *
+ * A stored Session is a `PPCPBNDL` file (plan A9) and a live Session is a pair
+ * of sockets, and ENC 7a makes them the same bytes.  So "offer the host my
+ * stored sessions" is not an export format and not an importer: it is this —
+ * take the frames out of the file and put them through the peer's TX path,
+ * with the msg_ids renumbered into the live sequence (ENC 5c).
+ *
+ * THE CALL SEQUENCE.  Device side, after `session_accept` arrives with
+ * `verdict: accept`:
+ *
+ *     ppcp_bundle_replay_new(storage, len, peer,
+ *                            accept->have_digests, accept->have_digest_count, &rp);
+ *     for each chunk of the stored file:
+ *         ppcp_bundle_replay_feed(rp, chunk, n, &consumed);
+ *         drain the peer onto the socket;                 // see below
+ *         re-present chunk + consumed when consumed < n;
+ *
+ * ⚠ `feed` STOPS when the peer's outbound queue is full, reports what it
+ * consumed, and returns PPCP_OK.  A caller that does not drain between feeds
+ * will make no progress; that is deliberate, because the alternative is an
+ * engine that buffers a whole session.
+ *
+ * 9.1a — `have_digests` is what the importer already holds, and the payload
+ * for such a Capture is not sent again.  The `capture_announce` and the
+ * `session_manifest` entry ARE still sent: the importer needs the Capture
+ * record, and it is the payload that is redundant, not the fact.  Identity
+ * here is `Capture.digest`, which 9.1a states and which is a different rule
+ * from I34's re-import identity below — a digest cannot be the key for an
+ * `absent` Capture, and an `absent` Capture has no payload to skip.
+ */
+
+#define PPCP_REPLAY_SKIP_MAX 256
+
+typedef struct ppcp_bundle_replay ppcp_bundle_replay;
+
+PPCP_API size_t ppcp_bundle_replay_sizeof(void);
+
+/* `tx` is the peer whose outbound path the frames are put onto — the live
+ * link.  `have` may be NULL with `have_count` 0, in which case every payload
+ * is sent. */
+PPCP_API ppcp_result ppcp_bundle_replay_new(void *storage, size_t storage_len,
+                                            ppcp_peer *tx,
+                                            const ppcp_digest *have, size_t have_count,
+                                            ppcp_bundle_replay **out);
+
+/* Consumes whole frames and reports how many bytes it took, like every other
+ * feed in this library.  A short final frame is left for the next call. */
+PPCP_API ppcp_result ppcp_bundle_replay_feed(ppcp_bundle_replay *r, const uint8_t *bytes,
+                                             size_t len, size_t *out_consumed);
+
+PPCP_API size_t ppcp_bundle_replay_sent(const ppcp_bundle_replay *r);
+/* Payload frames not re-sent because the importer said it holds them (9.1a). */
+PPCP_API size_t ppcp_bundle_replay_skipped(const ppcp_bundle_replay *r);
+/* Captures the importer declared it already holds, recognised in this bundle. */
+PPCP_API size_t ppcp_bundle_replay_held_count(const ppcp_bundle_replay *r);
+
 /* =================================================== I34 — re-import identity
  *
  * "Identity is `Capture.id` scoped by session and owning peer, and `digest`

@@ -44,6 +44,7 @@
 #include "ppcp/message.h"
 #include "ppcp/frame.h"
 #include "ppcp/transfer.h"
+#include "ppcp/sync.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,8 +80,16 @@ typedef struct ppcp_link_binder {
 
 PPCP_API void ppcp_link_binder_init(ppcp_link_binder *b);
 
-/* Offers the FIRST frame of a newly accepted stream, which arrived on
- * `stream_channel` as far as the transport is concerned.
+/* Offers the FIRST frame of a newly accepted stream.
+ *
+ * ⚠ THE CHANNEL COMES FROM THE FRAME HEADER, not from a parameter.  A
+ * stream-per-connection listener — a TCP accept, an NWConnection — meets a
+ * freshly accepted stream carrying no channel number of its own; the channel
+ * is in the `link_bind` frame's header and in its body, and 2.1c's job is to
+ * check those two against each other.  Asking the listener for a third copy it
+ * does not have was the L6 signature and it was unusable on both platforms
+ * (plan §9, D, 22 August 2026).  `out_channel` reports what the header said,
+ * and that is the value the embedding then passes to ppcp_peer_feed().
  *
  * ENC 2.1c, the three refusals, each PPCP_ERR_MALFORMED and each meaning the
  * listener closes the stream:
@@ -93,10 +102,13 @@ PPCP_API void ppcp_link_binder_init(ppcp_link_binder *b);
  * PPCP_ERR_LIMIT means every link slot is in use.
  *
  * `out_link` receives the link index, which is how the embedding then routes
- * that stream's later bytes to the ppcp_peer it associates with the link. */
-PPCP_API ppcp_result ppcp_link_binder_offer(ppcp_link_binder *b, uint8_t stream_channel,
+ * that stream's later bytes to the ppcp_peer it associates with the link.
+ * `out_channel` may be NULL if the caller does not want it, but a listener
+ * that does not want it has nothing to feed. */
+PPCP_API ppcp_result ppcp_link_binder_offer(ppcp_link_binder *b,
                                             const uint8_t *bytes, size_t len,
-                                            size_t *out_consumed, size_t *out_link);
+                                            size_t *out_consumed, size_t *out_link,
+                                            uint8_t *out_channel);
 
 /* 2.1c: a link that has not bound channel 0 within the LISTENER'S OWN timeout
  * is discarded with every stream it holds.  The timeout is the embedding's
@@ -153,9 +165,26 @@ typedef struct ppcp_peer_config {
     ppcp_ingest_policy_fn ingest_policy;
     void       *ctx;
 
-    /* L9 uses these; L6 stores them and calls neither. */
+    /* The embedding's clock.  L9 reads it for `sync_probe`/`sync_reply` and
+     * for nothing else; every other timestamp in this engine came off a wire
+     * or out of a caller's hand. */
     ppcp_clock  clock;
+    /* 5.2a / 7.3c — the readiness this peer reports when it is armed.  A
+     * measurement, not a state name (5.15a). */
     ppcp_result (*health)(void *ctx, ppcp_readiness *out);
+
+    /* MSG 5.4 / CORE 7.4b — what `heartbeat_ack` carries.  A callback because
+     * the library has no thermometer, no battery and no filesystem, and
+     * because reporting degradation rather than silently accepting worse data
+     * is the only reason the message exists. */
+    ppcp_health_fn health_report;
+
+    /* 6.1b — the timebase this peer stamps `t2`/`t3` on when it ANSWERS a
+     * `sync_probe`: whichever clock its network stack timestamps with.  It
+     * MUST be one of the peer's declared timebases.  NULL means this peer does
+     * not answer probes, and one arriving is answered
+     * `error`/`profile_not_supported` rather than with a fabricated instant. */
+    const char *sync_timebase;
 } ppcp_peer_config;
 
 /* Constructed into caller-owned storage — nothing in this library allocates.
@@ -194,6 +223,36 @@ PPCP_API ppcp_result ppcp_peer_drain(ppcp_peer *p, uint8_t channel,
                                      uint8_t *out, size_t cap, size_t *out_len);
 PPCP_API size_t      ppcp_peer_pending(const ppcp_peer *p, uint8_t channel);
 
+/* ------------------------------------------------- partial writes (L9 queue)
+ *
+ * ⚠ ppcp_peer_drain() DEQUEUES.  It hands back whole frames and assumes the
+ * embedding wrote all of them, which is true of a file and false of a socket:
+ * under CORE T2 backpressure `write()` returns short and the bytes it did not
+ * take are bytes the engine has already forgotten (plan §9, H, 22 August 2026).
+ *
+ * So there is a second path, and it is the one a socket wants:
+ *
+ *     const uint8_t *b; size_t n;
+ *     ppcp_peer_drain_peek(p, ch, &b, &n);
+ *     ssize_t wrote = send(fd, b, n, 0);
+ *     if (wrote > 0) ppcp_peer_drain_commit(p, ch, (size_t)wrote);
+ *
+ * `commit` removes EXACTLY the byte count it is given — not a whole number of
+ * frames.  A channel is an ordered byte stream and half a frame on the wire is
+ * half a frame the peer will reassemble; rounding down to a frame boundary
+ * would re-send bytes that had already left.
+ *
+ * The two paths do not mix.  Once a partial commit has left the head frame
+ * half-written, ppcp_peer_drain() returns PPCP_ERR_INVALID rather than handing
+ * out a fragment it describes as a frame; peek and commit continue from where
+ * they were. */
+PPCP_API ppcp_result ppcp_peer_drain_peek(const ppcp_peer *p, uint8_t channel,
+                                          const uint8_t **out, size_t *out_len);
+PPCP_API ppcp_result ppcp_peer_drain_commit(ppcp_peer *p, uint8_t channel, size_t written);
+/* True when the head of this channel's queue is mid-frame, which is the state
+ * a short write leaves behind and the state ppcp_peer_drain() refuses. */
+PPCP_API bool        ppcp_peer_drain_is_partial(const ppcp_peer *p, uint8_t channel);
+
 /* ----------------------------------------------------------------- events */
 
 typedef enum ppcp_event_kind {
@@ -226,13 +285,30 @@ typedef enum ppcp_event_kind {
     PPCP_EVENT_SHOT_LINK,
     PPCP_EVENT_SESSION_LINK,
     PPCP_EVENT_ERROR,            /* an `error` arrived; `status` says if fatal */
-    PPCP_EVENT_UNKNOWN           /* MSG 1b: an unknown type, carried not dropped */
+    PPCP_EVENT_UNKNOWN,          /* MSG 1b: an unknown type, carried not dropped */
+
+    /* L9 onward.  Appended rather than interleaved so the numbering the two
+     * applications already compiled against does not move. */
+    PPCP_EVENT_HEARTBEAT,        /* L9 — `heartbeat` or `heartbeat_ack` */
+    PPCP_EVENT_SYNC,             /* L9 — `sync_probe`, `sync_reply`, `sync_residual` */
+    PPCP_EVENT_LINK_LOST,        /* L9 — 7.4c: three missed intervals; 8.3g follows */
+    PPCP_EVENT_LINK_RESTORED,    /* L9 — a heartbeat arrived after a loss */
+    PPCP_EVENT_CAPTURE_REQUEST,  /* L10 — 8.4: answer it, never with an error */
+    PPCP_EVENT_SESSION_OFFER,    /* L9 queue — a device offers a stored Session */
+    PPCP_EVENT_SESSION_ACCEPT,
+    PPCP_EVENT_SESSION_MANIFEST
 } ppcp_event_kind;
 
 #define PPCP_PEER_EVENT_QUEUE 4
 
 typedef struct ppcp_event {
     ppcp_event_kind kind;
+    /* The channel the frame arrived on.  CORE 5.11h puts preview payload on a
+     * bulk channel DISTINCT from shot payload, and without this a receiver
+     * cannot check that it did (F-H4-1/2, PinPointStudio H4).  Zero for an
+     * event the engine raised itself rather than decoded — link loss, link
+     * restored. */
+    uint8_t         channel;
     /* The decoded message.  Borrowed: it is valid until PPCP_PEER_EVENT_QUEUE
      * further events have been queued.  A `declare`'s nested Sources point
      * into the engine's declaration arena and are valid until the counterpart
@@ -274,7 +350,13 @@ PPCP_API ppcp_result ppcp_peer_context_change(ppcp_peer *p, const ppcp_context_c
 
 PPCP_API ppcp_result ppcp_peer_stream_open(ppcp_peer *p, const ppcp_stream *s);
 /* 5.1d: EITHER peer may close a Stream — the owner because it can no longer
- * produce, the consumer because it no longer wants the data. */
+ * produce, the consumer because it no longer wants the data.
+ *
+ * `closed_at` MAY be NULL, and for a consumer-originated close it usually must
+ * be: the instant is in the STREAM'S timebase, which is the owner's clock, and
+ * a consumer has no reading of it.  The field is then omitted rather than
+ * invented.  CORE 5.11 already has `closed_at` at cardinality 0..1; MSG §11
+ * lists it unmarked, and reconciling the two is erratum F-H4-2. */
 PPCP_API ppcp_result ppcp_peer_stream_close(ppcp_peer *p, const char *stream_id,
                                             const ppcp_instant *closed_at,
                                             const char *reason);
@@ -341,6 +423,131 @@ PPCP_API ppcp_result ppcp_peer_payload_resume(ppcp_peer *p, uint8_t channel,
  * messages that arrive. */
 PPCP_API const ppcp_transfer_table *ppcp_peer_transfers(const ppcp_peer *p);
 
+/* ------------------------------------- MSG §6 / CORE §6.3 — clock sync (L9)
+ *
+ * I21 and 6.1d: one probe sequence per LOCAL timebase, and each resulting
+ * relation declared directly.  So an estimator is registered per timebase and
+ * there is no way to ask this engine for a relation it did not measure.
+ *
+ * The remote timebase is learned from the first `sync_reply` (6.1b), because a
+ * prober does not know which clock a responder stamps on until it says so.
+ */
+
+/* PPCP_ERR_LIMIT past PPCP_PEER_MAX_SYNC; PPCP_ERR_INVALID for a timebase
+ * already registered.  `remote_tb` may be NULL. */
+PPCP_API ppcp_result ppcp_peer_sync_add_timebase(ppcp_peer *p, const char *local_tb,
+                                                 const char *remote_tb);
+PPCP_API size_t ppcp_peer_sync_count(const ppcp_peer *p);
+PPCP_API const ppcp_sync_estimator *ppcp_peer_sync_estimator_at(const ppcp_peer *p,
+                                                                size_t index);
+PPCP_API const ppcp_sync_estimator *ppcp_peer_sync_estimator_for(const ppcp_peer *p,
+                                                                 const char *local_tb);
+
+/* Queues one `sync_probe` on `local_tb`, reading `t1` from the embedding's
+ * clock.  `probe_seq` runs per timebase, so two sequences never collide. */
+PPCP_API ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb);
+
+/* 6.1c — an embedding that can stamp closer to the socket than a clock read at
+ * decode time supplies the four timestamps itself.  The automatic path (a
+ * `sync_reply` arriving, `t4` read from the clock as it is handled) is the
+ * convenient one; this is the accurate one, and both feed the same estimator. */
+PPCP_API ppcp_result ppcp_peer_sync_observe(ppcp_peer *p, const char *local_tb,
+                                            int64_t t1, int64_t t2, int64_t t3, int64_t t4);
+
+/* 6.3c — a burst of PPCP_SYNC_BURST exchanges on every registered timebase.
+ * Driven by the embedding's events because the library has neither a network
+ * stack nor a thermometer.  A network change or a thermal event also restarts
+ * each estimator's window: the FIT is stale, not merely the offset, because
+ * oscillator frequency shifts with temperature. */
+PPCP_API ppcp_result ppcp_peer_sync_trigger(ppcp_peer *p, ppcp_sync_trigger why);
+
+/* Queues whatever is due — burst probes at PPCP_SYNC_BURST_GAP_MS, maintenance
+ * probes at PPCP_SYNC_MAINTENANCE_MS (6.3g).  `now_ns` is any monotonic
+ * nanosecond count of the embedding's choosing: it schedules and never enters
+ * a measurement.
+ *
+ * ⚠ 6.3d — this cadence is the sync cadence and nothing here consults
+ * `heartbeat_interval_ms`.  Liveness has its own pump below. */
+PPCP_API ppcp_result ppcp_peer_sync_pump(ppcp_peer *p, int64_t now_ns, size_t *out_probes);
+
+/* 6.1f — publishes the current estimate for every registered timebase that has
+ * one, as a single `relation_update`.  Filtered, never stepped; that property
+ * is the estimator's and is documented there. */
+PPCP_API ppcp_result ppcp_peer_publish_relations(ppcp_peer *p, size_t *out_count);
+/* The general form: publish relations the embedding measured or declared
+ * itself — a device's camera-to-microphone mapping, a host's re-solve on
+ * import (8.5d).  Every relation is validated, so I3 holds on the way out. */
+PPCP_API ppcp_result ppcp_peer_relation_update(ppcp_peer *p,
+                                               const ppcp_timebase_relation *rels,
+                                               size_t count);
+/* MSG 6.2 / CORE 6.3h — the per-shot residual between an acoustic fiducial and
+ * the network clock estimate. */
+PPCP_API ppcp_result ppcp_peer_sync_residual(ppcp_peer *p, const char *shot_id,
+                                             const char *timebase_id, int64_t residual_ns,
+                                             const char *basis);
+
+/* --------------------------------------- MSG §5.4 / CORE §7.4 — liveness (L9)
+ *
+ * The host sends `heartbeat` at `Session.heartbeat_interval_ms`; every peer
+ * answers `heartbeat_ack` carrying thermal, storage and battery from
+ * `health_report`.  Three consecutive missed intervals is a lost link (7.4c),
+ * and a lost link is the second entry into the zero-host regime (8.3g) — the
+ * first being a Session that never had a host at all.
+ */
+
+/* Host only (7.4a), and refused otherwise by C2 as well as by role. */
+PPCP_API ppcp_result ppcp_peer_heartbeat(ppcp_peer *p);
+
+/* Drives liveness from the embedding's clock, because the library owns no
+ * timer.  Call at least once per heartbeat interval with a monotonic `now_ns`.
+ * A host also queues its due `heartbeat` here, so one call serves both ends. */
+PPCP_API ppcp_result ppcp_peer_liveness_pump(ppcp_peer *p, int64_t now_ns);
+
+PPCP_API ppcp_link_state ppcp_peer_link_state(const ppcp_peer *p);
+PPCP_API uint32_t        ppcp_peer_missed_heartbeats(const ppcp_peer *p);
+
+/* 8.3g — "a Session with an unreachable host is not a Session with no host."
+ * True when this peer must mint under 8.3a–c: either the Session has no host
+ * in its roster, or the host has been unreachable for three heartbeat
+ * intervals.  Nothing about the Session changes when it becomes true, which is
+ * what ppcp_peer_session_params() below exists to let a test assert. */
+PPCP_API bool ppcp_peer_zero_host(const ppcp_peer *p);
+
+/* The Session parameters as they arrived in `session_open`, or NULL before
+ * one.  I16 and 8.3g: `timebase_ref`, `coincidence_window_ns` and
+ * `issue_hold_ns` are what they were, whatever the link is doing. */
+PPCP_API const ppcp_body_session_open *ppcp_peer_session_params(const ppcp_peer *p);
+
+/* -------------------------------- MSG §9.1–9.2 — offering a stored Session
+ *
+ * The user-facing flow is not a file picker: a CONNECTED capture device offers
+ * the Sessions it holds and the host chooses (plan §9, 22 August 2026).  These
+ * are the three messages that carries, and `ppcp_bundle_replay` in bundle.h is
+ * what puts the accepted Session's frames onto the live link.
+ *
+ * DEVICE SIDE                          HOST SIDE
+ *   ppcp_peer_session_offer(...)  ->   PPCP_EVENT_SESSION_OFFER
+ *                                      ppcp_peer_session_accept(verdict,
+ *                                        have_digests, in_reply_to)
+ *   PPCP_EVENT_SESSION_ACCEPT     <-
+ *   ppcp_bundle_replay_new(peer, have_digests, ...)
+ *   ppcp_bundle_replay_feed(bytes of the stored PPCPBNDL)
+ *                                 ->   the ordinary ingest path: manifest,
+ *                                      declare, session_open, captures,
+ *                                      payloads — the same frames a live
+ *                                      session would have carried.
+ *
+ * `session_manifest` has an originator of its own because ENC 7c makes it the
+ * one frame a bundle MUST contain, and until L9 it was the one frame with no
+ * `ppcp_peer_*` entry point (plan §9, D, 22 August 2026). */
+PPCP_API ppcp_result ppcp_peer_session_offer(ppcp_peer *p,
+                                             const ppcp_body_session_offer *offer);
+PPCP_API ppcp_result ppcp_peer_session_accept(ppcp_peer *p,
+                                              const ppcp_body_session_accept *accept,
+                                              uint64_t in_reply_to);
+PPCP_API ppcp_result ppcp_peer_session_manifest(ppcp_peer *p,
+                                                const ppcp_body_session_manifest *manifest);
+
 /* The general form, and what every function above is built on: queue one
  * message on one channel.  Still C2-checked and still channel-checked, so it
  * is an escape hatch for the messages later work packages add, not a way past
@@ -369,6 +576,23 @@ PPCP_API const ppcp_stream *ppcp_peer_stream_find(const ppcp_peer *p, const char
 /* The Session this peer joined, or NULL.  I16: `timebase_ref` is immutable and
  * there is no setter — a second `session_open` naming a different one is
  * refused on receipt. */
+/* The relations this peer currently holds — filled from every
+ * `relation_update` that arrives, from ppcp_peer_relation_update() and from
+ * ppcp_peer_publish_relations().  Mutable, because an embedding that measured
+ * a relation the wire never carried (a device's camera-to-microphone mapping)
+ * puts it here.
+ *
+ * ⚠ Nothing here composes.  ppcp_relations_convert() applies at most one
+ * relation and refuses when it holds no direct one (I18, 5.4c, 8.2i1). */
+PPCP_API ppcp_relation_set *ppcp_peer_relations(ppcp_peer *p);
+
+/* 5.12a / I26 — the Sources this peer declared, and the Timebase each names.
+ * A `candidate` naming anything else is refused before it reaches a wire. */
+PPCP_API size_t ppcp_peer_own_source_count(const ppcp_peer *p);
+PPCP_API bool   ppcp_peer_owns_source(const ppcp_peer *p, const ppcp_id *source_id,
+                                      ppcp_id *out_timebase_id);
+PPCP_API bool   ppcp_peer_declares_timebase(const ppcp_peer *p, const ppcp_id *timebase_id);
+
 PPCP_API const ppcp_id *ppcp_peer_session_id(const ppcp_peer *p);
 PPCP_API const ppcp_id *ppcp_peer_timebase_ref(const ppcp_peer *p);
 

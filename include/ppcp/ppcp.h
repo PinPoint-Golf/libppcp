@@ -24,6 +24,7 @@
  *   ppcp/peer.h      L6 — the sans-I/O peer engine and the ENC §2.1 link binder
  *   ppcp/transfer.h  L7 — Captures, bulk transfer, eviction, coverage
  *   ppcp/bundle.h    L8 — the bundle writer and reader, and the ENC §7 container
+ *   ppcp/sync.h      L9 — the sync estimator, the relation set, liveness
  *
  * WHAT IS DECLARED BUT NOT YET BUILT:
  *
@@ -54,6 +55,7 @@
 #include "ppcp/peer.h"
 #include "ppcp/transfer.h"
 #include "ppcp/bundle.h"
+#include "ppcp/sync.h"
 #include "ppcp/planned.h"
 
 #endif /* PPCP_PPCP_H */
