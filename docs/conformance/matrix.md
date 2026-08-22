@@ -99,7 +99,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 | Test | Method | Asserts | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|
-| RT-1 | static | §10.1 derivation vectors | L12 | pass | — | — |
+| RT-1 | static | §10.1 derivation vectors | L12 | pass | — | pass |
 | RT-2 | static | §10.3 codes, `v` first in the all-fields payload, `sid` → UUID text | L12 | pass | — | — |
 | RT-3 | injected | unknown `v` → version report | L12, D7 | pass | — | — |
 | RT-4 | injected | strongest mode negotiated, never plaintext, outcome surfaced | H1, D1 | n/a | impl | impl |
@@ -109,7 +109,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7 | impl | — | — |
 | RT-9 | paired | diagnostic export carries no secret or payload | H6, D7 | n/a | — | — |
 | RT-10 | injected | `session_resume` refused without a completed handshake | H1, D1 | n/a | impl | impl |
-| RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | pass | n/a (code path; see plan §9 F-D1-2) |
+| RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | pass | n/a (code path; plan §9, narrowed) |
 | RT-12 | **review** | CSPRNG at full width, protected storage, erasure | H6, D7 | n/a | — | — |
 | RT-13 | **review** | network join with consent; not left attached | D7 | n/a | n/a | — |
 | RT-14 | static | §10.2 PSK identity; differs per connection; empty hint at TLS 1.2 | L12, H1, D1 | pass | pass (wire) | impl |

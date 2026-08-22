@@ -346,7 +346,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 |---|---|
 | Deliverable | `Packages/Core/Package.swift` gains `.package(path: "../../../libppcp")` (co-development) with the git URL recorded for later; `CaptureCore` depends on `CPPCP`. `LayerPurityTests` updated to permit `CPPCP` and still forbid every platform framework. `swift test` green on the host. |
 | Depends | L0 |
-| Status | ◐ in progress — S1 close-out (Package.swift landed after D finished) |
+| Status | ☑ done — S1 (SwiftPM identity is the directory name `libppcp`, product `CPPCP`) |
 
 ### D1 — Transport: two `NWConnection`s, TLS-PSK
 
@@ -498,7 +498,7 @@ Append-only. Newest last.
 | 2026-08-22 | H (S1) | **`CORE` §3 / `ENC` §2 say nothing about how a listener associates one peer's several TCP connections, or which is channel 0.** H groups by the pairing the PSK identity resolved to and orders by the dialler's serialised handshakes; D uses arrival order. Both work against themselves; they need a clause to meet | **Erratum required before S3 (live path)** — L writes the clause in `ENC` §2; the rule chosen is H's (no wire bytes needed); D aligns in D6 |
 | 2026-08-22 | H (S1) | **`RV` 5.3f binary identity fails through OpenSSL's TLS 1.2 PSK callbacks** (`strlen`-lengthed): an embedded `0x00` in `rn2` — ~1 connection in 16 — fails the handshake intermittently | Erratum queued: 5.3a excludes `0x00` from `rn2` bytes (cheapest; survives on both platforms). Pinned by a test in PinPointStudio |
 | 2026-08-22 | D (S1) | **`RV` 5.3a/5.3b cannot be served by a Network.framework *listener*** — no server-side PSK resolver hook; a rotating per-connection identity is refused with `PSK_IDENTITY_NOT_FOUND`. The required pairing-code path (device dials) is unaffected; the discovery path where `RV` 3.5b recommends the device advertise is not implementable on iOS as written | Erratum queued: 3.5b becomes a MAY for a peer whose platform cannot resolve identities server-side, with the host advertising instead; D7 implements discovery with the **device browsing and dialling** (roles reversed from 3.5b) |
-| 2026-08-22 | D (S1) | **`RV` 5.3c uniform failure is unachievable on iOS** (different alerts, different timing) | Erratum queued: 5.3c scoped to peers whose TLS stack exposes the server-side selection; RT-11 `n/a` for such a peer on the code path |
+| 2026-08-22 | D (S1) | **`RV` 5.3c uniform failure is unachievable on iOS** (different alerts, different timing) — **narrowed on re-test**: because `K_tls` and `K_id` share one `PRK`, a wrong secret also produces an unresolvable identity, so the resolved-identity/wrong-key case cannot be reached by a scanned code, a persisted pairing or an attacker without `PRK`. The gap is real only for a future key schedule that separates the two | Note in L17 against 5.3c/5.3d; RT-11 stays `n/a` on the device's code path |
 | 2026-08-22 | H, D (S1) | RT-17 (`review` method) needs a named human reviewer; an author cannot discharge it | **For the user to assign** |
 
 ---
