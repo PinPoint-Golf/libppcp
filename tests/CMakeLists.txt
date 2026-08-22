@@ -220,6 +220,34 @@ if(TARGET ppcp-sim)
     # CONF §5 — a capture peer with a `continuous` Stream and a `preview`.
     # The segment and the discarded preview both reach the host, the preview
     # as `absent` / `not_retained` (5.11c3), and nothing is refused.
+    # RT-4 — the psk_ke-only mode, validated in BOTH directions against a TLS
+    # 1.3 server whose answer is known.  A mode that can only report "refused"
+    # is not evidence: it would report refused for a malformed offer too, which
+    # is exactly the false pass this replaced (plan §9, F-L13-2).  So one row
+    # asserts a DHE-requiring server produces a refusal, and the other asserts
+    # a server started with -allow_no_dhe_kex is reported as an RT-4 FAILURE.
+    # The second row is also what proves the hand-built ClientHello and its PSK
+    # binder are right: a wrong binder produces an alert, not a ServerHello
+    # carrying `pre_shared_key`.
+    #
+    # Skipped where the OpenSSL CLI is absent — it is the peer under test here,
+    # not a dependency of anything that ships.
+    find_program(PPCP_OPENSSL_CLI openssl)
+    if(PPCP_OPENSSL_CLI)
+        add_test(NAME RT-4-psk-ke-only-refused
+                 COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/../tools/run-psk-ke.sh
+                         $<TARGET_FILE:ppcp-sim> ${PPCP_OPENSSL_CLI} refuse)
+        add_test(NAME RT-4-psk-ke-only-accepted-is-a-failure
+                 COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/../tools/run-psk-ke.sh
+                         $<TARGET_FILE:ppcp-sim> ${PPCP_OPENSSL_CLI} accept)
+        set_tests_properties(RT-4-psk-ke-only-refused
+                             RT-4-psk-ke-only-accepted-is-a-failure
+                             PROPERTIES TIMEOUT 60)
+    else()
+        message(STATUS "tests: no openssl CLI — the two RT-4 rows that validate "
+                       "--psk-ke-only are not registered")
+    endif()
+
     ppcp_pair_row(IOP-9-sockets-preview
         reference-host.json reference-host
         "captures_unique=2,violations=0"

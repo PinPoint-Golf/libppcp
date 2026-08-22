@@ -153,4 +153,4 @@ ppcp-sim --role host --listen 9000 --port-file /tmp/port \
 
 The transport is **plaintext**: `RV` §2's `direct` path is conformant without rendezvous, and a simulator that spoke TLS would be testing OpenSSL rather than PPCP. Both applications have a plaintext loopback path for exactly this (plan D9; PinPointStudio's headless peer).
 
-The one exception is `--psk-ke-only`, which exists so a host's refusal of a PSK-only key exchange is **demonstrated rather than asserted** (RT-4). See the note at the top of [`../ppcp-sim/sim_tls.c`](../ppcp-sim/sim_tls.c) for what that mode can and cannot currently prove.
+The one exception is `--psk-ke-only`, which exists so a host's refusal of a PSK-only key exchange is **demonstrated rather than asserted** (RT-4). The mode is hand-built — it needs no TLS library at all, and the two `RT-4-psk-ke-only-*` ctest rows validate it in both directions against a server whose answer is known. See the note at the top of [`../ppcp-sim/sim_tls.c`](../ppcp-sim/sim_tls.c) for what it proves and what it does not.

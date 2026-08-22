@@ -211,6 +211,21 @@ static size_t build_client_hello(uint8_t *out, size_t cap,
     put_u8(&w, 2);
     put_u16(&w, 0x0304);
 
+    /* signature_algorithms (13).  A pure-PSK ClientHello does not need it —
+     * RFC 8446 §4.2.3 requires it only where the client offers certificate
+     * authentication — but a server that has not yet resolved the PSK reaches
+     * its certificate path first and answers `missing_extension`.  That was
+     * the SECOND false pass this mode produced: a refusal that had nothing to
+     * do with the key exchange, reported as though it did.  So the offer
+     * carries it, and a refusal is now about what it is supposed to be
+     * about. */
+    put_u16(&w, 13);
+    put_u16(&w, 8);
+    put_u16(&w, 6);
+    put_u16(&w, 0x0403);                 /* ecdsa_secp256r1_sha256            */
+    put_u16(&w, 0x0804);                 /* rsa_pss_rsae_sha256               */
+    put_u16(&w, 0x0401);                 /* rsa_pkcs1_sha256                  */
+
     /* psk_key_exchange_modes (45): psk_ke (0) AND NOTHING ELSE.
      *
      * THIS IS THE WHOLE POINT OF THE MODE.  A conformant peer under RV 5.2f
