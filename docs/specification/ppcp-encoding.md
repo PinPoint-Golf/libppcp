@@ -94,6 +94,7 @@ Payloads are CBOR (RFC 8949).
 | `Series` | `{ "tb": tstr, "ns": [int, ...] }` |
 | `Interval` | `{ "tb": tstr, "start_ns": int, "end_ns": int }` |
 | `Digest` | `{ "alg": "sha-256", "value": bstr }` |
+| `Anchor` | A map with **exactly one** key: `{"shot_id": tstr}`, `{"candidate_id": tstr}` or `{"stream": true}`. A decoder rejects zero keys or more than one as `malformed`, which is I27 made structural. |
 | `Matrix3` | `[f64 × 9]`, row-major |
 | `Estimate` | `{ "value_ns": int, "sigma_ns": f64 }`. Both keys mandatory together; neither has a defined meaning alone. |
 

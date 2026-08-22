@@ -51,7 +51,7 @@ Build order matters here: each of these is needed to test the layer above it, an
 
 ## 3. The invariant test matrix
 
-Thirty-five invariants, thirty-five tests. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
+Thirty-six invariants, thirty-six tests. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
 
 | Test | Invariant | Profile | Method | Assertion |
 |---|---|---|---|---|
@@ -88,7 +88,8 @@ Thirty-five invariants, thirty-five tests. Identifiers match [`PPCP-CORE` §11](
 | **CT-I24** | I24 | Core | **injected** | See [CT-S6](#46-ct-s6--comprehension-versus-origination). |
 | **CT-I25** | I25 | Offline | static | Creating a `SessionLink` alters neither Session. Assert byte-equality of both Sessions before and after. Assert no operation composes a `SessionLink` with a `TimebaseRelation`. |
 | **CT-I26** | I26 | Detect | static | A Candidate whose `source_id` names no declared Source, or a Source with no declared Timebase, is rejected. Assert a filesystem-imported record is not emitted as a Candidate. |
-| **CT-I27** | I27 | Capture | static | Every Capture carries exactly one of `anchor.shot_id` and `anchor.candidate_id`. Assert neither-both nor-neither is constructible. |
+| **CT-I27** | I27 | Capture | static | Every Capture's `anchor` carries exactly one key of `shot_id`, `candidate_id`, `stream`. Assert that zero keys and two keys are both rejected and neither is constructible, and that `{stream: true}` is refused on a `shot_windowed` Stream. |
+| **CT-I36** | I36 | Capture | fixture | Replay a session with a `continuous` Stream. Assert the announced stream-anchored Captures and their gaps account for the whole interval from `opened_at` onward, with no overlap. Then remove one segment **without** declaring a gap and assert the implementation reports a defect rather than silently reading it as a dropout. |
 | **CT-I28** | I28 | Capture | static | A profile with no self-test carries no `measured`. Assert the implementation never synthesises one from claimed values or a device-profile table, and that a short onboarding sample is emitted as `method: cold_sample`. |
 
 ---

@@ -8,7 +8,7 @@
 | Version | **1.0** |
 | Wire version | `ppcp/1.0` |
 | Status | **APPROVED for implementation**, 22 August 2026 |
-| Revision | 4 — the approved text |
+| Revision | 5 — B11 closed: continuous stream carriage |
 | Date | 22 August 2026 |
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
@@ -105,6 +105,17 @@ The closing round. Both teams signed off; these are the findings they attached t
 | PPS §3 | `canonical_correction_ns` is a bare integer beside an `Estimate`, and the asymmetry looks like an oversight. | **No change, and the reason recorded** in [§5.12f](#512-candidate) so it is not "fixed" during implementation. |
 | PPC §3 | Positions recorded for implementation: `locked_constant` under the exposure lock, `assumed` provenance until the rig exists, and the mint deadline being a user-visible latency. | **No specification change.** All are consequences the document intends. |
 
+### 0.5 What changed in revision 5
+
+One defect, found by tracing a host-side requirement rather than by review, and the capability it was blocking.
+
+| # | Finding | Disposition |
+|---|---|---|
+| **B11** | **A `continuous` Stream could carry nothing.** Every payload message is keyed on `capture_id` and every Capture anchored to a Shot or a Candidate (I27) — so the interval a continuity flag exists to describe was the one interval with no carriage. Three stated obligations were unmeetable: continuous attitude and gravity on a `metadata` Stream that [§5.11](#511-stream) calls *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry; and `imu`/`wrist` running continuously while armed. | **Fixed.** `Capture.anchor` gains a third form, `{ stream: true }` ([§5.14](#514-capture)). I27 amended, **I36** added for the coverage rule. No new message. |
+| — | **A consumer had no way to see that a capture peer reflects what the user is doing.** Heartbeat proves the link is live; only frames prove the rest. | **`preview` defined** ([§5.11.2](#5112-preview-streams)) — a second Stream from an existing Source, low rate, `continuous`, never used for measurement, carried on its own bulk channel and the first thing dropped under contention. It is [§5.11.1](#5111-how-a-continuous-stream-is-carried) applied to a camera, and needs nothing new. |
+
+The change is additive: no field is removed, no type narrowed, and no existing field changes meaning. It lands in `1.0` rather than a MINOR bump because `1.0` is approved and **not yet frozen** ([Annex B0](#annex-b--open-issues)) — and because a flag with nothing behind it is a defect rather than a missing feature.
+
 ---
 
 ## 1. Introduction
@@ -154,7 +165,7 @@ An implementation need not implement all of PPCP. Requiring that would be hostil
 | Profile | Confers the ability to originate | Requires | Invariants |
 |---|---|---|---|
 | **Core** | Peer, Timebase, TimebaseRelation, ClockDiscontinuity declaration; version and extension negotiation; **`ShotLink`** | — | I1, I2, I3, I4, **I9**, I13, I14, I18, I19, I24 |
-| **Capture** | Source, CaptureProfile, Stream, Capture; arm/disarm response; readiness | Core | I5, I10, I11, I12, I17, I22, I27, I28, I30, I31 |
+| **Capture** | Source, CaptureProfile, Stream, Capture; arm/disarm response; readiness | Core | I5, I10, I11, I12, I17, I22, I27, I28, I30, I31, I36 |
 | **Detect** | Candidate | Core | I26, I29, I33 |
 | **Mint** | Shot issuance from the peer's **own** Candidates, `authority: device` | Core, Detect | I6, I7, I8, I23, I32 |
 | **Arbitrate** | Shot issuance from **any peer's** Candidates: coincidence window, canonical t₀, `authority: host` | Core | I6, I7, I8, I20, I35 |
@@ -217,7 +228,7 @@ Note that the v1 device's profile set changed: **Mint is new and is what v1 actu
 
 ### 2.3 Invariants are conformance tests
 
-The thirty-five invariants of [§11](#11-invariants) are the conformance surface. An implementation that violates one is non-conformant, whatever else it does. [`PPCP-CONF`](ppcp-conformance.md) maps each to a required test.
+The thirty-six invariants of [§11](#11-invariants) are the conformance surface. An implementation that violates one is non-conformant, whatever else it does. [`PPCP-CONF`](ppcp-conformance.md) maps each to a required test.
 
 ---
 
@@ -531,6 +542,7 @@ Three distinct things, routinely different, all on the wire: **claimed** (the pr
 | `intrinsics` | `[Matrix3]` or `Matrix3` | 0..1 | Same rule, where `intrinsics: per_frame`. |
 
 - **(5.8d) MUST** On a Capture from a camera Source **that has frames** — that is, `completeness` is `complete` or `partial` — `AchievedFrames.exposure_ns` is present, in parallel or scalar form. Without it the canonical-instant conversion is impossible (I17). A Capture of `completeness: absent` has no frames and carries no `AchievedFrames`.
+- **(5.8j)** A Capture on a `preview` Stream is exempt from 5.8d: nothing is measured from it ([§5.11g](#5112-preview-streams)), so the conversion it feeds does not exist. It still carries `frames`, because every sample is placed in time whatever it is for (I1, I2).
 - **(5.8e) MUST NOT** Time be inferred from frame index anywhere (I2). Frames drop; indices lie. Sequence numbers, where present, are for loss detection only. **`frames.ns` therefore has no scalar form** — a nominal rate is not a substitute for measured timestamps.
 - **(5.8f) MUST** A parallel array has exactly `frames.ns` length. A scalar means the value was constant for every frame in the Capture, and MUST NOT be used to mean "unknown" or "not sampled".
 - **(5.8g) MUST NOT** `AchievedFrames` be carried on `capture_announce` (I30). It travels with the payload it describes, which is also the only context in which it is interpretable. **One exception**: `capture_update` MAY carry it for a Capture whose payload will not transfer ([`PPCP-MSG` §8.2b](ppcp-messages.md#82-capture_update)), because the series would otherwise be lost with the payload — a `complete` + `failed` clip is exactly a session whose link died, and the frame timeline is what tells a consumer what it lost.
@@ -641,10 +653,31 @@ Stream lifetime, not session lifetime. A knocked tripod does not end a session; 
 
 | Stream kind | Continuity |
 |---|---|
-| `video` | always `shot_windowed` — the ring buffer discards everything else; the continuous stream is never materialised |
+| `video` | always `shot_windowed` — the ring buffer discards everything else; the capture stream is never materialised continuously |
+| `preview` | always `continuous` — a low-rate view for live monitoring, never for measurement. See [§5.11.2](#5112-preview-streams) |
 | `audio` | `shot_windowed`, windowed on **Candidate** rather than Shot ([§5.12](#512-candidate)) |
 | `imu`, `wrist` | either — continuous while armed, or windowed per shot |
 | `event`, `metadata` | always `continuous` |
+
+#### 5.11.1 How a continuous Stream is carried
+
+- **(5.11b) MUST** A `continuous` Stream is realised as a sequence of Captures anchored to **an interval of the Stream itself** ([§5.14](#514-capture)), not to any Shot or Candidate.
+- **(5.11c) MUST** Those Captures and their declared `gaps` together account for the whole of the Stream's open interval — from `opened_at` to `closed_at`, or to the present. **Time accounted for by neither is a defect, not a dropout** (I36): a dropout is asserted, never inferred (I10, I11).
+- **(5.11d) MUST** Accounting is over Captures that have been **announced**, not over payload that has arrived. `completeness` and `transfer` remain independent axes ([§5.14a](#514-capture)).
+- **(5.11e)** The window length of each Capture is peer policy and appears nowhere in this specification (I14). A shorter window costs more messages and delivers sooner; that trade is the peer's to make against what its consumer is doing with the data.
+
+Until revision 5 a `continuous` Stream could carry nothing at all. Every payload message is keyed on `capture_id`, and every Capture anchored to a Shot or a Candidate — so the interval a continuity flag exists to describe was the one interval with no carriage. Three stated obligations were unmeetable: continuous device attitude and gravity on a `metadata` Stream, which this table says is *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry, which `TimebaseRelation.evidence_ref` describes as "a Stream carrying raw evidence"; and `imu` or `wrist` running continuously while armed.
+
+#### 5.11.2 Preview streams
+
+A consumer watching a capture peer needs to see that the link is live **and that it reflects what the user is doing**. Heartbeat proves the first; only frames prove the second.
+
+- **(5.11f)** A `preview` Stream is a second Stream from an existing Source, with its own `profile_id` — typically a low rate and a small frame — and `continuity: continuous`. It needs no new Source, no new message and no new machinery: it is [§5.11.1](#5111-how-a-continuous-stream-is-carried) applied to a camera.
+- **(5.11g) MUST NOT** A `preview` Stream be used for measurement, pose, arbitration, or any quantity that reaches a result. It exists to be looked at.
+- **(5.11h) SHOULD** A peer carry preview payload on a **bulk channel distinct** from the one carrying shot payload ([`PPCP-CORE` §3](#3-transport-contract) permits more than one), so a preview never queues behind a clip.
+- **(5.11i) MUST** Under contention, preview degrades **before** transfer, which degrades before capture. Capture degrades last ([§7.4d](#74-liveness)); a preview frame is the cheapest thing in the session to drop.
+
+Opening one is an ordinary `stream_open` from the consumer that wants it. A peer that does not offer a suitable profile simply refuses, and nothing else changes.
 
 ### 5.12 Candidate
 
@@ -724,7 +757,7 @@ The **realisation** of a Shot or a Candidate on one Stream.
 | Field | Type | Card. | Notes |
 |---|---|---|---|
 | `id` | `Id` | 1 | |
-| `anchor` | `{ shot_id: Id }` \| `{ candidate_id: Id }` | 1 | **Exactly one** (I27). |
+| `anchor` | `{ shot_id: Id }` \| `{ candidate_id: Id }` \| `{ stream: true }` | 1 | **Exactly one key** (I27). `{ stream: true }` is a segment of the Capture's own `continuous` Stream, belonging to no event. |
 | `stream_id` | `Id` | 1 | |
 | `interval` | `Interval` | 0..1 | In the Stream's timebase. Absent when `completeness: absent`. |
 | `completeness` | `complete` \| `partial` \| `absent` | 1 | Asserted, never inferred (I10). |
@@ -737,8 +770,12 @@ The **realisation** of a Shot or a Candidate on one Stream.
 | `bytes` | int64 | 0..1 | Payload size. |
 
 - **(5.14a) MUST** `completeness` and `transfer` are independent axes. A Capture may be `complete` + `pending` (captured fine, not yet sent) or `partial` + `present` (arrived intact, sensor dropped mid-swing).
+- **(5.14d) MUST** `anchor` carries **exactly one** key (I27). `{ stream: true }` is permitted only on a Stream whose `continuity` is `continuous`, and `interval` is then mandatory — a segment with no interval says nothing about what it covers.
+- **(5.14e) MUST NOT** A stream-anchored Capture overlap another on the same Stream. Segments abut or leave a declared gap; they do not overlap, because two accounts of one interval are two answers to one question.
 - **(5.14b) MUST NOT** Gaps be interpolated across or implicitly spanned (I11).
 - **(5.14c) MUST** `achieved_frames` carries the per-frame exposure durations on which [§6.1](#61-canonical-instant) depends, and reaches a consumer before it converts. The split between the two halves is [§5.8](#58-capability).
+
+**Three anchors, because a realisation can belong to three things.** A Shot — the ordinary case, a clip extracted around `t0`. A Candidate — the audio window that explains why detection fired, which must survive for nominations that lost ([§5.12.1](#5121-candidate-evidence)). And the Stream itself — a segment of something recorded continuously, belonging to no event at all: attitude and gravity, sensor arrival evidence, a preview frame. The third was missing until revision 5, which made `continuity: continuous` a flag with nothing behind it.
 
 The two-level pattern — **Stream** as contract, **Capture** as realisation — is the same relationship as declared profile to achieved capability, and it recurs deliberately. Putting Streams inside Shots would make per-shot profile variation *expressible*, and an invariant is better enforced by having nowhere to write the violation.
 
@@ -1126,7 +1163,7 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 
 ## 11. Invariants
 
-**Thirty-five invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2 and I33–I35 in Draft 3. I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
+**Thirty-six invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2, I33–I35 in Draft 3 and I36 in revision 5. I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
 
 ### 11.1 The rule for writing an invariant
 
@@ -1171,7 +1208,8 @@ Both read as constraints and were in fact instructions to decide. The corrected 
 | **I24** | Profiles gate origination, not comprehension. Every conformant peer parses the complete type vocabulary; a peer originates only messages its declared profiles confer. | Core |
 | **I25** | Cross-session alignment is a `SessionLink`. It mutates neither Session and is never composed with a `TimebaseRelation`. | Offline |
 | **I26** | A Candidate references a Source owned by a Peer in the Session with a declared Timebase. A record without one is reconciled by `ShotLink`, never nominated. | Detect |
-| **I27** | Every Capture anchors to exactly one of a Shot or a Candidate. | Capture |
+| **I27** | Every Capture anchors to exactly one of a Shot, a Candidate, or an interval of its own Stream. *(Amended in revision 5: the third form was missing, so a `continuous` Stream could carry nothing.)* | Capture |
+| **I36** | On a `continuous` Stream, the announced stream-anchored Captures and their declared gaps account for its whole open interval. Time accounted for by neither is a defect, not a dropout. | Capture |
 | **I28** | `MeasuredCapability`, where present, declares `method` and `duration_ns`; its absence means not measured and MUST NOT be inferred or synthesised. | Capture |
 | **I29** | `Candidate.tof_correction`, where present, carries both `value_ns` and `sigma_ns`. No applied estimate travels without its dispersion. | Detect |
 | **I30** | `capture_announce` carries summary capability only. Per-frame series travel with the payload they describe, with one exception: `capture_update` MAY carry `AchievedFrames` for a Capture whose payload will not transfer, because the series would otherwise be lost with the payload. *(Amended: Draft 2 forbade the control channel outright, contradicting the exception `PPCP-MSG` already permitted.)* | Capture |
@@ -1255,7 +1293,7 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 
 | # | Issue | Status |
 |---|---|---|
-| **B11** | **A `continuous` Stream has no way to carry its data.** Every payload message is keyed on `capture_id` ([`PPCP-MSG` §8.3](ppcp-messages.md#83-the-payload_-family)) and every Capture anchors to exactly one Shot or Candidate (I27) — so a Stream declared `continuous` can carry nothing between shots, which is precisely the interval its continuity flag exists to describe ([§5.11](#511-stream)). Three obligations currently cannot be met: continuous device attitude and gravity on a `metadata` Stream, which [§5.11](#511-stream) says is *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry, referenced by `TimebaseRelation.evidence_ref` as "a Stream carrying raw evidence"; and `imu`/`wrist` streams running continuously while armed. It also blocks any low-rate liveness or preview stream during capture. **The shape of the fix is determined**: `Capture.anchor` gains a third form for a realisation that belongs to a Stream and an interval rather than to an event, with I27 amended to "exactly one of a Shot, a Candidate, or an interval of its Stream". No new message is needed. | **Open — defect.** Found by tracing a host-side liveness requirement, not by review. Needs both teams before it lands. |
+| ~~**B11**~~ | ~~A `continuous` Stream has no way to carry its data.~~ | **Closed in revision 5.** `Capture.anchor` gains a third form ([§5.14](#514-capture)), I27 amended, I36 added, and `preview` defined as the stream kind a live consumer wants ([§5.11.2](#5112-preview-streams)). |
 | **B0** | **Approved is not stable.** `ppcp/1.0` freezes when [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings are demonstrated. Until then this document takes errata. | Open by design. |
 | **B1** | **`PPCP-RV` is drafted but not agreed.** [Draft 1](ppcp-rv.md) specifies the service type, TXT contents, pairing-code payload, key derivation, TLS profile and security model, with test vectors. Until the implementation teams agree it, two conformant peers still cannot be relied on to find one another. | **Blocking interoperability**, not blocking implementation. Awaiting review. |
 | **B2** | **`SessionLink` is untested** ([§5.17](#517-sessionlink)). Resolved rather than deferred so implementers do not invent divergent forms, but nothing has exercised it. Support is OPTIONAL at v1. | Provisional. Re-examine when offline multi-device is built. |
@@ -1284,5 +1322,7 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 | **No arbitrating host** | Either of the above. The condition I23 and [§8.3](#83-the-zero-host-regime) are scoped to. |
 | **Arbitrate** | To issue a Shot from the Candidates of several peers, `authority: host`. |
 | **Canonical instant** | Mid-exposure, per [§6.1](#61-canonical-instant). |
+| **Stream-anchored Capture** | A Capture realising an interval of a `continuous` Stream rather than an event. `anchor: { stream: true }`. |
+| **Preview** | A `continuous`, low-rate Stream from a capture Source, for live monitoring and never for measurement. |
 | **Bundle** | A Session serialised as a recorded PPCP message stream. Not a distinct entity. |
 | **Declaration** | The symmetric exchange in which each peer states its timebases, sources, profiles and calibration. |

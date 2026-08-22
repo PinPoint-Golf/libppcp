@@ -407,7 +407,9 @@ capture_announce {
 
 - **(8.1a) MUST** `capture_announce` is sent as soon as the Capture's metadata is known, independently of whether its payload has begun transferring.
 - **(8.1b) MUST NOT** `capture_announce` carry `AchievedFrames` — the per-frame series (I30). It carries `achieved_summary` only. The series travel with the payload ([§8.3](#83-the-payload_-family)).
-- **(8.1c) MUST** A Capture anchored to a Candidate sets `anchor: { candidate_id }`; one anchored to a Shot sets `anchor: { shot_id }`. Exactly one (I27).
+- **(8.1c) MUST** A Capture sets exactly one anchor key (I27): `{ shot_id }` for a clip around a Shot's `t0`, `{ candidate_id }` for the evidence window explaining a nomination, or `{ stream: true }` for a segment of a `continuous` Stream belonging to no event.
+- **(8.1f) MUST** A stream-anchored `capture_announce` carries `interval`, and the announced segments plus their gaps account for the Stream's whole open interval (I36). This is the route by which continuous attitude, sensor-arrival evidence and `preview` frames reach a consumer during capture — none of which has a Shot to hang from.
+- **(8.1g) SHOULD** Preview payload travels on a **bulk channel distinct** from shot payload, and is the first thing dropped under contention ([`PPCP-CORE` §5.11h–i](ppcp-core.md#5112-preview-streams)). A preview frame that arrives late is worth nothing; a clip that arrives late is worth everything.
 - **(8.1d) MUST NOT** A thumbnail exceed 64 KiB. Larger previews are Captures with their own payload.
 - **(8.1e)** `Capture.digest` MAY be absent from the announce and MUST be present by `payload_begin`. The digest covers the whole payload, so requiring it here would make the immediate message wait for the clip to be fully extracted and hashed — which is the opposite of what the message is for.
 

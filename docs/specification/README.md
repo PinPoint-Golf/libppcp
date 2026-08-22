@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **APPROVED for implementation**, 22 August 2026 |
+| Status | **APPROVED for implementation**, 22 August 2026. Revision 5 — one defect fixed since approval ([`CORE` §0.5](ppcp-core.md#05-what-changed-in-revision-5)) |
 | Date | 22 August 2026 |
 | Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
@@ -35,7 +35,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 | Read | Document | Authority | What it settles |
 |---|---|---|---|
-| 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-five invariants |
+| 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-six invariants |
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
@@ -44,6 +44,17 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | — | [**reviews/**](reviews/) | Input | All eight reviews as submitted |
 
 If you have an hour, read `PPCP-CORE` §2 (profiles), §5 (the model) and §6.1 (the canonical instant), then `PPCP-MSG` Annex A. If you have twenty minutes, read the review disposition and `PPCP-CORE` §6.1.
+
+## What changed in revision 5
+
+Since approval. One defect, found by tracing a host-side requirement for live on-screen feedback rather than by review.
+
+| | Change |
+|---|---|
+| **1** | **A `continuous` Stream could carry nothing.** Every payload message is keyed on `capture_id` and every Capture anchored to a Shot or a Candidate — so the interval a continuity flag exists to describe was the one with no carriage. Continuous attitude and gravity, the raw sensor-arrival evidence a bundle must carry, and `imu`/`wrist` while armed were all unmeetable obligations. `Capture.anchor` gains `{ stream: true }`; I27 amended, **I36** added for the coverage rule. No new message. |
+| **2** | **`preview` defined** — a second Stream from an existing Source, low rate, `continuous`, never used for measurement, on its own bulk channel and the first thing dropped under contention. It is what a consumer needs to see that a capture peer reflects what the user is doing; heartbeat only proves the link is up. |
+
+Additive: no field removed, no type narrowed, no meaning changed. It lands in `1.0` because `1.0` is approved and not yet frozen, and because a flag with nothing behind it is a defect rather than a missing feature.
 
 ## What changed on approval
 
