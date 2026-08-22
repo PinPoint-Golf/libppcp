@@ -5,9 +5,9 @@
 | | |
 |---|---|
 | Document | `PPCP-RV` |
-| Version | **1.0, Draft 3** |
+| Version | **1.0, Draft 4** |
 | Payload version | `ppcp1` |
-| Status | **Draft — second-pass reviews carried. [§5.2](#52-tls-profile) is BLOCKED: the platform check returned negative and the mechanism needs a decision ([§5.4](#54-open-how-the-properties-of-52h-are-obtained)).** |
+| Status | **Draft — unblocked. [§5.2](#52-tls-profile) resolved by a product decision on data sensitivity ([§5.4](#54-resolved-the-mechanism)); forward secrecy is now best-effort rather than required.** |
 | Date | 22 August 2026 |
 | Versioned | Independently of PPCP. Same repository. |
 | Relates to | [`PPCP-CORE`](ppcp-core.md) §3 (transport contract), §5.2.1 (peer identity), §12 (security considerations) |
@@ -22,9 +22,11 @@ This is the companion specification that [`PPCP-CORE` §12](ppcp-core.md#12-secu
 
 **Draft 2** carries the first-pass findings from both implementation teams. Draft 1 asked for [§4](#4-rv-2--the-pairing-code) to get the hardest reading and the least benefit of the doubt, and it needed it: the host reviewer recomputed the deterministic key ordering that §4.3 relies on and found that **`v` was not in fact the first key whenever a display name was present** — a defect invisible in the only worked example, in the one part of the document that cannot be corrected after a code is printed. That is [§4.3b](#43-payload), and it is the argument for putting test vectors in a specification and for exercising them with every optional field rather than none.
 
-**Draft 3** carries the second-pass findings and one result that changes the shape of the document. The platform check that Draft 2 scheduled has been **run, and it failed**: TLS 1.3 with an external pre-shared key is not reachable through the mobile platform's interface, and neither is the TLS 1.2 fallback the disposition was counting on — the platform offers plain PSK with **no forward secrecy** and no way to ask for anything else ([§5.4](#54-open-how-the-properties-of-52h-are-obtained)).
+**Draft 4** resolves the one thing Draft 3 left blocked. The platform check was run and failed: TLS 1.3 with an external pre-shared key is not reachable through the mobile platform's interface, and neither is the TLS 1.2 ECDHE_PSK fallback — plain PSK is all it offers ([§5.4.1](#541-what-was-measured)).
 
-So **[§5.2](#52-tls-profile) is blocked, and it is a decision rather than a redraft.** [§5.2h](#52-tls-profile) is what makes it decidable: it states the properties the profile exists to deliver, so the choice is now between mechanisms measured against a stated requirement rather than a negotiation about a version number. Everything else in this document — discovery, the pairing code, network join, the security model — is unaffected by the outcome, and the irreversible part is settled.
+The protocol owner has taken the decision, on the grounds that the data carried is not highly sensitive: **forward secrecy becomes best-effort rather than required.** [§5.4.3](#543-the-decision) records it in full, including what was given up, what both reviewers said about it, and what now carries more weight as a result.
+
+**Only forward secrecy is relaxed.** The channel is still encrypted and still mutually authenticated; an unpaired peer still receives nothing; nothing stable still crosses in the clear. Two of the three properties of [5.2h](#52-tls-profile) are unchanged, and [5.2f](#52-tls-profile) — never fall back to an unencrypted connection, under any circumstances including a user instruction — is unchanged and unaffected.
 
 **One item was already decided by shipping.** The mobile application declares `_ppcp._tcp` in its bundle, chosen before this document existed. [§3.1](#31-service-type) ratifies it rather than picking a different name; see [Annex A1](#annex-a--decisions-and-alternatives). Both reviewers endorsed that.
 
@@ -254,22 +256,28 @@ Derivation rather than direct use is what keeps the two purposes independent: an
 
 ### 5.2 TLS profile
 
-- **(5.2a) MUST** TLS 1.3 (RFC 8446) with an external pre-shared key. Earlier versions MUST NOT be negotiated. **⚠ BLOCKED — see [§5.4](#54-open-how-the-properties-of-52h-are-obtained).** This clause is unachievable on at least one first-party platform and is not agreed. It is retained as written, rather than weakened, until the mechanism is chosen.
-- **(5.2b) MUST** The key exchange mode is **`psk_dhe_ke`**. `psk_ke` MUST NOT be used.
+- **(5.2a) MUST** TLS with an external pre-shared key. **TLS 1.3 (RFC 8446) is used wherever both peers can reach it**; TLS 1.2 with a PSK ciphersuite is permitted only where a peer's platform cannot ([§5.4](#54-resolved-the-mechanism)). Nothing below TLS 1.2 is ever negotiated.
+- **(5.2b) MUST** At TLS 1.3 the key exchange mode is **`psk_dhe_ke`**; `psk_ke` MUST NOT be used. At TLS 1.2, `TLS_ECDHE_PSK_*` is used where the platform can name it, and a plain `TLS_PSK_*` suite only where it cannot.
+- **(5.2b1) MUST** A peer offers the strongest option it has and accepts the strongest the counterpart offers. **A peer MUST NOT propose a weaker mode than its platform supports**, because the weakest end sets the outcome and there is no way for the other to tell a limitation from a choice.
 - **(5.2c) MUST** The PSK's associated hash is SHA-256.
-- **(5.2d) MUST** `TLS_AES_128_GCM_SHA256` is supported. `TLS_AES_256_GCM_SHA384` and `TLS_CHACHA20_POLY1305_SHA256` SHOULD be.
+- **(5.2d) MUST** `TLS_AES_128_GCM_SHA256` is supported at TLS 1.3. Where TLS 1.2 is used, `TLS_PSK_WITH_AES_128_GCM_SHA256` (RFC 5487) is the interoperable floor; `TLS_ECDHE_PSK_WITH_AES_128_GCM_SHA256` (RFC 8442) SHOULD be preferred where available.
 - **(5.2e) MUST NOT** Certificates, a public-key infrastructure, or a certificate authority be required. A peer MUST NOT reject a counterpart for presenting no certificate.
 - **(5.2f) MUST NOT** An implementation fall back to an unencrypted connection under any circumstances, including a handshake failure, a timeout, or a user instruction. A failed handshake is a failed connection.
 - **(5.2g) MUST** The peer that dialled is the TLS client; the peer that listened is the TLS server. This follows the dialling direction of [§2](#2-rendezvous-paths) and differs between the two paths.
 - **(5.2h)** **The properties this profile exists to deliver are three:**
-  1. **Mutual authentication** from a secret that only reaches the counterpart by being scanned.
-  2. **Forward secrecy** of captured traffic against later disclosure of that secret.
-  3. **No value stable across connections crosses in the clear** ([5.3e](#53-psk-identity)).
 
-  TLS 1.3 with `psk_dhe_ke` is the *mechanism*, not the requirement. Any change of mechanism — see [§5.4](#54-open-how-the-properties-of-52h-are-obtained) — is evaluated against all three. A mechanism preserving all three is a different mechanism rather than a weakening; one that drops any of them is not available. Note that property 3 binds a **server-sent** field as much as a client-sent one: a `psk_identity_hint`, which exists in the TLS 1.2 PSK model and is sent in the clear, MUST be empty.
+  | | Property | Status |
+  |---|---|---|
+  | 1 | **Mutual authentication** from a secret that only reaches the counterpart by being scanned | **Required.** Unchanged. |
+  | 2 | **Forward secrecy** of captured traffic against later disclosure of that secret | **Best-effort.** Obtained wherever the peers can reach TLS 1.3 `psk_dhe_ke` or a TLS 1.2 ECDHE_PSK suite; not obtained otherwise. See [§5.4.3](#543-the-decision). |
+  | 3 | **No value stable across connections crosses in the clear** ([5.3e](#53-psk-identity)) | **Required.** Unchanged, and it binds a **server-sent** field as much as a client-sent one: a `psk_identity_hint`, which exists in the TLS 1.2 PSK model and is sent in the clear, MUST be empty. |
+
+  Property 2 was `Required` until Draft 4 and was relaxed by a product decision on the sensitivity of the data carried, **not** by a mechanism turning out to be inconvenient. Properties 1 and 3 are not negotiable, and neither is [5.2f](#52-tls-profile).
 - **(5.2i)** A peer whose platform does not expose the key-exchange mode cannot assert 5.2b by construction. It demonstrates conformance by **observed handshake** — a capture of the `ClientHello`'s `psk_key_exchange_modes` extension, or a counterpart instrumented to refuse `psk_ke` — which is why RT-4's method is `injected` rather than `static`.
 
-5.2b is the requirement most likely to be dropped for simplicity, and it is the one that matters most in a year's time. Plain `psk_ke` has **no forward secrecy**: anyone who captures a session and later obtains the pairing secret can decrypt everything retrospectively. With `psk_dhe_ke` an ephemeral Diffie-Hellman exchange runs alongside the PSK, and a later compromise of the secret does not retroactively expose captured traffic. Both major TLS implementations in use here support it; it costs one round trip of elliptic-curve arithmetic.
+**What 5.2b buys where it is reachable.** An ephemeral Diffie-Hellman exchange runs alongside the PSK, so a later compromise of the pairing secret does not retroactively expose captured traffic. Without it, anyone who recorded a session and subsequently obtains that secret decrypts the recording. The cost is one round trip of elliptic-curve arithmetic, which is why 5.2b1 requires a peer to offer it whenever it can rather than settling for the floor.
+
+**Downgrade is not a live attack here.** The negotiated version and ciphersuite are covered by the handshake transcript, and the transcript is authenticated by the PSK — so an attacker cannot force a weaker mode without the secret, and an attacker holding the secret has already won. What 5.2b1 guards against is not an attacker but an implementation that offers less than it has, which no peer on the other end can distinguish from a platform limitation.
 
 TLS 1.3 with an external PSK provides **mutual authentication**: each end proves it holds `K_tls`, so no certificate is needed for either direction. That is exactly the property required — no unpaired peer may receive capture payload — with none of the infrastructure a certificate model would drag in.
 
@@ -295,9 +303,9 @@ The TLS client sends an identity so the server can select the right key.
 
 The construction is the one already in the document, keyed the same way and the same 17 octets. It also restores 5.3d's justification: an attacker cannot produce a resolvable identity without `K_id`, so there is no identity to probe the oracle with. Resolving costs one HMAC per held pairing, which A10 already accepted as cheap at this scale.
 
-### 5.4 Open: how the properties of 5.2h are obtained
+### 5.4 Resolved: the mechanism
 
-**This section records a blocking result and does not resolve it.** The choice is larger than a specification edit and belongs to both implementation teams.
+**A measurement ruled out the assumed mechanism; a product decision resolved what to do about it.** Both are recorded here, because the second overrides the stated position of both implementation reviewers and should not be discoverable only from a commit message.
 
 #### 5.4.1 What was measured
 
@@ -316,29 +324,43 @@ Against [5.2h](#52-tls-profile)'s three properties: mutual authentication is ach
 
 - **(5.4a)** The check ran on the desktop variant of the same frameworks, which carry identical availability annotations and the same ciphersuite enumeration on both platforms. **Confirmation on the mobile device itself is outstanding** and is an afternoon's work. A decision of this size should not turn on a platform difference nobody expected.
 
-#### 5.4.2 What follows
+#### 5.4.2 What the routes were
 
-- **(5.4b)** **Dropping forward secrecy is not available.** [5.2h](#52-tls-profile) says so and A6 says why: anyone who captures a session and later obtains the pairing secret decrypts it retrospectively. The platform being awkward does not weaken that reasoning.
-- **(5.4c)** **Relaxing to TLS 1.2 is overtaken**, not exercised. It was recorded as the fallback because it was thought to preserve forward secrecy through an ECDHE_PSK suite; the measurement shows that suite is unreachable, so the fallback preserves nothing the original did not.
-- **(5.4d)** Whatever is chosen changes **only this section**. Discovery ([§3](#3-rv-1--service-discovery)), the pairing code ([§4](#4-rv-2--the-pairing-code)) including the part that cannot be changed after a code is printed, network join ([§6](#6-rv-4--network-join)) and the security model ([§7](#7-rv-5--security-model)) are all independent of the mechanism. The resolvable identity of [§5.3](#53-psk-identity) survives too: under a non-TLS mechanism it becomes a pre-handshake selector rather than a TLS PSK identity, with the same construction and the same purpose.
-- **(5.4e)** A peer handed an established byte stream — a wired tunnel, or a socket from an embedding application — is unaffected entirely ([§9a](#9-conformance)). The blast radius is network pairing.
+Four, and they were weighed against [5.2h](#52-tls-profile)'s three properties rather than against convenience.
 
-#### 5.4.3 The routes, and a recommendation
-
-*Non-normative. Recorded so the choice is made against costs rather than against whichever option is raised last.*
-
-| | Route | Gets 5.2h? | Cost |
+| | Route | Gets all three? | Principal cost |
 |---|---|---|---|
-| **A** | **Embed a TLS library** on the platform that cannot do it natively | All three | Binary size, on an application whose premise is that its users could not afford cameras. It changes the answer to the store's export-compliance declaration, because the application then ships its own cryptography. An ongoing patching obligation on a security-critical dependency, released on a cadence gated by app review. And it cuts directly against [A4](#annex-a--decisions-and-alternatives), which vendors a small codec specifically to avoid a heavy dependency. |
-| **B** | **A Noise handshake over the raw socket** — e.g. `Noise_NNpsk0_25519_ChaChaPoly_SHA256` | All three | Neither end uses platform TLS. Primitives come from the platform's own cryptography framework on the mobile side and from the host's existing library on the other, so **no TLS stack is embedded**. Noise is an established, formally analysed framework used in widely deployed systems, not a bespoke design. `§5` becomes a Noise profile — a rewrite of one section, needing its own review pass. |
-| **C** | **Application-layer ephemeral key over platform TLS-PSK** — keep plain PSK for the channel, agree an ephemeral key inside it and encrypt bulk payload under that | **Partial** — payload only; control traffic stays retrospectively decryptable | Smallest change, and a hybrid. Candidate times, shot times and thermal state remain exposed to a later secret disclosure. Not recommended. |
-| **D** | **Accept plain PSK and drop forward secrecy** | No | Excluded by [5.4b](#542-what-follows). Named so that it is visibly excluded rather than silently reached for under schedule pressure. |
+| **A** | Embed a TLS library on the platform that cannot do it natively | Yes | Binary size; a changed export-compliance declaration; a patching obligation on an app-review-gated cadence |
+| **B** | A Noise handshake over the raw socket | Yes | Neither end uses platform TLS; `§5` becomes a Noise profile, needing its own review pass |
+| **C** | An application-layer ephemeral key over plain PSK | Payload only | A hybrid; control traffic stays retrospectively decryptable |
+| **D** | Accept plain PSK where that is all the platform offers | No — property 2 is lost | None to the implementations. The cost is the property itself |
 
-**Recommendation: Route B**, subject to two confirmations that cost an afternoon between them — the check re-run on the mobile device ([5.4a](#541-what-was-measured)), and the export-compliance position for an application using only platform-supplied primitives, which is the question that most distinguishes B from A.
+#### 5.4.3 The decision
 
-The reasoning is that B obtains all three properties with the smaller dependency, and that one end was going to bypass its toolkit's TLS regardless: the host implementation had already established that its framework's PSK interface is a TLS 1.2-era API that does not reach external PSKs, and planned to use its TLS library's session callbacks directly. Route B replaces that with the same library's primitives.
+**Route D. Taken by the protocol owner on 22 August 2026, on the grounds that the data carried is not highly sensitive.** Forward secrecy moves from *required* to *best-effort* ([5.2h](#52-tls-profile)).
 
-Route A is the conservative answer and nobody should be argued out of it cheaply. If the export-compliance answer turns out to be the same either way, most of B's advantage over A disappears and A's better-reviewed implementation should win.
+**What is given up, stated plainly.** An attacker who records a session on a shared network — a range, a public venue — and **later** obtains that session's pairing secret can decrypt the recording retrospectively. They obtain it by photographing the code, or from a peer's storage. Single use ([7.3a](#73-single-use-and-expiry)) stops a photographed code being *used* to pair; it does not stop it decrypting a recording of the session it created.
+
+**What is not given up.** The channel remains encrypted and mutually authenticated. No unpaired peer receives anything ([§7.1](#71-threat-model)). Nothing stable crosses in the clear ([5.3e](#53-psk-identity)). [5.2f](#52-tls-profile) — never fall back to an unencrypted connection, under any circumstances including a user instruction — is untouched. **Only property 2 changed.**
+
+**The judgement, and its edge.** Swing video of a golfer is not sensitive material, and that is a reasonable basis for the trade. The part of the payload that carries a privacy dimension is not the video but the **candidate-attached audio windows**: they are short and centred on transients, but retention attaches to candidates rather than shots, so they capture events that were *not* shots — an adjacent player, a conversation — and [`PPCP-CORE` §13c](ppcp-core.md#13-privacy-considerations) says plainly that their count is not bounded by anything the user does. In the lesson use case that is a coach and a pupil talking. The decision is the owner's to make; this is the part of the payload it should be made about.
+
+**Both reviewers had taken the opposite position**, and the record should show it rather than quietly lose it:
+
+> *"this is the one clause in the document I would refuse to relax under schedule pressure"* — host review, on 5.2b
+>
+> *"Dropping forward secrecy is not available. §5.2h says so, A6 says why, and the reasoning is not weakened by the platform being awkward."* — mobile review, after running the check
+
+Neither was overruled by schedule pressure, which is what both were guarding against. The relaxation rests on a judgement about the data — a judgement that is the product owner's and not a reviewer's — and it should go back to both teams as a decision taken rather than a question reopened.
+
+**What now carries more weight, because it is what is left.**
+
+- **(5.4f) MUST** A peer offers the strongest mode its platform supports ([5.2b1](#52-tls-profile)). Where both ends can reach TLS 1.3, forward secrecy is obtained and nothing has been lost; the relaxation applies only to the leg that cannot.
+- **(5.4g) MUST** Single use and publisher-side expiry ([§7.3](#73-single-use-and-expiry)) are now the **primary** defence around the pairing secret rather than a secondary one, because the secret's later disclosure is no longer contained by the key exchange.
+- **(5.4h) SHOULD** A peer erase a session's derived key material at session close unless the pairing is persisted ([7.2d](#72-handling-the-pairing-secret)), and a persisted pairing remains visible and revocable ([7.4b](#74-persistent-pairings)). Key material that no longer exists cannot be disclosed later.
+- **(5.4i)** Where a deployment does regard its payload as sensitive — a different product on this protocol, or this one after a reassessment — the answer is Route A or B, not a variation of D. [§5.2h](#52-tls-profile) still states the property, and [§5.4.2](#542-what-the-routes-were) still names what obtains it.
+
+**This decision is reversible and the reversal is bounded.** Only `§5` changes under any route; discovery, the pairing code including the part that cannot be corrected after printing, network join and the security model are all independent of the mechanism, and [§5.3](#53-psk-identity)'s resolvable identity survives as a pre-handshake selector under a non-TLS one.
 
 ---
 
@@ -376,7 +398,7 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 |---|---|
 | An unpaired peer on the same network receiving capture payload | Mutual authentication from a secret that only reaches the counterpart by being scanned ([§5.2](#52-tls-profile)) |
 | Passive interception on a shared or hostile network | TLS 1.3 |
-| Retrospective decryption after the pairing secret leaks | `psk_dhe_ke` forward secrecy ([§5.2b](#52-tls-profile)) |
+| Retrospective decryption after the pairing secret leaks | **Only where both peers reach TLS 1.3 or a TLS 1.2 ECDHE_PSK suite** ([§5.2b](#52-tls-profile)). Otherwise **not defended** — see below. |
 | Tracking a device across venues by its advertisement, or by its first TLS flight | Rotating resolvable identifiers, in the advertisement ([§3.4](#34-resolvable-identifiers)) **and in the PSK identity** ([§5.3](#53-psk-identity)) — both halves are needed, and Draft 1 had only the first |
 | A pairing code photographed and reused later | Single use and expiry ([§7.3](#73-single-use-and-expiry)) |
 | A stale code reaching a newer peer and being half-understood | Version marker and its reporting obligation ([§4.2](#42-version-handling)) |
@@ -390,6 +412,7 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 | Traffic analysis | Payload sizes and timing reveal that capture is happening and roughly when. Not addressed. |
 | Denial of service | An attacker on the link can disrupt multicast or the transport. The fallbacks in [§3.6](#36-multicast-is-not-to-be-relied-on) reduce the impact; nothing prevents it. |
 | **Impersonation between peers that scanned the same multi-use code** | They hold **identical key material** by construction ([§7.4f](#74-persistent-pairings)). `mu: 1` is the pairwise case; `mu > 1` is a group credential and must be read as one. |
+| **Retrospective decryption of a recorded session, where the pairing secret is later obtained and the peers could not reach an ephemeral key exchange** | A deliberate trade, taken on the sensitivity of the payload ([§5.4.3](#543-the-decision)). Single use and publisher-side expiry ([§7.3](#73-single-use-and-expiry)) reduce the window in which a secret is obtainable; they do not close it. |
 | Anything after the byte stream exists | PPCP's problem, and PPCP assumes the stream is authenticated ([§1.3c](#13-where-it-stops)). |
 
 ### 7.2 Handling the pairing secret
@@ -632,7 +655,7 @@ The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in 
 | **A3** | **A custom scheme, not an `https` link** | An `https` universal link, which would also let an uninstalled application be found in a store | The payload carries a secret. If the application is absent the operating system opens the URL in a browser, sending the secret to a web server and into history. The store-discovery benefit is real and belongs beside the code as separate text. |
 | **A4** | **CBOR payload** | A packed binary struct, or query parameters | The library already carries a CBOR codec for [`PPCP-ENC`](ppcp-encoding.md), so the code costs no new parser, and unknown-key tolerance matches the extension model PPCP already has. A packed struct would be ~20 bytes smaller and unextendable. |
 | **A5** | **Derive `K_tls` and `K_id` rather than use `psk` directly** | Use the scanned secret as the TLS PSK, and again as the identifier key | Domain separation. The identifier is published in the clear on a multicast network; deriving it from a separate key means that publication reveals nothing about the key that completes a handshake. |
-| **A6** | **`psk_dhe_ke` mandatory** | Permit `psk_ke`, which is simpler and one round trip cheaper | Forward secrecy. Without it, anyone who captured a session and later obtains the secret decrypts it retrospectively. This is the requirement most likely to be dropped for simplicity and the one most expensive to add back. **Upheld under pressure**: the mobile platform offers only plain PSK, and the answer is to change the mechanism ([§5.4](#54-open-how-the-properties-of-52h-are-obtained)) rather than the property. Both reviewers independently said this is the one clause they would refuse to relax. |
+| **A6** | **`psk_dhe_ke` mandatory** | Permit `psk_ke`, which is simpler and one round trip cheaper | Forward secrecy. Without it, anyone who captured a session and later obtains the secret decrypts it retrospectively. This is the requirement most likely to be dropped for simplicity and the one most expensive to add back. **Upheld against the platform, then relaxed on the data.** Both reviewers independently said this was the one clause they would refuse to relax, and neither was overruled by schedule pressure — which is what they were guarding against. It was relaxed to *best-effort* by a product judgement that the payload is not highly sensitive ([§5.4.3](#543-the-decision)). The property, and what obtains it, are still stated: a deployment that judges differently reverses the decision without redesigning anything but `§5`. |
 | **A7** | **Rotating resolvable identifiers in TXT** | Publish `Peer.id`, which is far simpler | A stable identifier broadcast on every network a golfer visits is a tracking beacon. The resolvable form costs one HMAC per known pairing per discovery. |
 | **A8** | **Single use by default, with an explicit `mu`** | Codes reusable until the session ends | A code that is silently reusable forever is the failure a photograph exploits. `mu` keeps the multi-device workflow without making reuse the unstated default. |
 | **A9** | **The scanner dials on the code path, the browser dials on the discovery path** | Force one direction, so only one peer needs a listener | A code can only carry the endpoint of the peer displaying it, and discovery is best served by putting the querier role on whichever peer can browse without binding a port that platform responders already own — a SHOULD, not a constraint ([§3.5b](#35-who-advertises-and-who-browses)). The asymmetry is inherent; only the code path is required, so a minimal implementation still needs one direction. |
@@ -653,6 +676,7 @@ The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in 
 | ~~**B4**~~ | ~~Expiry depends on two wall clocks.~~ | **Closed in Draft 2.** The publisher enforces `exp` ([7.3e](#73-single-use-and-expiry)) because it holds the authoritative clock, and a peer that cannot trust its own attempts rather than refuses ([4.4a1](#44-handling-a-scanned-code)). |
 | **B5** | **No pairing-time transport negotiation.** The code carries endpoints and a port, so a publisher offering both a tunnel and a network connection must display a code per transport or list both as endpoints. Whether that is sufficient is untested. | Open. |
 | ~~**B6**~~ | ~~The identity is `sid`-bound.~~ | **Closed in Draft 2**, and it was not an aesthetic issue: a persisted pairing broadcast a fixed sixteen bytes in the clear on every reconnection, undoing [§3.4](#34-resolvable-identifiers). The identity is now resolvable and rotates ([§5.3a](#53-psk-identity)). |
-| **B8** | **Resolved, negatively: TLS 1.3 external PSK is not reachable through the mobile platform's interface, and neither is the ECDHE_PSK fallback.** Plain PSK with no forward secrecy is all the platform offers, and its ciphersuite enumeration cannot name a PSK suite at all. The measurement is in [§5.4.1](#541-what-was-measured). The prediction that the host library's long-standing support would make this invisible to every test was correct, which is what made it worth checking rather than assuming. | **Blocking [§5.2](#52-tls-profile) — a decision, not a redraft.** Routes and a recommendation in [§5.4.3](#543-the-routes-and-a-recommendation). Device-level confirmation outstanding ([5.4a](#541-what-was-measured)). |
+| ~~**B8**~~ | ~~TLS 1.3 external PSK may not be reachable on the mobile platform.~~ | **Closed.** Measured and unreachable ([§5.4.1](#541-what-was-measured)); resolved by relaxing forward secrecy to best-effort ([§5.4.3](#543-the-decision)). Device-level confirmation ([5.4a](#541-what-was-measured)) is still worth having, but no longer gates anything. |
+| **B12** | **Forward secrecy is now best-effort, and nothing replaces it on the leg that lacks it.** A per-session **ratchet** — re-deriving `PRK` at each session close and erasing its predecessor — would restore the property for every session after the first, at the cost of persistent state that both ends must keep in step and recover from when they fall out of it. It is not specified, and it is the cheapest route back to property 2 without changing the transport. | Open — worth revisiting if the payload is ever reassessed, or if a peer wants it independently. |
 | **B9** | **`role` in a TXT record is unverified before pairing.** A peer advertising `role: host` is taken at its word by a browser deciding whether to dial. It costs only a wasted connection — the handshake authenticates — but a browser should not treat it as more than a filter hint. | Open. |
 | **B7** | **Interoperability is untestable until a second implementation exists.** Every test in [§9](#9-conformance) can pass against a single implementation's own assumptions, which is exactly the failure mode [`PPCP-CONF` §5c](ppcp-conformance.md#5-interoperability) records for PPCP itself. | Open — structural. |

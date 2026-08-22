@@ -200,9 +200,9 @@ The cause is structural: the platform's ciphersuite enumeration contains **no PS
 It does not weaken the requirement, and it does not choose the mechanism.
 
 - **[§5.2a](ppcp-rv.md#52-tls-profile) is marked BLOCKED** and retained as written. Weakening a security clause to match a platform limitation, before anyone has decided what to do, is the failure mode this whole document set exists to avoid.
-- **[§5.4](ppcp-rv.md#54-open-how-the-properties-of-52h-are-obtained)** records the measurement, states what follows, and lays out four routes with their costs — embed a TLS library; a Noise handshake over the raw socket; an application-layer ephemeral key over plain PSK; or accept no forward secrecy. The last is named **so that it is visibly excluded rather than silently reached for under schedule pressure.**
+- **[§5.4](ppcp-rv.md#54-resolved-the-mechanism)** records the measurement, states what follows, and lays out four routes with their costs — embed a TLS library; a Noise handshake over the raw socket; an application-layer ephemeral key over plain PSK; or accept no forward secrecy. The last is named **so that it is visibly excluded rather than silently reached for under schedule pressure.**
 - **[5.2h](ppcp-rv.md#52-tls-profile) gained a third property** on the host reviewer's point, and it is what makes the decision tractable: the choice is between mechanisms measured against stated properties, not a negotiation about a version number. The host reviewer called 5.2h *"the most valuable thing in Draft 2, more than any of my findings"*, and this is why.
-- **[5.4d](ppcp-rv.md#542-what-follows) bounds the blast radius**: only §5 changes under any route. Discovery, the pairing code — including the irreversible part — network join and the security model are all independent of it, and the resolvable identity of §5.3 survives a mechanism change as a pre-handshake selector.
+- **[5.4d](ppcp-rv.md#542-what-the-routes-were) bounds the blast radius**: only §5 changes under any route. Discovery, the pairing code — including the irreversible part — network join and the security model are all independent of it, and the resolvable identity of §5.3 survives a mechanism change as a pre-handshake selector.
 
 **A recommendation is recorded, not a decision**: Route B, a Noise handshake over the raw socket, subject to two confirmations worth an afternoon between them — the check re-run on the device rather than the desktop variant, and the export-compliance position for an application using only platform-supplied primitives. Route A, embedding a TLS library, is the conservative answer and the document says plainly that nobody should be argued out of it cheaply.
 
@@ -260,3 +260,55 @@ The tail clause is deleted rather than repaired, because the truth is now strong
 The host reviewer's closing note on where the defects have been found across two passes is worth carrying into that round:
 
 > Draft 1's findings were in the model and the arithmetic. Draft 2's are in the **joins** — a clause that was correct before the fix next door landed, a rule whose scope nobody stated because the author knew what they meant, a label reused because the paragraph above it moved.
+
+
+---
+
+# The mechanism decision — 22 August 2026
+
+Recorded separately from the review rounds, because it is not a review finding: it is a product decision that **overrides the stated position of both reviewers**, and it should be legible as such.
+
+## 11. What was decided
+
+**Route D.** Forward secrecy moves from *required* to *best-effort* ([`RV` 5.2h](ppcp-rv.md#52-tls-profile)), on the protocol owner's judgement that the data carried is not highly sensitive.
+
+The measurement that forced the choice stands: TLS 1.3 with an external PSK does not complete on the mobile platform, and the TLS 1.2 ECDHE_PSK fallback is unreachable because the platform's ciphersuite enumeration contains no PSK suites at all. That was not in dispute.
+
+What was in dispute was what to do about it, and there were four answers ([`RV` §5.4.2](ppcp-rv.md#542-what-the-routes-were)). The specification recommended Route B — a Noise handshake over the raw socket — which obtains all three properties. The decision taken is Route D, which does not.
+
+## 12. What that costs, precisely
+
+**Only property 2.** An attacker who records a session and **later** obtains its pairing secret can decrypt the recording retrospectively. Single use stops a photographed code being used to pair; it does not stop it decrypting the session it created.
+
+**Not relaxed**, and worth stating because "relax the encryption" is a broader phrase than the change:
+
+- the channel is still encrypted and still mutually authenticated;
+- no unpaired peer receives anything;
+- nothing stable crosses in the clear;
+- [5.2f](ppcp-rv.md#52-tls-profile) — never fall back to an unencrypted connection, under any circumstances including a user instruction — is untouched;
+- and where **both** peers can reach TLS 1.3, forward secrecy is still obtained. The relaxation applies to the leg that cannot, which today is the mobile one.
+
+**The edge worth naming.** Swing video is a reasonable thing to judge non-sensitive. The part of the payload with a privacy dimension is the candidate-attached audio: retention attaches to candidates rather than shots, so it keeps windows for events that were *not* shots — an adjacent player, a conversation — and `PPCP-CORE` §13c states that their count is not bounded by anything the user does. In the lesson use case that is a coach and a pupil talking. That is the part of the payload this judgement is really about, and it is the owner's to make.
+
+## 13. Both reviewers had said no
+
+Neither was overruled by schedule pressure, which is the thing both were explicitly guarding against:
+
+> *"this is the one clause in the document I would refuse to relax under schedule pressure"* — host review of Draft 1, on 5.2b
+>
+> *"Dropping forward secrecy is not available. §5.2h says so, A6 says why, and the reasoning is not weakened by the platform being awkward."* — mobile review of Draft 2, after running the check
+
+The relaxation rests on a judgement about the **data**, which is a product owner's call and not a reviewer's. It should go back to both teams as a decision taken rather than a question reopened — and if either team's assessment of the payload differs from the owner's, that is the conversation to have, rather than a re-argument about mechanisms.
+
+## 14. What the document does with it
+
+It does not quietly restate the requirement. [5.2h](ppcp-rv.md#52-tls-profile) still names all three properties and marks property 2 **best-effort**, with the reason; [§5.4.2](ppcp-rv.md#542-what-the-routes-were) still names what would obtain it; [§7.1](ppcp-rv.md#71-threat-model) moves retrospective decryption into the *not defended* table with the trade named; and [A6](ppcp-rv.md#annex-a--decisions-and-alternatives) records that the clause was upheld against the platform and then relaxed on the data.
+
+Four things now carry more weight because they are what is left ([`RV` §5.4.3](ppcp-rv.md#543-the-decision)):
+
+- **5.2b1** — a peer offers the strongest mode its platform supports, and MUST NOT propose a weaker one than it has. Where both ends reach TLS 1.3, nothing was lost.
+- **5.4g** — single use and publisher-side expiry become the *primary* defence around the pairing secret rather than a secondary one.
+- **5.4h** — erase derived key material at session close unless the pairing is persisted. Key material that no longer exists cannot be disclosed later.
+- **5.4i** — a deployment that judges its payload differently reverses this by choosing Route A or B, and only `§5` changes.
+
+**B12** is recorded as the cheapest route back to property 2 without changing the transport: a per-session ratchet, re-deriving `PRK` at each close and erasing its predecessor, which restores forward secrecy for every session after the first. It is not specified and needs no decision now.
