@@ -581,3 +581,59 @@ Both teams have signed off. The specification moves to **APPROVED for implementa
 Neither is a specification problem, and neither is the protocol team's to build.
 
 [`PPCP-RV`](ppcp-rv.md) is not covered by this approval. It is Draft 1, unreviewed, and has its own cycle.
+
+
+---
+
+# Round 5 — revision 7
+
+Both teams reviewed the traceability closures. The mobile team approved; **the host team withheld approval** on three findings, one of which is a direct contradiction between two revisions.
+
+## 16. PPS-C1 — I38 forbade eviction the specification requires elsewhere
+
+**Accepted, and it is the fourth instance of a pattern this document set now names.** As written, I38 said *"whatever its retention policy"* and meant it. Four cases could not reach `confirmed`, and the first is a flat contradiction:
+
+| | Case | Why it could not be confirmed |
+|---|---|---|
+| a | **Preview** | [5.11j](ppcp-core.md#5112-preview-streams), added one revision earlier, **requires** a peer to discard an undelivered preview Capture. I38 forbade it |
+| b | **Any `absent` Capture** | No payload, no digest, so `capture_committed` cannot name it — and 5.11j's own remedy *generates* these |
+| c | **`already_present`** | A receiver holding the payload answers with an abort rather than a commit, on the path built to make reconnecting safe |
+| d | **Candidate audio** | [5.12.1c](ppcp-core.md#5121-candidate-evidence) already contemplates an *evicted* window, and its count is not bounded by anything the user does |
+
+The error was **scope**. I38 exists for one obligation — shot payload a consumer has not received yet — and was written as though it were about every Capture. [5.14g](ppcp-core.md#514-capture) now names four exits and I38 is scoped to *payload*; `CT-I38` gains all four, since as written it exercised only the first.
+
+## 17. PPC-1 — `confirmed` was unreachable on the path that ships first
+
+**Accepted.** `capture_committed` travels over a live connection, so a hostless session could never confirm anything — and that is the entry-level case the requirements call *"the normal case rather than a fallback"*. The offline path did not rescue it: a host importing a bundle does durably commit those payloads, but nothing said it ever tells the owning peer.
+
+[5.14h](ppcp-core.md#514-capture): a receiver that commits a Capture obtained from a bundle sends `capture_committed` on its next connection with the owning peer. **No new message and no new field** — I34 already made identity `Capture.id` scoped by `Session.id` and the owning `Peer.id`, which is exactly what names a Capture from a session received as a file. [5.14i](ppcp-core.md#514-capture) adds the honest half the reviewer asked for as the alternative: where there is no receiver at all, I38 protects nothing and retention is the peer's own policy.
+
+## 18. PPS-C2 — the convergence claim did not converge
+
+**Accepted; my claim was demonstrably wrong.** Revision 7 said two peers editing concurrently converge on the higher revision. Both hold revision 1, both produce revision 2, each receives an equal revision and *"an equal or lower revision is ignored"* — so they diverge permanently and silently, each believing it converged. A coach at a host and a golfer at a device drawing on one shot is the case markup exists for.
+
+Equal revisions now tiebreak on `author_peer_id`, which was already mandatory. A total order, not a merge — I9 still forbids merging.
+
+## 19. PPS-C3 — an Annotation could not name the view it was drawn on
+
+**Accepted.** `shot_id` plus `at` satisfies the requirement's literal wording and is insufficient in a session with more than one camera, which is the session this protocol exists for. Image coordinates from a down-the-line view rendered on a face-on view are *plausibly* wrong, which is worse than obviously wrong.
+
+`stream_id` added; [5.18g](ppcp-core.md#518-annotation) fixes `at` to that Stream's timebase, which also makes the frame anchor exact instead of a relation-conversion away — a sigma can otherwise land a line on the neighbouring frame. `nav_anchor` falls out correctly: a scrub target is a time rather than a place, so it names no Stream and lives in the session timebase.
+
+## 20. Both teams — `body` at 64 KiB on the control channel
+
+**Accepted.** The mobile team's framing settles it: the cap permitted, on the immediacy-critical channel, roughly what **I30** was written to keep off it. Lowered to **8 KiB** — the document's own 5.18f already argued that anything larger is a different feature — plus [5.18i](ppcp-core.md#518-annotation) requiring a peer to coalesce rapid revisions, since dragging a line resends the whole body each time.
+
+## 21. Smaller, and one endorsement worth keeping
+
+`Source.viewpoint.confidence` is now present **if and only if** `method: classified`. A person who states "down the line" is not expressing a probability, and requiring a number would ask a peer to invent one — the pattern I28 and I31 exist to prevent.
+
+The mobile team offered a **stronger argument for Shape A** than the one in the audit: *Captures are immutable and content-addressed; annotations are edited and deleted.* Shape B would have required mutable Captures, and mutable Captures break the idempotent re-import rule I34 provides. So Shape B was not merely inelegant — it was unimplementable without damaging something already relied on. That reasoning is better than the model-spine argument and is worth carrying.
+
+## 22. The process finding, and a fifth instance found by acting on it
+
+The host review's closing observation: **C1 is the fourth time a new MUST added in one revision has contradicted a MUST added in the previous one, in an adjacent section** — I36 and truncation, I32 and promotion, RT-4 and the TLS relaxation, and now I38 and the preview discard. Each was written correctly against the requirement it was closing and incorrectly against the section next to it. Their proposal: run the traceability sweep *the other way*.
+
+**Accepted as a required check.** [`PPCP-CONF` §5b2](ppcp-conformance.md#5-interoperability) makes an adjacent-MUST sweep mandatory before `ppcp/1.0` freezes.
+
+**Running it immediately found a fifth instance**, which no reviewer had raised: **I8** said a Candidate's evidence is never discarded, while [5.12.1c](ppcp-core.md#5121-candidate-evidence) contemplates an *evicted* window and [5.12.1b](ppcp-core.md#5121-candidate-evidence) makes retention peer policy. I8 and 5.12c now separate the evidence **record**, which is never discarded, from the evidence **payload**, which may be shed with its absence asserted. That is the check earning its place on the first run.

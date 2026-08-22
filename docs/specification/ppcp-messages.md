@@ -436,7 +436,8 @@ capture_committed { capture_id, digest: Digest }
 
 - **(8.4a) MUST** A **receiver** sends `capture_committed` when it holds a Capture's payload **durably** — written and flushed, not merely received. The owner sets `transfer: confirmed` on it ([`PPCP-CORE` §5.14f](ppcp-core.md#514-capture)).
 - **(8.4b) MUST NOT** An owner set `confirmed` on its own authority. Only the receiver can say it, which is the whole reason the message exists.
-- **(8.4c) MUST NOT** An owner evict a Capture that is not `confirmed` (I38).
+- **(8.4c) MUST NOT** An owner evict a Capture **holding unconfirmed payload** (I38). [`PPCP-CORE` §5.14g](ppcp-core.md#514-capture) names the four exits — confirmed, absent, `already_present`, or explicitly shed.
+- **(8.4e) MUST** A receiver that durably commits a Capture obtained **from a bundle** sends `capture_committed` for it on its next connection with the owning peer ([`PPCP-CORE` §5.14h](ppcp-core.md#514-capture)). Without it `confirmed` is unreachable on the offline path, which is where an entry-level capture peer spends most of its life.
 - **(8.4d)** It travels on the **control** channel: it is small, it is what releases storage on the other end, and it must not queue behind the next clip.
 
 `payload_ack` acknowledges a **chunk arriving**; `payload_end` travels from owner to receiver. Neither says the receiver has committed anything, so before revision 7 a capture peer required to track *local / sent / confirmed* could never reach the third state, and "evict nothing unconfirmed" was satisfiable only by evicting nothing ever.
@@ -482,7 +483,8 @@ annotation { annotation: Annotation }
 
 - **(9.0a) MUST** `annotation` travels **either direction** ([`PPCP-CORE` §5.18d](ppcp-core.md#518-annotation)). It is the only content in PPCP that does; every payload message elsewhere describes a Capture the sender owns.
 - **(9.0b) MUST** `body` is opaque and is stored and returned unchanged by a peer that does not understand its `format` (5.18a). Round-tripping is the requirement.
-- **(9.0c) MUST** A later `revision` for the same `id` supersedes an earlier one; an equal or lower revision is ignored. There is no merge (5.18e).
+- **(9.0c) MUST** Supersession is by `id`, then `revision`, then `author_peer_id`: higher revision replaces, lower is ignored, and an **equal** revision replaces if and only if the incoming `author_peer_id` sorts higher bytewise (5.18e). There is no merge. The order is total and identical at both ends, so concurrent edits converge.
+- **(9.0e) MUST NOT** `body` exceed 8 KiB, and a peer SHOULD coalesce rapid revisions rather than send every intermediate (5.18f, 5.18i). `annotation` is on the control channel.
 - **(9.0d) MUST NOT** An annotation of any provenance feed a Shot, a Candidate, a calibration, or any computed quantity (I37).
 
 ### 9.1 `session_offer` / `session_accept`

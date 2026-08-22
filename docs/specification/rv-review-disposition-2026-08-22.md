@@ -381,3 +381,51 @@ Two things remain, and neither is a drafting question:
 
 - **The device measurement** ([5.4b](ppcp-rv.md#541-what-was-measured)). An afternoon. A favourable result changes no clause and quietly restores the property.
 - **Whether 5.4j stands or is deleted** — the owner's word on whether the sensitivity judgement covers candidate audio.
+
+
+---
+
+# Fourth pass — Draft 5
+
+Both teams approved. The mobile team executed the outstanding measurement; the host team raised one finding.
+
+## 17. The device measurement is in, and it is unfavourable
+
+**5.4b is discharged.** The mobile team repeated the check on an **iPhone 16 running the release operating system**, not a beta, using the exact §10.2 identity vector:
+
+- TLS 1.3 with an external PSK — **fails**
+- TLS 1.2 — negotiates `0x00A8`, plain PSK, no forward secrecy
+- Both ECDHE_PSK suites appended — **silently ignored**, `0x00A8` negotiated
+
+**Identical to the desktop result in every respect.** The platform difference nobody could rule out does not exist, so §5.4.3's relaxation stands and — as 5.4b was deliberately worded — **no clause changes**. [B8 closes.](ppcp-rv.md#annex-b--open-issues)
+
+The same run confirmed [5.3f](ppcp-rv.md#53-psk-identity) on the device: the 17-octet binary identity completes a handshake at TLS 1.2 unchanged, despite RFC 4279 saying identities "should" be UTF-8. That was the most likely second-order casualty of the fallback, and it was tested rather than reasoned about.
+
+## 18. N1 — 5.4j was about the wrong axis
+
+**Accepted in full.** Three problems with the clause as drafted, and the third is the one that mattered.
+
+**The escape hatch did not exist.** It offered deferral *"to a connection that did"* achieve forward secrecy — which, at the measured TLS 1.2 floor, is a connection that will never occur. The clause reduced to *withhold permanently, unless the user agrees*, while reading as though it offered a route. An implementer would have built the deferral queue.
+
+**It collided with I38.** A withheld Capture stays `pending`, never becomes `confirmed`, and under revision 7's I38 could never be deleted — so a clause added to *reduce* the exposure of candidate audio would have retained every window of it indefinitely, in the one dimension the user cannot control. [5.4j2](ppcp-rv.md#543-the-decision) states that withheld payload remains evictable, and `PPCP-CORE` revision 8 makes it one of I38's stated exits.
+
+**A bundle is not a connection**, and the bundle is how this payload overwhelmingly travels — an entry-level session has no host at all, and a range session exports later. Unscoped, the clause was either largely notional or it removed candidate audio from the offline path entirely, taking the diagnostic purpose with it. [5.4j1](ppcp-rv.md#543-the-decision) puts bundles out of scope, because what §5.4.3 gave up is confidentiality in transit against a passive recorder on an untrusted network, and a file on the device's own storage has no recorder on the wire. It is protected at rest and by physical control, which the relaxation never touched.
+
+5.4j is now scoped to a connection over **a network the peer does not control**.
+
+## 19. §4.3b, raised a third time — it was fixed three drafts ago
+
+The mobile team restated it and asked to be told if it had been declined. **It was neither declined nor missed.**
+
+- The clause has read *"Every key of the **top-level payload map** other than `v`"* since **Draft 3**, in commit `5aa01c0`.
+- [4.3b1](ppcp-rv.md#43-payload) names `h`, `p`, `k` and `s` explicitly and says nested maps are unconstrained.
+- It is dispositioned **twice** in this document: at [§7.1](#71-the-scope-of-43b--w2-and-the-mobile-teams-2) when it was fixed, and at [§15.6](#156-restated-and-already-addressed) when it was first restated.
+- The host reviewer independently confirmed the fix in the same round it landed.
+
+Three raisings against text that has been correct for three drafts, with two dispositions already written, points at **a distribution problem rather than a specification one**. The restatement was the right thing for a reviewer to do — a finding that appears to vanish should be raised again — but the copy under review is stale, and that is worth fixing before the next round.
+
+## 20. Status
+
+`PPCP-RV` is **Draft 6**. Both teams approve. §4, §6 and §7 are approved without reservation, and §5 now rests on a measurement taken on the hardware it concerns.
+
+One thing remains open and it is not a drafting question: **whether 5.4j stands or is deleted** — the owner's word on whether the sensitivity judgement of §5.4.3 covers candidate audio. Both reviewers have said either answer is fine; what is not fine is §5.4.3 naming an exception that nothing acts on, which Draft 6 continues to prevent by default.

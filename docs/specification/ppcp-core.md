@@ -8,7 +8,7 @@
 | Version | **1.0** |
 | Wire version | `ppcp/1.0` |
 | Status | **APPROVED for implementation**, 22 August 2026 |
-| Revision | 7 — requirements-traceability gaps closed |
+| Revision | 8 — revision 7 reviewed by both teams |
 | Date | 22 August 2026 |
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
@@ -345,14 +345,14 @@ The physical capture source: a camera, a microphone, an IMU, a relayed BLE senso
 | `profiles` | `[CaptureProfile]` | 1..n | Supported profiles, each carrying its own measured results. |
 | `calibration` | `Calibration` | 0..1 | |
 | `optics` | `Kind` | 0..1 | Which lens this Source is — `wide`, `ultra_wide`, `telephoto`, … Open registry. |
-| `viewpoint` | `{ label: Kind, confidence: float, method: declared \| classified }` | 0..1 | Where this Source is looking from — `dtl`, `face_on`, `rear`, … Open registry. |
+| `viewpoint` | `{ label: Kind, method: declared \| classified, confidence: float }` | 0..1 | Where this Source is looking from — `dtl`, `face_on`, `rear`, … Open registry. `confidence` is present **if and only if** `method: classified`. |
 | `label` | string | 0..1 | Human-readable, informational. |
 
 - **(5.6a) MUST** Every Source declares `timebase_id`, and every CaptureProfile it offers declares `timing`, `geometry` and `intrinsics` — **regardless of which peer owns the Source** (I19). No convention is implied by peer role, product or platform.
 - **(5.6b) SHOULD NOT** A capture peer open a virtual multi-lens device. Where it does, it MUST declare `physical: false`, because such devices switch physical lenses automatically on scene and focus distance, silently changing intrinsics mid-session.
 - **(5.6c) MUST** Where a device and a host are both capable of owning a sensor connection, ownership is settled at session start and expressed solely by `peer_id`. The same wrist sensor is the same Source whichever peer holds the BLE connection.
 - **(5.6d) MUST** **A physically distinct lens is a distinct Source.** A peer MUST NOT present two lenses as one Source, and `optics` names which one. Lens choice is calibration-affecting, so it is fixed for a Stream's lifetime by I5 like everything else about a Source — but a consumer that cannot tell *which* lens produced a bundle cannot interpret its calibration, and a device offering the same profile on both a wide and an ultra-wide lens makes that ambiguity real.
-- **(5.6e) MUST** `viewpoint`, where present, is a **declaration carrying its confidence and how it was arrived at** — `declared` where a user or an installer stated it, `classified` where the peer worked it out. A consumer MAY disagree with it. It is a self-report, not a fact, and it is carried on those terms because [§1](#1-introduction)'s stance forbids a peer emitting a conclusion as though it were a measurement.
+- **(5.6e) MUST** `viewpoint`, where present, declares **how it was arrived at** — `declared` where a user or an installer stated it, `classified` where the peer worked it out — and carries `confidence` **only** in the second case. A person who states "down the line" is not expressing a probability, and requiring a number there would be asking a peer to invent one, which is the pattern I28 and I31 exist to prevent. A consumer MAY disagree with either. It is a self-report, not a fact.
 
 `viewpoint` answers a requirement that a device classify where it is looking from and *report* it, rather than asking a user to configure it. Handedness is not part of it: which way the golfer swings is a property of the session, not of a camera, and it is a `ContextChange` ([§5.10](#510-session)).
 
@@ -655,7 +655,7 @@ A nomination: one observer's claim that an event occurred at a time it measured.
 
 - **(5.12a) MUST** `source_id` names a Source owned by a Peer in the Session, with a declared Timebase (I26). See [§8.1](#81-nomination) for why, and for what to do with records that have no clock.
 - **(5.12b) MUST** `classifier` is interpreted only in the context of `basis`. A consumer that applies an acoustic taxonomy to an `external` candidate is in error.
-- **(5.12c) MUST** Candidates are never discarded — losers, excluded ones, ones a minting peer chose not to promote, and ones from peers whose clocks later proved badly offset — and neither is their evidence (I8). Arbitration and promotion are conclusions; candidates are the evidence, and a consumer may re-derive t₀ later with a better clock estimate.
+- **(5.12c) MUST** Candidates are never discarded — losers, excluded ones, ones a minting peer chose not to promote, and ones from peers whose clocks later proved badly offset — and neither is the **record** of their evidence (I8). What is never discarded is the Candidate and its reference to evidence; the evidence **payload** may be shed under the peer's own retention policy ([§5.12.1b](#5121-candidate-evidence)), and its absence is then asserted rather than left dangling ([§5.12.1c](#5121-candidate-evidence)). Arbitration and promotion are conclusions; candidates are the evidence, and a consumer may re-derive t₀ later with a better clock estimate.
 - **(5.12d) MUST** Where `tof_correction` is present it carries **both** `value_ns` and `sigma_ns` (I29). A correction with no dispersion is a point estimate of exactly the kind [§5.4a](#54-timebaserelation) refuses for clock offsets, and for the same reason.
 
 - **(5.12e) MUST** `Candidate.at` is the **canonical instant** of the observation ([§6.1](#61-canonical-instant)), converted by the nominating peer **before emission** (I33). A consumer MUST NOT apply the canonical-instant conversion to a Candidate a second time.
@@ -730,9 +730,23 @@ The **realisation** of a Shot or a Candidate on one Stream.
 - **(5.14d) MUST** `anchor` carries **exactly one** key (I27). `{ stream: true }` is permitted only on a Stream whose `continuity` is `continuous`, and `interval` is then mandatory **including when `completeness: absent`** — a segment with no interval says nothing about what it covers, and an `absent` segment *with* an interval is how a peer states that a named span was not recorded.
 - **(5.14e) MUST NOT** A stream-anchored Capture overlap another on the same Stream. Segments abut or leave a declared gap; they do not overlap, because two accounts of one interval are two answers to one question.
 - **(5.14f) MUST** `transfer` is the **owner's** view of where a payload has got to. `pending` is held locally and unsent; `in_flight` and `present` are sent; **`confirmed` means the receiver has asserted that it holds the payload durably**, which only the receiver can say ([`PPCP-MSG` §8.4](ppcp-messages.md#84-capture_committed)).
-- **(5.14g) MUST NOT** A peer evict a Capture whose `transfer` is not `confirmed`, whatever its retention policy (I38).
+- **(5.14g) MUST NOT** A peer evict a Capture **that holds payload the owner has not had confirmed**, whatever its retention policy (I38). A Capture is evictable when any of these holds:
+
+  | | Exit | Why |
+  |---|---|---|
+  | 1 | `transfer` is `confirmed` | The receiver asserted it holds the payload durably |
+  | 2 | `completeness` is `absent` | There is no payload to evict, and no digest for `capture_committed` to name |
+  | 3 | The receiver answered `payload_abort` / `already_present` ([`PPCP-MSG` §8.3c](ppcp-messages.md#83-the-payload_-family)) | It demonstrably holds the payload durably; that answer is equivalent to a commit for this purpose |
+  | 4 | The protocol or the peer's own declared retention policy permits the owner to shed it — [5.11j](#5112-preview-streams) for preview, [5.12.1b](#5121-candidate-evidence) for candidate evidence, or a payload the owner chose to withhold | It was never going to be sent, so no receiver will ever confirm it. Candidate evidence matters most here: its count is not bounded by anything the user does ([§13c](#13-privacy-considerations)), so a rule forbidding its eviction would retain the material the privacy section is about, indefinitely |
+
+- **(5.14h) MUST** A receiver that durably commits a Capture obtained **from a bundle** sends `capture_committed` for it on its next connection with the owning peer. Identity is sufficient without anything new: I34 makes it `Capture.id` scoped by `Session.id` and the owning `Peer.id`, which is exactly what lets a consumer name a Capture from a session it received as a file.
+- **(5.14i)** In a session with **no receiver at all** — hostless, and nothing exported yet — no Capture can be `confirmed` and I38 therefore constrains nothing. Retention there is the peer's own policy, and a peer MUST NOT read I38 as protection it does not have in that case.
 
 5.14f and 5.14g close a hole that made a stated obligation unsatisfiable. A capture peer is required to keep an independent store with per-shot sync state — *local, sent, confirmed* — and to evict nothing unconfirmed. But `payload_ack` acknowledges a **chunk arriving**, `payload_end` travels from sender to receiver, and until revision 7 nothing came back at all. The third state was unreachable, so "evict nothing unconfirmed" was satisfiable only by evicting nothing ever: safe, and unbounded across a season of sessions.
+
+**5.14g's exits, and 5.14h and 5.14i, are revision 8's correction of revision 7.** As first written, I38 said *whatever its retention policy* and meant it: it forbade discarding a preview segment that [5.11j](#5112-preview-streams) **requires** a peer to discard — a MUST and a MUST NOT one section apart, both added in the last two revisions — and it forbade evicting an `absent` Capture, which has no payload and so can never be confirmed at all. It also caught the `already_present` path, where a receiver that demonstrably holds a payload answers with an abort rather than a commit; and candidate-audio windows, which [§5.12.1c](#5121-candidate-evidence) already contemplates being *evicted*.
+
+The error was scope. I38 exists for one obligation — **shot payload a consumer has not received yet** — and was written as though it were about every Capture. And 5.14h matters more than it looks: without it `confirmed` was unreachable on the **offline path**, which is the path an entry-level capture device spends most of its life in, so the gap G2 closed for live sessions stayed open for the normal case.
 - **(5.14b) MUST NOT** Gaps be interpolated across or implicitly spanned (I11).
 - **(5.14c) MUST** `achieved_frames` carries the per-frame exposure durations on which [§6.1](#61-canonical-instant) depends, and reaches a consumer before it converts. The split between the two halves is [§5.8](#58-capability).
 
@@ -816,7 +830,8 @@ A **user artefact**: something a person drew, wrote or marked, or a coarse navig
 | `id` | `Id` | 1 | Minted by the authoring peer, unique within the Session. |
 | `session_id` | `Id` | 1 | |
 | `shot_id` | `Id` | 1 | The Shot this annotation is about. |
-| `at` | `Instant` | 1 | The frame instant within that Shot that it anchors to. |
+| `stream_id` | `Id` | 0..1 | The Stream whose frame it is drawn on. **Present for any annotation whose `body` is interpreted in image coordinates.** |
+| `at` | `Instant` | 1 | The frame instant it anchors to. Timebase per 5.18g. |
 | `author_peer_id` | `Id` | 1 | Who authored it. |
 | `provenance` | `user` \| `device_advisory` | 1 | See 5.18b. |
 | `kind` | `Kind` | 1 | Open registry — `line`, `plane`, `text`, `nav_anchor`, … |
@@ -830,8 +845,15 @@ A **user artefact**: something a person drew, wrote or marked, or a coarse navig
 - **(5.18b) MUST** `provenance` distinguishes a **user** artefact from a **device-advisory** one — a coarse scrub target a peer derived, such as an impact marker or a top-of-backswing anchor.
 - **(5.18c) MUST NOT** An Annotation of any provenance contribute to a Shot, a Candidate, a calibration, or any computed quantity (I37). It is never derived data in the sense the rest of this model means, and `kind: nav_anchor` in particular is **never** persisted or interpreted as phase data.
 - **(5.18d) MUST** Annotations flow in **either direction**. This is the only content in PPCP that does: every payload elsewhere describes a Capture the sender owns, and an annotation authored on one peer must reach the other.
-- **(5.18e) MUST** Supersession is by `id` plus `revision`. A peer holding revision *n* and receiving *n* or lower ignores it; receiving higher replaces. Two peers editing concurrently converge on the higher revision, and the protocol does not merge — consistent with I9.
-- **(5.18f)** `body` over 64 KiB is out of scope at `ppcp/1.0`. A finger-drawn plane is a few hundred bytes; anything approaching the cap is probably a different feature.
+- **(5.18e) MUST** Supersession is by `id`, then `revision`, then `author_peer_id`. A peer holding a revision and receiving a **higher** one replaces; receiving a **lower** one ignores it; receiving an **equal** one replaces **if and only if** the incoming `author_peer_id` sorts higher bytewise. The comparison is total and identical at both ends, so two peers editing concurrently converge on the same annotation without merging and without either needing to know who acted first (I9).
+- **(5.18g) MUST** Where `stream_id` is present, `at` is expressed in **that Stream's timebase** and names a frame that Stream contains. Where it is absent the annotation is not view-specific — a text note, a `nav_anchor` — and `at` is in `Session.timebase_ref`.
+- **(5.18h) MUST NOT** A consumer render a view-specific annotation on any Stream other than the one it names.
+- **(5.18f) MUST NOT** `body` exceed **8 KiB**. A finger-drawn plane is a few hundred bytes and a text note less; anything approaching the cap is a different feature, and `annotation` travels on the **control** channel, where I30 already keeps far smaller things off.
+- **(5.18i) SHOULD** A peer **coalesces** rapid revisions and sends the latest rather than every intermediate. Dragging a line produces a continuous stream of edits, and each revision resends the whole `body`; the channel it lands on is the one carrying shot events.
+
+**Why an annotation names a Stream.** A Shot in a studio has Captures from a face-on camera, a down-the-line camera and a phone behind the golfer. An alignment or swing-plane line is a set of **image coordinates**, and coordinates mean something on the image they were drawn on and nowhere else: rendered on another view they are not merely wrong but *plausibly* wrong, which is worse. Naming the Stream also makes the anchor exact — `at` is then in that Stream's own timebase and matches a frame it actually contains, instead of converting through a relation whose sigma can land a line on the neighbouring frame.
+
+**Why equal revisions tiebreak on the author.** Revision 7 claimed two peers editing concurrently converge on the higher revision. They do not: both hold revision 1, both produce revision 2, each receives an equal revision and ignores it, and the two ends diverge permanently and silently while each believes it converged. A coach at a host and a golfer at a device drawing on one shot is the case markup exists for, not a race. `author_peer_id` is already mandatory, so a total order costs a comparison and no field — and it is a tiebreak, not a merge, which I9 forbids.
 
 **Why this is a distinct type and not a Stream.** Every payload elsewhere in PPCP is a `Capture`, and a Capture realises a Shot, a Candidate or an interval of a Stream — all of them observations produced by a `Source`, which has a clock, a calibration and an owning peer. **A person has none of those.** Modelling markup as a `Source` of some virtual kind would put a human being in the position the model reserves for instruments, and blur the one distinction it is most careful about: that Sources observe and everything else interprets.
 
@@ -1180,7 +1202,7 @@ Both read as constraints and were in fact instructions to decide. The corrected 
 | **I5** | A Stream's source, profile, timebase and calibration are fixed for **the stream's** lifetime. A change closes the Stream and opens another within the same Session. | Capture |
 | **I6** | Every Shot references ≥1 Candidate somewhere in the Session; a Shot may have 0 candidates from any given peer. *(Reassigned from Detect: a Detect-only peer never issues a Shot, so I6 could not be tested against it. It binds both profiles that do.)* | **Mint, Arbitrate** |
 | **I7** | `t0` is never revised after the Shot is issued. | Mint, Arbitrate |
-| **I8** | Candidates are never discarded — losers, excluded, and unpromoted — and neither is their evidence. *(Amended: extended to unpromoted candidates and to Mint, which is where promotion happens.)* | Mint, Arbitrate |
+| **I8** | Candidates are never discarded — losers, excluded, and unpromoted — and neither is the **record** of their evidence. The evidence payload may be shed under the peer's retention policy, with its absence asserted. *(Amended twice: extended to unpromoted candidates and to Mint; then, in revision 8, separated from the payload, because the model contemplates an evicted window and I8 read as forbidding one.)* | Mint, Arbitrate |
 | **I9** | Reconciliation creates links; no entity is rewritten or merged. *(Reassigned from Offline to Core: `ShotLink` is originated live by Mint and Arbitrate peers, and this is a Core-shaped prohibition on anyone who originates a link.)* | Core |
 | **I10** | `completeness` is asserted, never inferred from arrival. | Capture |
 | **I11** | Gaps are explicit, never spanned, and meaningful only on `continuous` streams. | Capture |
@@ -1201,7 +1223,7 @@ Both read as constraints and were in fact instructions to decide. The corrected 
 | **I26** | A Candidate references a Source owned by a Peer in the Session with a declared Timebase. A record without one is reconciled by `ShotLink`, never nominated. | Detect |
 | **I27** | Every Capture anchors to exactly one of a Shot, a Candidate, or an interval of its own Stream. *(Amended in revision 5: the third form was missing, so a `continuous` Stream could carry nothing.)* | Capture |
 | **I37** | An Annotation never contributes to a Shot, a Candidate, a calibration or any computed quantity, and `kind: nav_anchor` is never persisted or interpreted as phase data. | Markup |
-| **I38** | A Capture whose `transfer` is not `confirmed` is never evicted. `confirmed` is asserted by the receiver and by nobody else. | Capture |
+| **I38** | A Capture **holding unconfirmed payload** is never evicted; `confirmed` is asserted by the receiver and by nobody else. An `absent` Capture, one the receiver answered `already_present`, and one the protocol permits the owner to shed are all evictable. *(Amended in revision 8: as first written it forbade discarding a preview segment 5.11j requires a peer to discard, and forbade evicting a Capture that could never be confirmed because it has no payload.)* | Capture |
 | **I36** | On a `continuous` Stream in a Session asserted `complete`, the announced stream-anchored Captures — present and `absent` alike — and their declared gaps account for its whole open interval. Time unaccounted for **between** announced Captures is a defect, not a dropout, in any Session. *(Amended in revision 6: as first written it read an honestly truncated bundle, and an honestly shed preview, as implementation errors.)* | Capture |
 | **I28** | `MeasuredCapability`, where present, declares `method` and `duration_ns`; its absence means not measured and MUST NOT be inferred or synthesised. | Capture |
 | **I29** | `Candidate.tof_correction`, where present, carries both `value_ns` and `sigma_ns`. No applied estimate travels without its dispersion. | Detect |
@@ -1439,3 +1461,18 @@ The six findings of the [requirements traceability audit](requirements-traceabil
 | G6 | Location and weather had no home. | `ContextChange.kind: location` / `weather`, labels only, never computed from. |
 
 Also `ContextChange.kind: handedness` — which way a golfer swings is a property of the session, not of a camera.
+
+## What changed in revision 8
+
+Both teams reviewed revision 7. One finding was a direct contradiction between two revisions, one made a stated convergence property false, and one made the mechanism unreachable on the path that ships first.
+
+| # | Finding | Disposition |
+|---|---|---|
+| PPS-C1 | **I38 forbade eviction the specification requires elsewhere**, in four places — most sharply a preview segment [5.11j](#5112-preview-streams) *requires* a peer to discard. A MUST and a MUST NOT one section apart, both added in the previous two revisions. | **Accepted.** [5.14g](#514-capture) names four exits and I38 is scoped to *payload*. The error was scope: I38 exists for shot payload a consumer has not received, and was written as though it were about every Capture. |
+| PPC-1 | **`confirmed` was unreachable hostless and across the bundle path** — so G2's gap stayed open for the entry-level case, which the requirements call the normal one. | **Accepted.** [5.14h](#514-capture): a receiver that commits a Capture obtained from a bundle sends `capture_committed` on its next connection with the owning peer. Identity was already sufficient under I34. [5.14i](#514-capture) says plainly that I38 protects nothing where there is no receiver. |
+| PPS-C2 | **5.18e's convergence claim was false.** Two peers both at revision 1 both produce revision 2, each ignores the other's equal revision, and they diverge permanently while each believes it converged. | **Accepted.** Equal revisions tiebreak on `author_peer_id`, which is already mandatory — a total order, not a merge. |
+| PPS-C3 | **An Annotation could not say which view it was drawn on.** Image coordinates from a down-the-line view rendered on a face-on view are plausibly wrong, which is worse than obviously wrong. | **Accepted.** `stream_id` added; [5.18g](#518-annotation) fixes the timebase of `at` to the named Stream, which also makes the frame anchor exact rather than a conversion away. |
+| Both | `body` at 64 KiB on the control channel is above what I30 keeps off it. | **Accepted.** Cap lowered to **8 KiB**, and 5.18i requires coalescing rapid revisions. |
+| PPS §2.2 | `viewpoint.confidence` had no meaning under `method: declared`. | **Accepted.** Present if and only if `classified`. |
+| PPS §6 | **C1 is the fourth instance of a new MUST contradicting one in an adjacent section.** | **Accepted as a process change** — [`PPCP-CONF` §5b2](ppcp-conformance.md#5-interoperability) makes the adjacent-MUST sweep a required check before `ppcp/1.0` freezes. |
+| — | **Found by running that sweep immediately: a fifth instance.** I8 said a Candidate's evidence is never discarded; [5.12.1c](#5121-candidate-evidence) contemplates an *evicted* window and [5.12.1b](#5121-candidate-evidence) makes retention peer policy. | **Fixed.** I8 and [5.12c](#512-candidate) now separate the evidence **record**, which is never discarded, from the evidence **payload**, which may be shed with its absence asserted. |
