@@ -16,6 +16,7 @@ set(PPCP_TESTS
     test_ct_i13
     test_ct_i29
     test_ct_s1
+    test_ct_i12
     test_ct_i24
     test_ct_s6
     test_umbrella

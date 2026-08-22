@@ -24,7 +24,7 @@
 #ifndef PPCP_PLANNED_H
 #define PPCP_PLANNED_H
 
-#include "ppcp/peer.h"
+#include "ppcp/bundle.h"
 #include "ppcp/rv.h"
 
 #ifdef __cplusplus
@@ -55,36 +55,6 @@ PPCP_API ppcp_result ppcp_peer_payload_resume(ppcp_peer *p, const char *capture_
  * evictable, and `confirmed` is asserted by the receiver and by nobody else
  * (I38). */
 PPCP_API bool ppcp_capture_is_evictable(const ppcp_capture *c);
-
-/* ======================================================================
- * L8 — bundle reader and writer (CORE §9; ENC §7; MSG §9.1–9.2)
- * ====================================================================== */
-
-typedef struct ppcp_bundle_writer ppcp_bundle_writer;   /* L8 */
-typedef struct ppcp_bundle_reader ppcp_bundle_reader;   /* L8 */
-
-/* L8 — not yet implemented.  Appends frames in the order they would have been
- * sent, with `session_manifest` before any payload frame (ENC 7c).  The
- * embedding owns the file; the writer produces bytes. */
-PPCP_API size_t      ppcp_bundle_writer_sizeof(void);
-PPCP_API ppcp_result ppcp_bundle_writer_new(void *storage, size_t storage_len,
-                                            ppcp_bundle_writer **out);
-PPCP_API ppcp_result ppcp_bundle_writer_append(ppcp_bundle_writer *w, uint8_t channel,
-                                               const uint8_t *payload, size_t len,
-                                               uint8_t *out, size_t cap, size_t *out_len);
-PPCP_API ppcp_result ppcp_bundle_writer_finish(ppcp_bundle_writer *w);
-
-/* L8 — not yet implemented.  Streams a bundle through the same feed path a
- * socket uses; there is no importer (plan A10).  A truncated final frame means
- * `completeness: partial` unless the bundle asserted otherwise, and a partial
- * Session is never upgraded on the strength of what happened to be present
- * (ENC 7d, I10). */
-PPCP_API size_t      ppcp_bundle_reader_sizeof(void);
-PPCP_API ppcp_result ppcp_bundle_reader_new(void *storage, size_t storage_len,
-                                            ppcp_peer *sink, ppcp_bundle_reader **out);
-PPCP_API ppcp_result ppcp_bundle_reader_feed(ppcp_bundle_reader *r,
-                                             const uint8_t *bytes, size_t len);
-PPCP_API ppcp_result ppcp_bundle_reader_finish(ppcp_bundle_reader *r, bool *out_partial);
 
 /* ======================================================================
  * L9 — clock synchronisation and liveness (CORE §5.4.1, §6.3, §7.4, §8.3g)

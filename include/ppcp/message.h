@@ -471,7 +471,11 @@ typedef struct ppcp_msg {
     /* The wire spelling as it arrived, so an UNKNOWN type is still reportable
      * and still ignorable rather than fatal (I13, MSG 1b). */
     ppcp_id        type_name;
-    union {
+    /* Tagged rather than unnamed so the Swift importer gives it a stable name
+     * (`ppcp_msg_body`) instead of a synthesised `__Unnamed_union_body`.
+     * Plan A5 makes this header a Swift-facing artefact; that costs one word
+     * here and saves a rename in CaptureCore later. */
+    union ppcp_msg_body {
         ppcp_body_link_bind          link_bind;
         ppcp_body_hello              hello;
         ppcp_body_hello_accept       hello_accept;
