@@ -11,7 +11,7 @@
 | Date | 22 August 2026 |
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
-| Supersedes | `ppcp-protocol-overview.md` Parts 0, I and III for all normative purposes |
+| Supersedes | `ppcp-protocol-overview.md` Parts 0, I and III for all normative purposes. That document is not carried in this repository. |
 | Companion documents | [`PPCP-MSG`](ppcp-messages.md), [`PPCP-ENC`](ppcp-encoding.md), [`PPCP-CONF`](ppcp-conformance.md), [`PPCP-RV`](ppcp-rv-scope.md) (scope only, unwritten) |
 | Licence | Specification: open. Reference implementation `libppcp`: MIT. |
 
@@ -23,7 +23,7 @@ This is **Draft 1 of the formal specification**. It converts model draft 4 of th
 
 It is published to obtain **approval to implement**. It is not yet stable: section [Annex B](#annex-b--open-issues) lists what is expected to move. Implementations may begin against this draft; the wire version `ppcp/1.0` will not be declared stable until Draft 1 has been reviewed by the PinPointCapture and PinPointStudio teams and the conformance suite of [`PPCP-CONF`](ppcp-conformance.md) passes on both.
 
-**Where this document and the protocol overview disagree, this document wins.** The overview is retained at [`docs/background/ppcp-protocol-overview-draft4.md`](../background/ppcp-protocol-overview-draft4.md) as the input record and for its rationale, which is not repeated here in full.
+**Where this document and any earlier draft disagree, this document wins.** `docs/specification/` is the single authority on PPCP, and the protocol overview that preceded it is a working document deliberately not carried in this repository. This specification is therefore self-contained: the rationale motivating each decision is restated here rather than referenced out.
 
 **Invariant identifiers are stable.** I1–I21 keep the numbering the overview and the review used, even where their text has been amended. New invariants are appended as I22–I28. Conformance documents get quoted by number; renumbering is a cost with no benefit.
 

@@ -19,6 +19,5 @@ A mobile phone has a 120–240 fps camera, a microphone, an IMU and a hardware e
 
 | Path | Contents |
 |---|---|
-| `docs/specification/` | The normative specification: core model, message catalogue, wire encoding, conformance |
-| `docs/background/` | The protocol overview the specification was built from, retained as the input record |
+| `docs/specification/` | **The single authority on PPCP.** Core model, message catalogue, wire encoding, conformance |
 | `src/`, `tests/`, `tools/` | Reference implementation. Empty until the draft is approved. |

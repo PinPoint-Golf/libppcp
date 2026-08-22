@@ -7,7 +7,7 @@
 | Wire version | `ppcp/1.0` |
 | Status | **Draft 1 — for approval to implement** |
 | Date | 22 August 2026 |
-| Supersedes | `ppcp-protocol-overview.md` model draft 4, retained at [`docs/background/`](../background/ppcp-protocol-overview-draft4.md) |
+| Supersedes | `ppcp-protocol-overview.md` model draft 4 — a working document, deliberately not carried in this repository |
 | Reference implementation | `libppcp`, MIT, this repository |
 
 ---
@@ -15,6 +15,8 @@
 ## What this is
 
 Model draft 4 of the protocol overview established the entity model and was reviewed on 22 August 2026. This is the **formal specification** that follows: normative field tables, a fixed message catalogue, a wire encoding, and a conformance suite — with the five defects from that review resolved and the message names that were marked provisional now settled.
+
+**This folder is the single authority on PPCP.** Earlier drafts and working documents are not carried here; any copy still in circulation is superseded by what follows.
 
 It is published to get **approval to implement**. Implementation can begin against it; `ppcp/1.0` is not stable until both first-party implementations pass the conformance suite and the open issues close.
 
