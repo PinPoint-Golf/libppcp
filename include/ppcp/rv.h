@@ -170,6 +170,22 @@ PPCP_API ppcp_result ppcp_rv_payload_add_endpoint(ppcp_rv_payload *p, const char
 PPCP_API ppcp_result ppcp_rv_payload_set_secret(ppcp_rv_payload *p,
                                                 const uint8_t *psk, size_t psk_len,
                                                 const uint8_t sid[PPCP_RV_SID_BYTES]);
+/* 4.3 / 4.4d — at most 64 bytes, enforced here so an over-long name is a
+ * failed construction rather than a code nobody can scan.  Untrusted display
+ * text: never an identifier, a trust signal or a storage key. */
+PPCP_API ppcp_result ppcp_rv_payload_set_display_name(ppcp_rv_payload *p,
+                                                      const char *dn, size_t dn_len);
+/* 7.3a — the maximum successful pairings this code may complete.  Default 1;
+ * see ppcp_rv_may_persist() for what a value above 1 costs (7.4f). */
+PPCP_API ppcp_result ppcp_rv_payload_set_max_uses(ppcp_rv_payload *p, uint64_t mu);
+/* 7.3c — the shortest expiry the workflow tolerates, seconds since the Unix
+ * epoch.  Secondary to 7.3a and 7.3b, which are clock-free. */
+PPCP_API ppcp_result ppcp_rv_payload_set_expiry(ppcp_rv_payload *p, uint64_t exp_unix_s);
+/* RV §6 — `s` is mandatory, `k` absent means an open network, `h` defaults
+ * false.  Once credentials are in the code, a photograph of the code is a
+ * photograph of the passphrase (6c). */
+PPCP_API ppcp_result ppcp_rv_payload_set_wifi(ppcp_rv_payload *p, const ppcp_rv_wifi *w);
+
 PPCP_API ppcp_result ppcp_rv_payload_validate(const ppcp_rv_payload *p);
 
 /* Deterministic CBOR, always (4.3a): a given pairing reproduces a byte-identical

@@ -63,6 +63,50 @@ ppcp_result ppcp_rv_payload_set_secret(ppcp_rv_payload *p, const uint8_t *psk,
     return PPCP_OK;
 }
 
+ppcp_result ppcp_rv_payload_set_display_name(ppcp_rv_payload *p, const char *dn,
+                                             size_t dn_len)
+{
+    if (p == NULL || dn == NULL || dn_len == 0)
+        return PPCP_ERR_INVALID;
+    if (dn_len > PPCP_RV_DN_MAX)
+        return PPCP_ERR_INVALID;
+    p->dn     = dn;
+    p->dn_len = dn_len;
+    p->has_dn = true;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_rv_payload_set_max_uses(ppcp_rv_payload *p, uint64_t mu)
+{
+    if (p == NULL || mu == 0)
+        return PPCP_ERR_INVALID;
+    p->mu     = mu;
+    p->has_mu = true;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_rv_payload_set_expiry(ppcp_rv_payload *p, uint64_t exp_unix_s)
+{
+    if (p == NULL)
+        return PPCP_ERR_INVALID;
+    p->exp     = exp_unix_s;
+    p->has_exp = true;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_rv_payload_set_wifi(ppcp_rv_payload *p, const ppcp_rv_wifi *w)
+{
+    if (p == NULL || w == NULL)
+        return PPCP_ERR_INVALID;
+    if (w->s == NULL || w->s_len == 0)
+        return PPCP_ERR_INVALID;              /* RV §6: `s` is mandatory */
+    if (w->has_k && (w->k == NULL || w->k_len == 0))
+        return PPCP_ERR_INVALID;              /* absent means open, not empty */
+    p->wifi     = *w;
+    p->has_wifi = true;
+    return PPCP_OK;
+}
+
 ppcp_result ppcp_rv_payload_validate(const ppcp_rv_payload *p)
 {
     if (p == NULL)

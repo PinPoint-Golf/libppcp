@@ -277,8 +277,7 @@ static void fill_minimal(ppcp_rv_payload *p, unsigned char *psk, unsigned char *
 {
     ppcp_rv_payload_init(p);
     CHECK_EQ_I(ppcp_rv_payload_add_endpoint(p, "192.168.1.20", 12, 7788), PPCP_OK);
-    p->has_mu = true;
-    p->mu     = 1;
+    CHECK_EQ_I(ppcp_rv_payload_set_max_uses(p, 1), PPCP_OK);
     CHECK_EQ_I(ppcp_rv_payload_set_secret(p, psk, 16, sid), PPCP_OK);
 }
 
@@ -349,12 +348,27 @@ static void rt2_all_fields_code(void)
     TEST("RT-2 — the 133-octet all-fields code encodes byte for byte");
     CHECK_EQ_I(want_len, 133);
     fill_minimal(&p, psk, sid);
-    p.has_dn  = true;  p.dn = "Bay 3"; p.dn_len = 5;
-    p.has_exp = true;  p.exp = 1787832000ULL;
-    p.has_wifi = true;
-    p.wifi.s = "PinPoint-Bay3"; p.wifi.s_len = 13;
-    p.wifi.has_k = true; p.wifi.k = "correcthorse"; p.wifi.k_len = 12;
-    p.wifi.has_h = true; p.wifi.h = false;
+    CHECK_EQ_I(ppcp_rv_payload_set_display_name(&p, "Bay 3", 5), PPCP_OK);
+    CHECK_EQ_I(ppcp_rv_payload_set_expiry(&p, 1787832000ULL), PPCP_OK);
+    {
+        ppcp_rv_wifi wifi;
+        memset(&wifi, 0, sizeof(wifi));
+        wifi.s = "PinPoint-Bay3"; wifi.s_len = 13;
+        wifi.has_k = true; wifi.k = "correcthorse"; wifi.k_len = 12;
+        wifi.has_h = true; wifi.h = false;
+        CHECK_EQ_I(ppcp_rv_payload_set_wifi(&p, &wifi), PPCP_OK);
+    }
+
+    TEST("RV 4.3 / 4.4d — a display name over 64 bytes is refused, not truncated");
+    {
+        char long_dn[80];
+        ppcp_rv_payload q;
+        memset(long_dn, 'x', sizeof(long_dn));
+        fill_minimal(&q, psk, sid);
+        CHECK_EQ_I(ppcp_rv_payload_set_display_name(&q, long_dn, 65), PPCP_ERR_INVALID);
+        CHECK_EQ_I(ppcp_rv_payload_set_display_name(&q, long_dn, 64), PPCP_OK);
+    }
+    TEST("RT-2 — the 133-octet all-fields code encodes byte for byte");
     CHECK_EQ_I(ppcp_rv_payload_encode(&p, got, sizeof(got), &got_len), PPCP_OK);
     CHECK_BYTES(got, got_len, want, want_len);
 
