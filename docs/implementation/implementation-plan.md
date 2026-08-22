@@ -30,7 +30,7 @@
 
 These are fixed. An agent that finds one of them wrong stops and reports rather than working around it.
 
-1. **Three repositories, three licences, no code crosses between them.** `libppcp` is MIT. PinPointStudio is GPL-2.0. PinPointCapture's licence is an open product decision (requirements OPEN-4) and is treated as *not GPL* for planning. The **only** shared artefact is `libppcp`, consumed as a dependency by the other two. Nothing is copied from one repo into another — not a type, not a test, not a fixture. If two repos need the same thing, it belongs in `libppcp`.
+1. **Three repositories, three licences, no code crosses between them.** `libppcp` is MIT. PinPointStudio is GPL-2.0. PinPointCapture is MIT (decided 22 August 2026 — GPL and App Store distribution conflict, so the app is MIT like the library; requirements OPEN-4 is closed). The **only** shared artefact is `libppcp`, consumed as a dependency by the other two. Nothing is copied from one repo into another — not a type, not a test, not a fixture. If two repos need the same thing, it belongs in `libppcp`.
 2. **Each team works only in its own repository.** An orchestration session runs up to three agents in parallel, one per repo. An agent never edits, and never reads for the purpose of copying, another repo's source. It may read the other repos' *documentation* and `libppcp`'s *public headers and specification*.
 3. **The specification is the authority and changes first.** An implementation that finds the specification wrong records an erratum in `libppcp/docs/specification/` (`CORE` Annex A.4) and then changes the code. The change history grows; the code never leads it.
 4. **Conformance is evidence, not a claim.** Every work package names the `CT-*`, `RT-*` or interop row it unlocks. A package is not done until the row it names is *passing* in the matrix, with a reproducible command. "Implemented" and "passing" are different states and the matrix records both.
@@ -488,7 +488,7 @@ Append-only. Newest last.
 | 2026-08-22 | plan | A1–A13 above are decided for the programme | Stated; reverse by editing §3 and recording here |
 | 2026-08-22 | plan | `RV` B7 — candidate audio retention bound and its user-visible statement is an **application** obligation | Assigned to D5; PinPointStudio has no candidate audio retention to state |
 | 2026-08-22 | plan | `RV` B13 — whether the absence of forward secrecy is user-visible | **Product question for the user.** Both apps surface the negotiated mode (5.4k) in their diagnostic/About output so either answer is one line of UI away |
-| 2026-08-22 | plan | Requirements OPEN-4 — PinPointCapture licence | Not decided here; the plan assumes non-GPL, which only matters if app code were ever to move into `libppcp` (it does not) |
+| 2026-08-22 | user | Requirements OPEN-4 — PinPointCapture licence | **Closed: MIT**, same as `libppcp`, to keep GPL out of App Store distribution. Ground rule 1 still holds — MIT-to-MIT does not license copying; the library stays the only shared artefact |
 | 2026-08-22 | plan | `CORE` B8/B10 — timing defaults and `sampled` exposure accuracy need rig data | Out of scope; the matrix carries `rig` cells |
 | 2026-08-22 | plan | `SessionLink` (`CORE` B2) | Type and message implemented in L4/L5 for comprehension (C1); **no implementation originates it** |
 

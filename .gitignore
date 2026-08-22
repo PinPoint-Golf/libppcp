@@ -1,2 +1,5 @@
 .claude/
 .DS_Store
+build/
+.build/
+compile_commands.json
