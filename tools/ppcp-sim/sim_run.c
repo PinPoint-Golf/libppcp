@@ -106,6 +106,13 @@ static const sim_scenario g_scenarios[] = {
       SIM_F_SYNC | SIM_F_NOMINATE | SIM_F_MINT,
       1, 0, 0, 0 },
 
+    { "arbitrate-as-capture", "capture",
+      "CT-I20",
+      "A capture peer asked to arbitrate. It cannot: I20 gives arbitration to a "
+      "peer with `role: host` and to no other, so this scenario exists to be "
+      "REFUSED and the tool exits non-zero before a socket is opened.",
+      SIM_F_ARBITRATE, 0, 0, 0, 0 },
+
     { "unrelated-capture", "capture",
       "IOP-5, CORE 8.2i1, CT-I3",
       "A peer whose declaration says its clock is `unrelated` to the host's. It "
@@ -455,7 +462,17 @@ static bool pump_rx(sim *s, uint8_t ch)
 
 static void note_shot(sim *s, const ppcp_shot *sh)
 {
+    const ppcp_peer_desc *cp = ppcp_peer_counterpart(s->p);
     size_t i;
+
+    /* I20 / 8.3d — `authority: host` says a host arbitrated, and only a peer
+     * with `role: host` may.  A Shot arriving from a counterpart that declared
+     * itself `capture` or `observer` and claiming host authority is the
+     * violation, and it is only checkable from the other end. */
+    if (cp != NULL && cp->role != PPCP_ROLE_HOST && sh->authority == PPCP_AUTHORITY_HOST) {
+        sim_violation("I20 violated: Shot `%s` carries `authority: host` from a peer "
+                      "declaring role %s", sh->id.v, ppcp_role_str(cp->role));
+    }
 
     for (i = 0; i < s->shot_count; i++) {
         if (ppcp_id_equal(&s->shots[i].id, &sh->id)) {
@@ -671,7 +688,7 @@ static int64_t counter_value(const sim_counter *c, const char *name)
     ROW(minted); ROW(retained); ROW(issued); ROW(late_issues); ROW(arbiter_observed);
     ROW(offers_rx); ROW(offers_tx); ROW(accepts_rx); ROW(replays);
     ROW(sessions_joined); ROW(streams_rx); ROW(arms_rx); ROW(violations);
-    ROW(relations_held);
+    ROW(relations_held); ROW(relations_composed);
 #undef ROW
     return INT64_MIN;
 }
@@ -848,6 +865,33 @@ int sim_run(const sim_opts *o, sim_decl *d, const sim_scenario *sc)
         s.c.retained    = (int64_t)ppcp_arbiter_retained_count(s.arb);
     }
     s.c.relations_held = (int64_t)ppcp_relations_count(ppcp_peer_relations(s.p));
+    /* I18 / 5.4c — nothing composes.  A relation between two clocks belonging
+     * to ONE peer could only have come from composing two measured ones,
+     * because no peer probes itself; a directly measured relation always spans
+     * the two ends of a link.  So this counter is zero in a conformant run and
+     * a composition would make it non-zero. */
+    {
+        const ppcp_relation_set *rs = ppcp_peer_relations(s.p);
+        const ppcp_peer_desc    *cp = ppcp_peer_counterpart(s.p);
+        size_t                   k;
+        for (k = 0; k < ppcp_relations_count(rs); k++) {
+            const ppcp_timebase_relation *r = &rs->r[k];
+            size_t j;
+            bool from_ours = false, to_ours = false, from_theirs = false, to_theirs = false;
+            for (j = 0; j < d->tb_count; j++) {
+                if (ppcp_id_equal(&r->from, &d->tb[j].id)) from_ours = true;
+                if (ppcp_id_equal(&r->to,   &d->tb[j].id)) to_ours   = true;
+            }
+            if (cp != NULL) {
+                for (j = 0; j < cp->timebase_count; j++) {
+                    if (ppcp_id_equal(&r->from, &cp->timebases[j].id)) from_theirs = true;
+                    if (ppcp_id_equal(&r->to,   &cp->timebases[j].id)) to_theirs   = true;
+                }
+            }
+            if ((from_ours && to_ours) || (from_theirs && to_theirs))
+                s.c.relations_composed++;
+        }
+    }
     s.c.violations     = sim_had_violation() ? 1 : 0;
 
     report(&s);

@@ -165,6 +165,7 @@ typedef struct sim_counter {
     int64_t offers_rx, offers_tx, accepts_rx, replays;
     int64_t sessions_joined, streams_rx, arms_rx;
     int64_t relations_held;
+    int64_t relations_composed;
     int64_t violations;
 } sim_counter;
 
