@@ -5,11 +5,10 @@
 | | |
 |---|---|
 | Document | `PPCP-MSG` |
-| Version | **1.0, Draft 1** |
+| Version | **1.0, Draft 2** |
 | Status | **Draft — for approval to implement** |
 | Date | 22 August 2026 |
 | Depends on | [`PPCP-CORE`](ppcp-core.md) for the entity model, [`PPCP-ENC`](ppcp-encoding.md) for framing and encoding |
-| Supersedes | `ppcp-protocol-overview.md` Part II. The message names in that document were explicitly provisional; **these are the names.** |
 
 ---
 
@@ -87,6 +86,7 @@ hello {
 ```
 hello_accept {
   version         string        the single selected wire version
+  min_version     string        oldest wire version this peer accepts — the support window
   peer_id         Id
   role            host | capture | observer
   profiles        [Kind]
@@ -98,6 +98,7 @@ hello_accept {
 - **(3.2a) MUST** The responder selects the highest MINOR it supports within the highest MAJOR common to both. With no common MAJOR it responds `error` / `unsupported_version` and closes.
 - **(3.2b) MUST** Both peers use the selected version for every subsequent message.
 - **(3.2c) MUST** A responder that receives `role: host` while it is itself `host` responds `error` / `role_conflict` (I20).
+- **(3.2d) MUST** `min_version` states the responder's support window ([`PPCP-CORE` §10.1e](ppcp-core.md#101-version-negotiation)). A peer whose own version is below it will be refused, and is entitled to know that before it is.
 
 ### 3.3 `declare`
 
@@ -188,13 +189,15 @@ session_open {
   session_id              Id
   timebase_ref            Id            MUST be a timebase declared by the sender
   epoch                   { wall_utc_ns, at: Instant }    optional, label only
-  coincidence_window_ns   Duration      default 50000000
+  coincidence_window_ns   Duration      pairwise tolerance, default 50000000  (50 ms)
+  issue_hold_ns           Duration      collection deadline, default 200000000 (200 ms)
   heartbeat_interval_ms   uint          default 1000
 }
 ```
 
 - **(4.1a) MUST** `timebase_ref` is immutable for the life of the Session (I16). A second `session_open` for the same `session_id` with a different `timebase_ref` is an error.
 - **(4.1b) MUST** In a session with no host, the capturing peer performs the equivalent locally and **records a `session_open` frame in the bundle** with its own timebase as `timebase_ref`. The bundle is the same message stream either way.
+- **(4.1c) MUST** `coincidence_window_ns` and `issue_hold_ns` are different quantities and are declared separately: a tolerance for *"are these the same event"*, a deadline for *"how long do I wait"* ([`PPCP-CORE` §8.2](ppcp-core.md#82-arbitration)). `issue_hold_ns` is also what gives a nominating peer a deterministic point at which to mint locally (I32), so it is required even by a host that issues immediately.
 
 ### 4.2 `session_joined`
 
@@ -341,9 +344,9 @@ candidate { candidate: Candidate }
 ```
 
 - **(7.1a) MUST** `Candidate.source_id` names a Source the sender declared, on a declared Timebase (I26).
-- **(7.1b) MUST** `Candidate.at` is emitted **after** acoustic time-of-flight correction where the basis is `acoustic`, with the correction reported in `tof_correction_ns`.
-- **(7.1c) MUST NOT** A record with no peer, no timebase and no clock relation — a filesystem-imported launch monitor CSV being the case that exists today — be sent as a `candidate`. It is reconciled by `shot_link` ([§9.3](#93-shot_link)) and never enters arbitration ([`PPCP-CORE` §8.1b](ppcp-core.md#81-nomination)).
-- **(7.1d) MUST** A peer emits `candidate` for a nomination it also mints or that is later excluded. Losers are sent, not withheld (I8).
+- **(7.1b) MUST** `Candidate.at` is emitted **after** acoustic time-of-flight correction where the basis is `acoustic`, with the correction and its uncertainty reported in `tof_correction` (I29). A correction that was estimated online is *converging*, and its sigma is how a consumer knows where in that convergence this shot sits.
+- **(7.1c) MUST NOT** A record with no peer, no timebase and no clock relation be sent as a `candidate`, and a peer MUST NOT synthesise a timebase to make one eligible. It is associated by `shot_link` ([§9.3](#93-shot_link)) and never enters arbitration ([`PPCP-CORE` §8.1](ppcp-core.md#81-nomination)).
+- **(7.1d) MUST** A peer emits `candidate` for every nomination — one it promotes, one it does not, and one that is later excluded by a host. Losers and unpromoted candidates are sent, not withheld (I8).
 
 ### 7.2 `shot`
 
@@ -352,7 +355,8 @@ shot { shot: Shot }
 ```
 
 - **(7.2a) MUST** A host issuing a Shot from several peers' Candidates sets `authority: host` and `t0` in `Session.timebase_ref`, and sends `shot` to every peer in the Session.
-- **(7.2b) MUST** A peer minting a Shot from its own Candidate sets `authority: device` (Mint profile). In a zero-host session **one Candidate produces exactly one Shot and no coincidence window is applied** (I23).
+- **(7.2b) MUST** A peer minting a Shot from its own Candidate sets `authority: device` (Mint profile). In a zero-host session **no coincidence window is applied and each Shot carries exactly one Candidate** (I23). Which candidates the peer promotes is its own detector policy; the unpromoted ones are still sent (7.1d).
+- **(7.2d) MUST NOT** A peer that has sent a Candidate to a host mint a Shot for it before `issue_hold_ns` plus one `heartbeat_interval_ms` has elapsed with no `shot` referencing it (I32). Without that deadline two conformant peers can disagree about whether a Shot exists.
 - **(7.2c) MUST NOT** A second `shot` for the same `shot.id` carry a different `t0` (I7). A late Candidate is attached by re-sending `shot` with an extended `candidates` list and the **unchanged** `t0`.
 
 ### 7.3 `capture_request`
@@ -387,28 +391,34 @@ The small, immediate message. It goes on the **control** channel and MUST NOT wa
 
 ```
 capture_announce {
-  capture     Capture               metadata only: anchor, interval, completeness, gaps, achieved, digest, bytes
+  capture     Capture               anchor, interval, completeness, gaps, achieved_summary, bytes,
+                                    and digest once known
   thumbnail   { format, bytes }     optional, MUST be <= 65536 bytes
 }
 ```
 
 - **(8.1a) MUST** `capture_announce` is sent as soon as the Capture's metadata is known, independently of whether its payload has begun transferring.
-- **(8.1b) MUST** `Capture.achieved` carries the per-frame exposure durations for camera streams. Without them the canonical-instant conversion is impossible and the receiver's own bias estimate will absorb the error (I17).
+- **(8.1b) MUST NOT** `capture_announce` carry `AchievedFrames` — the per-frame series (I30). It carries `achieved_summary` only. The series travel with the payload ([§8.3](#83-the-payload_-family)).
 - **(8.1c) MUST** A Capture anchored to a Candidate sets `anchor: { candidate_id }`; one anchored to a Shot sets `anchor: { shot_id }`. Exactly one (I27).
 - **(8.1d) MUST NOT** A thumbnail exceed 64 KiB. Larger previews are Captures with their own payload.
+- **(8.1e)** `Capture.digest` MAY be absent from the announce and MUST be present by `payload_begin`. The digest covers the whole payload, so requiring it here would make the immediate message wait for the clip to be fully extracted and hashed — which is the opposite of what the message is for.
+
+**Why the per-frame series are not here.** This is the message whose immediacy the entire two-channel design exists to protect, and at 1080p150 for three seconds the four parallel series run to roughly 44 KB — about 460 times a `sync_probe`, and around 86 ms of a degraded 4 Mbit/s link before anything else on control moves. It is well inside the frame limit, so nothing breaks; it is simply on the wrong side of the split. The series are also uninterpretable without the frames they describe, which arrive on bulk.
 
 ### 8.2 `capture_update`
 
 ```
-capture_update { capture_id, completeness, transfer, gaps, digest }
+capture_update { capture_id, completeness, transfer, gaps, digest, achieved_frames }
 ```
 
 - **(8.2a) MUST** `completeness` and `transfer` are updated independently. `complete` + `pending` and `partial` + `present` are both normal.
+- **(8.2b) MAY** `capture_update` carry `achieved_frames` for a Capture whose payload will not transfer — a `complete` + `failed` clip whose frame timing is still worth having. It is the only route by which the series reach a consumer on the control channel, and it is a fallback, not the normal path (I30).
 
 ### 8.3 The `payload_*` family
 
 ```
-payload_begin  { capture_id, bytes: uint64, digest: Digest, chunk_bytes: uint32 }
+payload_begin  { capture_id, bytes: uint64, digest: Digest, chunk_bytes: uint32,
+                 achieved_frames: AchievedFrames }
 payload_chunk  { capture_id, index: uint32, offset: uint64, data: bytes, digest: Digest }
 payload_ack    { capture_id, index: uint32 }
 payload_end    { capture_id, digest: Digest }
@@ -422,6 +432,7 @@ payload_resume { capture_id, from_index: uint32 }
 - **(8.3d) MUST** Resumption restarts from the chunk after the last acknowledged index, not from the beginning.
 - **(8.3e) MUST NOT** A receiver treat the absence of payload as `completeness: absent`. Completeness is asserted by the owner (I10).
 - **(8.3f) SHOULD** `chunk_bytes` is 262144 (256 KiB). It MUST NOT exceed 4 MiB.
+- **(8.3g) MUST** `payload_begin` for a camera Capture carries `achieved_frames`, including the per-frame exposure the canonical-instant conversion depends on (I17). Any per-frame array whose value was constant across the Capture MAY be sent as a single scalar ([`PPCP-CORE` §5.8f](ppcp-core.md#58-capability)) — under a locked exposure and locked focus that collapses three of the four series to one value each.
 
 ---
 
@@ -462,7 +473,16 @@ shot_link { link: ShotLink }
 
 - **(9.3a) MUST NOT** An implementation provide any operation that merges Shots. Reconciliation produces links; nothing is rewritten (I9).
 - **(9.3b) MUST** A link is presented for confirmation before `confirmed: true` is set.
-- **(9.3c) MUST** A filesystem-imported external record — the launch monitor case — is reconciled here, with `basis: sequence_alignment` or `manual`, and never as a Candidate.
+- **(9.3c) MUST** An external record with no clock is associated here, never as a Candidate. Which `basis` applies depends on how it was attributed ([`PPCP-CORE` §8.1](ppcp-core.md#81-nomination)):
+
+| Record shape | `basis` | Confirmation |
+|---|---|---|
+| Observed live by a peer, attributed by arrival order — a launch monitor writing one row per shot to a watched file | `arrival_pairing` | asserted by the observing peer; no later confirmation, because no later evidence |
+| A multi-record export matched after the fact | `sequence_alignment`, `interval_alignment`, `acoustic_correlation` | **required** |
+| A human said so | `manual` | implicit |
+
+- **(9.3d) MUST NOT** `basis: sequence_alignment` be used for a single-record source. There is no sequence in a file holding one row (`CORE` §8.5g).
+- **(9.3e) MUST NOT** A `shot_link` of any basis influence `t0` or be converted into a `TimebaseRelation`.
 
 ### 9.4 `session_link`
 
@@ -486,7 +506,7 @@ error { code: Kind, message: string, in_reply_to: uint (optional), detail: map (
 
 | Code | Fatal | Meaning |
 |---|---|---|
-| `unsupported_version` | yes | No common wire MAJOR. |
+| `unsupported_version` | yes | No common wire MAJOR, or the peer is below the responder's `min_version`. **MUST carry `detail.supported`** — the sender's full supported range — so the receiver can tell its user which end is stale (`CORE` §10.1f). |
 | `role_conflict` | yes | A second peer declared `role: host` (I20). |
 | `malformed` | no | Frame or message failed to decode, or a mandatory field was absent. |
 | `profile_not_supported` | no | Understood, but the behaviour is not implemented by this peer (I24). |
@@ -563,7 +583,7 @@ Forty-two messages. `R` request, `S` response, `E` event.
 
 *Non-normative. The message names here are the normative names of [§3](#3-connection-and-declaration)–[§10](#10-errors); where a diagram and the catalogue disagree, the catalogue wins.*
 
-These nine sequences replace Part II of the protocol overview. They are retained because every fault found in the model so far was found by *using* it — tracing a flow and discovering the model could not express it. Sequences are how a model is tested.
+Sequences are included because every fault found in this model so far was found by *using* it — tracing a flow and discovering the model could not express it. The launch-monitor shape of [§9.3c](#93-shot_link) and the ball-into-screen defect in the zero-host regime were both found this way.
 
 **Conventions.** `⟨tb:x⟩` marks the timebase a value is expressed in; every timestamp shows one (I1). Dashed arrows are responses. **Both channels are drawn as one lifeline** — the control/bulk split of [§2](#2-channels) is invisible in a sequence diagram and is the single easiest requirement to miss.
 
@@ -730,7 +750,7 @@ sequenceDiagram
         DM->>D: transient onset
         D->>D: refine to sample index
         D->>D: correct acoustic time of flight from calibration
-        D->>H: candidate (basis=acoustic, source=DM,<br/>at ⟨tb:device⟩, confidence, tof_correction_ns)
+        D->>H: candidate (basis=acoustic, source=DM,<br/>at ⟨tb:device⟩, confidence, tof_correction)
     and Host observes
         HM->>H: transient onset
         H->>H: refine + own ToF correction
@@ -747,9 +767,9 @@ sequenceDiagram
 
     rect rgba(128,128,128,0.07)
     Note over D,H: Event and payload decoupled — different channels
-    D->>H: capture_announce (video: interval, achieved, thumbnail)  [control]
+    D->>H: capture_announce (video: interval, achieved_summary, thumbnail)  [control]
     D->>D: extract from ring buffer at t0
-    D->>H: payload_begin / payload_chunk ... / payload_end  [bulk]
+    D->>H: payload_begin (achieved_frames) / chunks / end  [bulk]
     D->>H: capture_announce (audio window, anchor = candidate_id)  [control]
     end
 ```
@@ -762,11 +782,11 @@ sequenceDiagram
 | 10 | **I17** | Conversion needs the relation **and** the canonical-instant conversion. Either alone gives a wrong answer. |
 | 11 | 8.2c of `CORE` | The coincidence window is a declared Session parameter, not a constant. Default 50 ms. |
 | 12 | **I8** | All candidates retained, winners and losers. Arbitration is a conclusion; candidates are the evidence. |
-| 15 | 8.1a | Small and immediate on the **control** channel, so the host correlates and displays before any video arrives. |
-| 17 | 8.3, T2 | Bulk channel — may lag, queue, resume, or never complete in-session. |
+| 15 | 8.1a, **I30** | Small and immediate on the **control** channel, so the host correlates and displays before any video arrives. Summary only — the per-frame series would be ~44 KB and would defeat the purpose. |
+| 17 | 8.3g, T2 | Bulk channel — may lag, queue, resume, or never complete in-session. `achieved_frames` rides here, with the frames it describes. |
 | 18 | **I27**, 5.12.1 of `CORE` | The audio window anchors to the **candidate**, so rejected candidates keep their evidence too. |
 
-**Worth noticing.** `achieved` is not decoration. The conversion to canonical mid-exposure needs the profile's `timing` *and* that frame's exposure duration, and the latter exists only in `achieved`. A host that ignores it produces an exposure-dependent bias indistinguishable from clock error — which then corrupts its own bias estimator.
+**Worth noticing.** `achieved_frames` is not decoration. The conversion to canonical mid-exposure needs the profile's `timing` *and* that frame's exposure duration, and the latter exists only there. A host that ignores it carries an exposure-dependent bias — one that moves with the light and therefore cannot be told apart from clock error by any consumer looking only at the data.
 
 ---
 
@@ -893,9 +913,11 @@ sequenceDiagram
     Note over D,S: Estimate AND evidence both stored.<br/>Evidence is unrecoverable after capture.
 
     opt Ball struck
-        D->>S: candidate (basis=acoustic, at ⟨tb:device⟩)
-        D->>S: shot (authority=device, one shot per candidate)
-        Note over D: MINT, not arbitrate — no coincidence<br/>window is applied (I23)
+        D->>S: candidate (impact, at ⟨tb:device⟩)
+        D->>S: candidate (ball-into-screen, ~9 ms later)
+        Note over D: BOTH candidates recorded with evidence (I8)
+        D->>S: shot (authority=device, promotes the impact only)
+        Note over D: MINT, not arbitrate — no coincidence window.<br/>Promotion is the detector's call, not the protocol's (I23)
         D->>S: capture_announce + payload (video, ~3 s at t0)
         D->>S: capture_announce + payload (audio window,<br/>anchor = candidate_id)
         D->>S: capture_announce + payload (wrist, interval + gaps)
@@ -913,7 +935,7 @@ sequenceDiagram
 | 2 | **I20**, 4.1b | At most one host, not exactly one. With none, `authority` is `device` and the device's timebase is canonical. |
 | 10–13 | [`CORE` §9.1](ppcp-core.md#91-clock-authority-inverts) | The device estimates the sensor mapping live and continuously — the same machinery as network sync, pointed at BLE. |
 | 13 | **9.1b** | Both the estimate **and** the raw evidence are stored. The evidence exists only at capture time; a device that defers reconciliation to import has destroyed what it needs. |
-| 16 | **I23** | This is the invariant a studio-only implementation will never exercise. Applying a coincidence window here would collapse distinct candidates. |
+| 16–18 | **I23**, **I8** | The invariant a studio-only implementation will never exercise. A coincidence window here would collapse distinct candidates; promoting every candidate would mint two Shots for one swing. Both candidates are retained either way. |
 | 18–20 | I12 | Any subset of streams is a valid session. Video-only sessions will exist for months before sensors arrive. |
 | 24 | **I11** | Gaps are explicit and never spanned. Offline there is no host to notice a dropout. |
 
@@ -961,7 +983,7 @@ sequenceDiagram
 
     rect rgba(128,128,128,0.07)
     Note over H: Reconciliation — links only
-    H->>H: sequence-align against the launch monitor CSV
+    H->>H: match against a multi-record export
     H->>H: shot_link (basis=sequence_alignment, confirmed=false)
     H->>U: candidate matches for confirmation
     U->>H: confirm / reject
@@ -980,7 +1002,7 @@ sequenceDiagram
 | 4, 17 | 8.3c, 9.1a | Content-addressed and idempotent. Re-import is a no-op; users connect twice. |
 | 6–9 | 9.2a, 9b of `CORE` | Metadata first — not because video is slow, but so the host can validate and commit before bulk data, and an interrupted transfer still yields an analysable session. |
 | 6–9 | 9a of `CORE` | **The same messages as the live path.** The host gains a file transport, not an importer — one parser, one schema, one conformance suite. |
-| 20–23 | **I9**, 9.3c | The launch monitor CSV is reconciled here, as a `shot_link`. It is **not** a Candidate: it has no peer, no timebase and no clock relation. |
+| 20–23 | **I9**, 9.3c | Retrospective matching needs a **multi-record** export and requires confirmation. A launch monitor that rewrites one row per shot has no sequence to align and must instead be paired live, by the observing peer, as `basis: arrival_pairing` — and if no peer was running, that reading no longer exists (`CORE` §8.1f). |
 | 25–26 | **I16**, 8.5d of `CORE` | The host's better estimate is a **new relation from** the canonical timebase. Mutating `timebase_ref` would be the destructive rewrite reconciliation forbids. |
 
 ---
@@ -1033,7 +1055,7 @@ sequenceDiagram
 | Step | Reference | Note |
 |---|---|---|
 | 2–4 | 7.4d of `CORE` | Capture is non-recoverable; transfer is retryable. The link failing costs no frames. |
-| 5–7 | 8.3d of `CORE` | The device falls into the zero-host regime for the duration and mints its own shot ids — which is the **Mint** profile, not Arbitrate. |
+| 5–7 | 8.3f of `CORE` | The device falls into the zero-host regime for the duration and mints its own shot ids — which is the **Mint** profile, not Arbitrate. |
 | 11–13 | 4.3 | `session_resume`, not `session_open`. The session did not end. |
 | 15–19 | **4.3b** | Re-burst before resuming. The relation drifted while disconnected — at 20 ppm, ~1.2 ms per minute. |
 | 20 | 8.3d | Resume from the chunk after the last acknowledged index, not from the start. |

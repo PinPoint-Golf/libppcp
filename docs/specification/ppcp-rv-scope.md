@@ -33,7 +33,7 @@ Each of these is currently unspecified, and each independently blocks cross-impl
 
 | # | Item | Why it blocks |
 |---|---|---|
-| **RV-1** | **Service type and TXT record contents.** One agreed name, with enough in TXT — protocol version, peer id, role — that a host can filter *before* connecting rather than after. | Two implementations browsing different names never meet. |
+| **RV-1** | **Service type and TXT record contents.** One agreed name, with enough in TXT — protocol version, peer id, role — that a host can filter *before* connecting rather than after. **A name has already been shipped by guess** — see [§5](#5-status). | Two implementations browsing different names never meet. |
 | **RV-2** | **QR payload format.** The highest-priority item: QR is the **primary** pairing path, not a fallback. It is an opaque fixed blob both sides must parse with no chance to negotiate first, **so it needs a version marker in its first field or it can never change.** | A QR without a version marker is unfixable after the first release. |
 | **RV-3** | **PSK derivation and TLS-PSK identity format.** | Without an agreed derivation the handshake cannot complete across implementations, even with a correctly-scanned QR. |
 | **RV-4** | **Optional SSID and passphrase extension**, driving a hotspot join, so a host can remove the network problem rather than work around it. | Not blocking, but it is the difference between working and not working at a range. |
@@ -71,4 +71,11 @@ Anything written here must hold these:
 
 Not started. It is **not** blocking implementation — a device and a host built by the same team will pair over a private arrangement, and a USB peer needs none of this — but it **is** blocking any claim that the protocol is open, and it is blocking the third-party interoperability pairing required by [`PPCP-CONF` §5c](ppcp-conformance.md#5-interoperability).
 
-Recommended sequencing: draft RV-2 (the QR payload, with its version marker) before the first release that ships a QR, because that is the one item that cannot be fixed later.
+### 5.1 The real deadline is earlier than `ppcp/1.0`
+
+Both implementation teams identified the same thing independently, and it moves the schedule:
+
+- **The service type has already been chosen by guess.** The mobile application declares `_ppcp._tcp` in its bundle, selected with nothing to reference. That string ships to app review as part of the bundle. **RV-1 should ratify `_ppcp._tcp` rather than pick a different name**, unless there is a positive reason to change it, because changing it later costs a release on one side and a silent no-discovery failure in between.
+- **RV-2 is gated by the first release that ships a QR code, not by `ppcp/1.0`.** A QR payload is an opaque fixed blob parsed with no chance to negotiate first, and printed codes outlive releases. Once one is in the field the format is fixed. **A version marker in its first field is the single non-negotiable item in this document.**
+
+Recommended sequencing: ratify RV-1 and specify RV-2 before the first store submission; RV-3 before any cross-implementation pairing; RV-4 and RV-5 at leisure.

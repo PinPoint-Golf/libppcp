@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Document | `PPCP-ENC` |
-| Version | **1.0, Draft 1** |
+| Version | **1.0, Draft 2** |
 | Status | **Draft — for approval to implement** |
 | Date | 22 August 2026 |
 | Depends on | [`PPCP-CORE`](ppcp-core.md), [`PPCP-MSG`](ppcp-messages.md) |
@@ -95,10 +95,13 @@ Payloads are CBOR (RFC 8949).
 | `Interval` | `{ "tb": tstr, "start_ns": int, "end_ns": int }` |
 | `Digest` | `{ "alg": "sha-256", "value": bstr }` |
 | `Matrix3` | `[f64 × 9]`, row-major |
+| `Estimate` | `{ "value_ns": int, "sigma_ns": f64 }`. Both keys mandatory together; neither has a defined meaning alone. |
 
 - **(4.1a) MUST** There is no encoding for a bare timestamp. Every point in time is an `Instant` or an element of a `Series`, and both carry `tb`. This is I1 made structural: **a timestamp without a timebase is unwriteable**, not merely forbidden.
 - **(4.1b) MUST** Durations are plain integers and carry no `tb`. A duration is not a point in time.
-- **(4.1c) MUST** Parallel arrays in `AchievedCapability` — `exposure_ns`, `iso`, `intrinsics` — have the same length as `frames.ns` where present.
+- **(4.1c) MUST** Parallel arrays in `AchievedFrames` — `exposure_ns`, `iso`, `intrinsics` — have the same length as `frames.ns` where present.
+- **(4.1d) MUST** A per-frame field in `AchievedFrames` is encoded **either** as an array of that length **or** as a single value of the element type, which means the value was constant for every frame. A decoder distinguishes the two by CBOR major type, not by length: a one-frame Capture still encodes an array of one. `frames.ns` has no scalar form (I2).
+- **(4.1e) MUST** An `Estimate` carries both keys. An encoder cannot emit a value without its sigma, which is I29 and I3 made structural in the same way `Instant` makes I1 structural.
 
 ---
 
@@ -153,6 +156,7 @@ Ninety-five bytes on the wire for the highest-frequency control message in the p
 ## 6. Bulk transfer
 
 - **(6a) MUST** A Capture's payload is transferred as `payload_begin`, then `payload_chunk` in ascending `index` from 0, then `payload_end` ([`PPCP-MSG` §8.3](ppcp-messages.md#83-the-payload_-family)).
+- **(6a1) MUST** `payload_begin` carries the Capture's `AchievedFrames` for a camera Capture. The per-frame series belong on this channel, with the frames they describe, and never on control (I30). At 1080p150 for three seconds they are roughly 44 KB in parallel form, and a few hundred bytes where a locked exposure lets three of the four collapse to scalars.
 - **(6b) MUST** `payload_chunk.data` is a CBOR byte string. `offset` equals `index × chunk_bytes` for every chunk, and `data` is exactly `chunk_bytes` long except for the last.
 - **(6c) MUST** `payload_chunk.digest` is SHA-256 of `data`. `payload_begin.digest` and `payload_end.digest` are SHA-256 of the concatenation of every chunk's `data` in index order, and are the value carried in `Capture.digest`.
 - **(6d) MUST** A receiver verifies each chunk digest on arrival and the whole-payload digest at `payload_end`. A mismatch is `payload_abort` / `malformed`; the transfer may be retried from `payload_resume`.

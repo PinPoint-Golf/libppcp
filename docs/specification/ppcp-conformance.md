@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Document | `PPCP-CONF` |
-| Version | **1.0, Draft 1** |
+| Version | **1.0, Draft 2** |
 | Status | **Draft — for approval to implement** |
 | Date | 22 August 2026 |
 | Depends on | [`PPCP-CORE`](ppcp-core.md), [`PPCP-MSG`](ppcp-messages.md), [`PPCP-ENC`](ppcp-encoding.md) |
@@ -45,13 +45,13 @@ Build order matters here: each of these is needed to test the layer above it, an
 - **(2c) MUST** **A software peer simulator** that both sides develop against, capable of presenting a **declaration different from the implementer's own** — a different `timing.convention`, a different `geometry`, a foreign profile set. Without that last capability, §4's tests cannot be written at all.
 - **(2d) SHOULD** **The LED timecode rig** — a host-driven LED flashing a binary-coded pattern at ~1 kHz in view of every camera, so each frame decodes an absolute host timestamp. It is the only source of end-to-end ground truth, and because different sensor rows decode different codes it measures rolling-shutter `readout_ns` in the same experiment.
 
-2c is the one most likely to be skipped, and it is the one that makes I19, I22 and I24 testable. An implementation tested only against itself will pass every one of them by accident.
+2c is the one most likely to be skipped, and it is the one that makes I19, I22, I24 and I31 testable. An implementation tested only against itself will pass every one of them by accident — most dangerously I31, where an unmeasured offset declared as `0` is correct relative to another implementation that also declared `0`.
 
 ---
 
 ## 3. The invariant test matrix
 
-Twenty-eight invariants, twenty-eight tests. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
+Thirty-two invariants, thirty-two tests. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
 
 | Test | Invariant | Profile | Method | Assertion |
 |---|---|---|---|---|
@@ -62,7 +62,7 @@ Twenty-eight invariants, twenty-eight tests. Identifiers match [`PPCP-CORE` §11
 | **CT-I5** | I5 | Capture | paired | Change a Source's calibration mid-session. Assert the open Stream closes, a new Stream opens, and the **Session does not end**. Assert no Capture spans the boundary. |
 | **CT-I6** | I6 | **Mint**, Arbitrate | static | Every Shot in the output references ≥1 Candidate somewhere in the Session. Assert also the negative: a Shot with zero Candidates *from one peer* is legal. |
 | **CT-I7** | I7 | Mint, Arbitrate | paired | Deliver a Candidate after the Shot has been issued. Assert it attaches, and that `t0` is **byte-identical** before and after. |
-| **CT-I8** | I8 | Arbitrate | paired | Arbitrate with one candidate excluded for an over-wide sigma. Assert the excluded Candidate is present in `Shot.candidates` and its evidence reference survives. |
+| **CT-I8** | I8 | Mint, Arbitrate | paired | Arbitrate with one candidate excluded for an over-wide sigma; assert the excluded Candidate is present in `Shot.candidates` and its evidence reference survives. **Then assert two Candidates of the *same* `basis` from *different* peers — a host microphone and a device microphone — are both retained and both appear.** An arbiter that keeps one candidate per modality silently drops the second, which destroys the only thing a second acoustic nominator is for. Finally assert an unpromoted Candidate in a hostless session is emitted and retained with no Shot referencing it. |
 | **CT-I9** | I9 | Offline | static | The implementation exposes **no operation** that merges or rewrites a Shot on reconciliation. Assert by API surface, not by behaviour. |
 | **CT-I10** | I10 | Capture | paired | Withhold a payload. Assert the receiver does not mark the Capture `absent`, and that `absent` appears only when the owner asserted it. |
 | **CT-I11** | I11 | Capture | fixture | A `continuous` stream with a dropout produces an explicit gap; no consumer interpolates across it. Assert gaps on a `shot_windowed` stream are rejected or ignored. |
@@ -78,6 +78,10 @@ Twenty-eight invariants, twenty-eight tests. Identifiers match [`PPCP-CORE` §11
 | **CT-I21** | I21 | Live | paired | A **host** with two timebases runs a probe sequence per timebase and declares both relations. Asserted against the host, not only the device. |
 | **CT-I22** | I22 | Capture | static | `frame_start_to_exposure_offset_ns` present with `nominal_frame_start` and absent otherwise. Assert a profile declaring `nominal_frame_start` without it is rejected, and one declaring it with `convention: start` is also rejected. Assert an explicit zero is accepted and a defaulted zero is not producible. |
 | **CT-I23** | I23 | Mint | **injected** | See [CT-S4](#44-ct-s4--the-zero-host-path). |
+| **CT-I29** | I29 | Detect | static | A `Candidate.tof_correction` carrying `value_ns` without `sigma_ns`, or the reverse, is rejected as malformed and is not constructible for emission. |
+| **CT-I30** | I30 | Capture | paired | Capture a 3 s clip at the implementation's highest declared rate with `intrinsics: per_frame`. Assert `capture_announce` carries no per-frame series and measure its encoded size; assert `payload_begin` carries `achieved_frames`. Repeat with exposure locked and assert the constant series are sent as scalars. |
+| **CT-I31** | I31 | Capture | static | `frame_start_to_exposure_offset_ns`, `rolling_shutter.readout_ns` and `AchievedFrames.exposure_ns` each carry provenance. Assert a value that has not been measured for this device model is `assumed`, that `measured` is never emitted for a vendor-documented or inherited figure, and that `exposure_provenance: per_frame` is not emitted where the platform does not attach the value to the sample. |
+| **CT-I32** | I32 | Mint | **injected** | A host that receives a Candidate and never issues a `shot`. Assert the peer does not mint before `issue_hold_ns + heartbeat_interval_ms`, and does mint after. Assert two peers with the same declared parameters agree on whether a Shot exists. |
 | **CT-I24** | I24 | Core | **injected** | See [CT-S6](#46-ct-s6--comprehension-versus-origination). |
 | **CT-I25** | I25 | Offline | static | Creating a `SessionLink` alters neither Session. Assert byte-equality of both Sessions before and after. Assert no operation composes a `SessionLink` with a `TimebaseRelation`. |
 | **CT-I26** | I26 | Detect | static | A Candidate whose `source_id` names no declared Source, or a Source with no declared Timebase, is rejected. Assert a filesystem-imported record is not emitted as a Candidate. |
@@ -141,10 +145,12 @@ Never exercised in a studio, and it is what v1 ships.
 **Assertions.**
 
 1. A session with no `host` runs end to end: declare, stream open, arm, candidates, shots, captures, bundle write, bundle read.
-2. **Two candidates 10 ms apart produce two Shots**, not one. This is the test that distinguishes Mint from Arbitrate; an implementation that reuses its arbitration code path here fails.
+2. Two candidates 10 ms apart produce **either two Shots, or one Shot and one unpromoted Candidate — and both Candidates are emitted and retained with their evidence either way.** No coincidence window is applied, and no Shot carries more than one Candidate.
 3. Every Shot carries `authority: device`.
-4. The same two candidates, replayed into a session *with* a host and a 50 ms window, produce **one** Shot. The pair of assertions together is the test; either alone passes for the wrong reason.
+4. The same two candidates, replayed into a session *with* a host and a 50 ms window, produce **one** Shot carrying **both** Candidates. Assertions 2 and 4 together are the test; either alone passes for the wrong reason.
 5. The Mint profile is declared. A peer that mints without declaring Mint fails [§1d](#1-claiming-conformance).
+
+**Assertion 2 changed in Draft 2 and the reason is worth keeping.** It previously read "two candidates 10 ms apart produce two Shots, not one" — which certified a defect. The detector is required to discriminate ball-into-screen, roughly 9 ms after impact at 3 m, from the impact itself, and the retention design encourages emitting both so a rejected nomination keeps its audio. Under the old assertion, a device that did exactly that minted two Shots for one swing and passed. The invariant now constrains the *shape* — no window, one Candidate per Shot, nothing discarded — and leaves promotion to the detector, where I14 already puts every other threshold.
 
 ### 4.5 CT-S5 — relation composition
 
@@ -187,6 +193,8 @@ Conformance to the document is necessary and not sufficient. Two implementations
 | Reference device, **no host** → bundle → reference host import | | I20, I23, I16, I9 |
 | Reference host ↔ **observer-only peer** (`Core + Live`) | | I24 |
 | Reference host ↔ peer declaring `unrelated` timebases | | I3, and that an honest degraded peer is not silently mishandled |
+| Reference host **owning its own acoustic Source** ↔ device with an acoustic Source | | I8 — two nominators of the same `basis`, both retained. A per-modality slot drops one and the failure is silent |
+| Reference host that never issues a `shot` ↔ nominating peer | | I32 — both ends agree on when the peer may mint |
 | Bundle written by A → read by B, both directions | | [`PPCP-ENC` §7a](ppcp-encoding.md#7-bundle-container) — that live and file are one format |
 
 - **(5b) MUST** The `unrelated` pairing asserts the host **refuses or excludes with a reason**, and never substitutes a zero offset ([`PPCP-MSG` §10c](ppcp-messages.md#10-errors)).
@@ -202,6 +210,7 @@ Stated so the boundary is not mistaken for an omission.
 |---|---|
 | Frame rate, resolution, optical quality thresholds | Host ingest policy, deliberately outside the protocol (I14). |
 | Detection accuracy, classifier quality, false-positive rate | Device-internal. The protocol carries `confidence`; it does not judge it. |
+| **Which candidates a Mint peer promotes** | Detector tuning, and therefore I14 territory. The suite tests the *shape* of the result — one Candidate per Shot, nothing discarded, no window — never the choice. |
 | Rendezvous, pairing, key derivation | [`PPCP-RV`](ppcp-rv-scope.md), which does not exist yet. **No pairing interoperability is currently testable at all.** |
 | Byte-transfer performance, throughput, latency | Transport. PPCP declares uncertainty; it does not require a quality. |
 | Battery, thermal endurance, sustained capture rate | Product requirements, verified against the device, not the protocol. Note that `MeasuredCapability.method` exists precisely so a cold figure cannot be presented as a sustained one (I28). |
