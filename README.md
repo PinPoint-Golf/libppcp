@@ -22,4 +22,6 @@ The specification is approved by both first-party implementation teams. It is **
 | Path | Contents |
 |---|---|
 | `docs/specification/` | **The single authority on PPCP.** Core model, message catalogue, wire encoding, conformance |
+| `docs/implementation/` | [The implementation plan](docs/implementation/implementation-plan.md) — work packages across `libppcp`, PinPointStudio and PinPointCapture, and the session tracker |
+| `docs/conformance/` | [The conformance matrix](docs/conformance/matrix.md) — every `CT-*`, `RT-*` and interoperability row against all three implementations |
 | `src/`, `tests/`, `tools/` | Reference implementation. Empty — the specification is approved and this is where the work starts. |
