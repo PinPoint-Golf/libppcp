@@ -16,6 +16,8 @@ set(PPCP_TESTS
     test_ct_i13
     test_ct_i29
     test_ct_s1
+    test_ct_s6
+    test_umbrella
     test_rv)
 
 foreach(t ${PPCP_TESTS})

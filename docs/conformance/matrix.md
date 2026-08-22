@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-22 — end of Session 1 |
+| Last updated | 2026-08-22 — Session 2 in progress |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -40,7 +40,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I21 | I21 | Live | paired | L9, H5, D6 | — | — | — |
 | CT-I22 | I22 | Capture | static | L4, D2 | impl | — | — |
 | CT-I23 | I23 | Mint | injected | L10 → CT-S4 | — | — | — |
-| CT-I24 | I24 | Core | injected | L6 → CT-S6 | — | — | — |
+| CT-I24 | I24 | Core | injected | L6 → CT-S6 | impl | — | — |
 | CT-I25 | I25 | Offline | static | L4 | — | — | — |
 | CT-I26 | I26 | Detect | static | L4, L10, D5 | — | — | — |
 | CT-I27 | I27 | Capture | static | L4, D4 | — | — | — |
@@ -66,7 +66,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-S3 | I19 | Core | injected | L13, H2, D2 | — | — | — |
 | CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | — | — | — |
 | CT-S5 | I18 | Core | paired | L9, H5, D6 | — | — | — |
-| CT-S6 | I24 | Core | injected | L5, L6, L13 | — | — | — |
+| CT-S6 | I24 | Core | injected | L5, L6, L13 | impl | — | — |
 | CT-S7 | I31 | Capture | injected | L13, D2 | — | — | — |
 
 ## 3. Interoperability pairings — `CONF` §5a

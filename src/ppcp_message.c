@@ -1495,7 +1495,6 @@ static ppcp_result enc_session(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     switch (m->type) {
     case PPCP_MT_SESSION_OPEN: {
         const ppcp_body_session_open *b = &m->body.session_open;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_id("timebase_ref", &b->timebase_ref);
         if (b->epoch.present)
             f[n++] = ppcp_wf_sub("epoch", ppcp_session_epoch_write, &b->epoch);
@@ -1514,7 +1513,6 @@ static ppcp_result enc_session(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     }
     case PPCP_MT_SESSION_JOINED: {
         const ppcp_body_session_joined *b = &m->body.session_joined;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_id("peer_id", &b->peer_id);
         f[n++] = ppcp_wf_enum("verdict", join_verdict_map, (int)b->verdict);
         if (b->has_reason)
@@ -1525,7 +1523,6 @@ static ppcp_result enc_session(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
         const ppcp_body_session_resume *b = &m->body.session_resume;
         s->minted.v = b->minted_shots;
         s->minted.n = b->minted_shot_count;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_id("peer_id", &b->peer_id);
         /* 4.3c: shots minted during the outage are reconciled through
          * `shot_link`.  They are not renumbered and their `authority` stays
@@ -1536,7 +1533,6 @@ static ppcp_result enc_session(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     }
     case PPCP_MT_SESSION_STATE: {
         const ppcp_body_session_state *b = &m->body.session_state;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_enum("state", ppcp_session_state_enum_map(), (int)b->state);
         /* 4.4a / I10: asserted by the peer that owns the data, never inferred
          * by the receiver from what has arrived. */
@@ -1549,7 +1545,6 @@ static ppcp_result enc_session(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
         break;
     case PPCP_MT_SESSION_CLOSE: {
         const ppcp_body_session_close *b = &m->body.session_close;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_id("reason", &b->reason);
         break;
     }
@@ -1830,7 +1825,6 @@ static ppcp_result enc_offline(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     switch (m->type) {
     case PPCP_MT_SESSION_OFFER: {
         const ppcp_body_session_offer *b = &m->body.session_offer;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_id("minting_peer_id", &b->minting_peer_id);
         f[n++] = ppcp_wf_enum("completeness", ppcp_session_completeness_enum_map(),
                               (int)b->completeness);
@@ -1842,7 +1836,6 @@ static ppcp_result enc_offline(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     }
     case PPCP_MT_SESSION_ACCEPT: {
         const ppcp_body_session_accept *b = &m->body.session_accept;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_enum("verdict", offer_verdict_map, (int)b->verdict);
         if (b->has_reason)
             f[n++] = ppcp_wf_id("reason", &b->reason);
@@ -1856,7 +1849,6 @@ static ppcp_result enc_offline(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
         const ppcp_body_session_manifest *b = &m->body.session_manifest;
         s->streams.v = b->streams;
         s->streams.n = b->stream_count;
-        f[n++] = ppcp_wf_id("session_id", &b->session_id);
         f[n++] = ppcp_wf_sub("streams", idlist_w, &s->streams);
         f[n++] = ppcp_wf_sub("captures", manifest_caps_w, b);
         f[n++] = ppcp_wf_enum("completeness", ppcp_session_completeness_enum_map(),
@@ -1886,6 +1878,36 @@ static ppcp_result enc_offline(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
     }
     c->n = n;
     return PPCP_OK;
+}
+
+/* ENC 5a against MSG §4, §9.1 and §9.2.
+ *
+ * Eight message bodies name a `session_id` field: the five of §4, plus
+ * `session_offer`, `session_accept` and `session_manifest`.  ENC 5a forbids a
+ * body using `session_id` "as a field name for ANY OTHER PURPOSE" — and these
+ * eight use it for exactly the envelope's purpose, the Session this message is
+ * about.  Writing both would emit the key twice in one map, which ENC 4d makes
+ * malformed, so the two cannot both be present and one of them has to be the
+ * other.  The envelope's is the one that is, because a receiver routing on
+ * `session_id` reads the envelope before it knows the type.
+ *
+ * The encoder therefore HOISTS the body's value into the envelope, and the
+ * body decoders read it back out of the same flat map wherever it sits.  A
+ * body and an envelope that disagree is a caller bug, not a wire form.
+ * Recorded as finding F-L5-1 for the L17 erratum sweep. */
+static const ppcp_id *body_session_id(const ppcp_msg *m)
+{
+    switch (m->type) {
+    case PPCP_MT_SESSION_OPEN:     return &m->body.session_open.session_id;
+    case PPCP_MT_SESSION_JOINED:   return &m->body.session_joined.session_id;
+    case PPCP_MT_SESSION_RESUME:   return &m->body.session_resume.session_id;
+    case PPCP_MT_SESSION_STATE:    return &m->body.session_state.session_id;
+    case PPCP_MT_SESSION_CLOSE:    return &m->body.session_close.session_id;
+    case PPCP_MT_SESSION_OFFER:    return &m->body.session_offer.session_id;
+    case PPCP_MT_SESSION_ACCEPT:   return &m->body.session_accept.session_id;
+    case PPCP_MT_SESSION_MANIFEST: return &m->body.session_manifest.session_id;
+    default:                       return NULL;
+    }
 }
 
 ppcp_result ppcp_msg_init(ppcp_msg *m, ppcp_msg_type t, uint64_t msg_id)
@@ -1922,14 +1944,27 @@ ppcp_result ppcp_msg_set_reply_to(ppcp_msg *m, uint64_t reply_to)
 ppcp_result ppcp_msg_encode(uint8_t *out, size_t cap, uint8_t channel, const ppcp_msg *m,
                             size_t *out_written)
 {
-    msg_wctx    ctx;
-    enc_scratch scratch;
-    ppcp_result rc;
+    msg_wctx       ctx;
+    enc_scratch    scratch;
+    ppcp_envelope  env;
+    const ppcp_id *sid;
+    ppcp_result    rc;
 
     if (out == NULL || m == NULL || out_written == NULL)
         return PPCP_ERR_INVALID;
     memset(&ctx, 0, sizeof(ctx));
     memset(&scratch, 0, sizeof(scratch));
+    env = m->env;
+
+    sid = body_session_id(m);
+    if (sid != NULL) {
+        if (!ppcp_id_is_set(sid))
+            return PPCP_ERR_INVALID;
+        if (env.has_session_id && !ppcp_id_equal(&env.session_id, sid))
+            return PPCP_ERR_INVALID;
+        env.has_session_id = true;
+        env.session_id     = *sid;
+    }
 
     /* MSG §2 — the channel rule is checked HERE and not left to the caller,
      * because 2a and 2b are the two halves of the reason two channels exist. */
@@ -1967,6 +2002,6 @@ ppcp_result ppcp_msg_encode(uint8_t *out, size_t cap, uint8_t channel, const ppc
     if (rc != PPCP_OK)
         return rc;
 
-    return ppcp_message_encode(out, cap, channel, &m->env, ctx.n, msg_body_write, &ctx,
+    return ppcp_message_encode(out, cap, channel, &env, ctx.n, msg_body_write, &ctx,
                                out_written);
 }

@@ -112,12 +112,21 @@ void *ppcp_arena_take(ppcp_arena *a, size_t count, size_t elem_size, size_t alig
         return NULL;                       /* overflow */
     need = count * elem_size;
 
+    /* Aligned on the ABSOLUTE address, not on the offset within the region.
+     * The caller owns the buffer and may hand in any address it likes — a
+     * member of a struct, a slice of a larger pool — and aligning the offset
+     * alone leaves every allocation as misaligned as the base was.  Found by
+     * the L5 catalogue test under UBSan decoding a `declare` into an arena
+     * whose buffer began at an odd offset inside the test's own struct. */
     off = a->used;
-    if (off % align != 0) {
-        size_t pad = align - (off % align);
-        if (pad > a->cap - off)
-            return NULL;
-        off += pad;
+    {
+        size_t misalign = (size_t)((uintptr_t)(a->buf + off) % align);
+        if (misalign != 0) {
+            size_t pad = align - misalign;
+            if (pad > a->cap - off)
+                return NULL;
+            off += pad;
+        }
     }
     if (need > a->cap - off)
         return NULL;

@@ -125,7 +125,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | Every entity of `CORE` §5 as a C struct with encode, decode and validate: Peer, Source, CaptureProfile (+Timing, Provenance), MeasuredCapability, AchievedSummary, AchievedFrames (with the `intrinsics` first-element rule), ThermalLevel, Calibration, Session, ContextChange, Stream, Candidate, Shot, Capture (Anchor exactly-one-key), Readiness, ShotLink, SessionLink, Annotation. Validation makes the structural invariants unconstructible: I22 iff, 5.10e iff, I27, I29, I28 (no synthesised `measured`), 5.6e `confidence` iff `classified`, 5.16e/f `confirmed_by` rules, 5.18j `stream_id` follows `kind`. Open registries are strings; unknown values pass. |
 | Spec | `CORE` §5 entire, §10.3 |
 | Unlocks | CT-I1, CT-I3, CT-I22, CT-I26 (static), CT-I27, CT-I28, CT-I29, CT-I31 (static), CT-I6 (static), CT-I9 (API surface — there is no merge function) |
-| Status | ☐ |
+| Status | ☑ code — S2 (commit `7d56e79`). The rows it unlocks are still `impl`: the vocabulary exists and the tests stated over it are L15's. |
 
 ### L5 — Message catalogue
 
@@ -134,7 +134,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | All forty-five messages of `MSG` §11 encode/decode — including `link_bind` (erratum E1) — with class (request/response/event), channel and originating-profile metadata in a table the profile-boundary audit (L16) reads. `error` with every code of `MSG` §10 and the fatal/non-fatal distinction. `unsupported_version` carries `detail.supported`. |
 | Spec | `MSG` §3–§11 |
 | Unlocks | CT-S6 assertion 4 (every message decodes on a Core-only peer) |
-| Status | ☐ |
+| Status | ☑ done — S2. `ctest --preset dev -R test_ct_s6` (and `--preset san`): all forty-five encode and decode, the channel rules refuse both violations of MSG §2, the seventeen error codes carry the fatal split, and `unsupported_version` is refused without `detail.supported`. |
 
 ### L6 — Peer engine: connection, declaration, session, streams
 
@@ -501,6 +501,8 @@ Append-only. Newest last.
 | 2026-08-22 | D (S1) | **`RV` 5.3a/5.3b cannot be served by a Network.framework *listener*** — no server-side PSK resolver hook; a rotating per-connection identity is refused with `PSK_IDENTITY_NOT_FOUND`. The required pairing-code path (device dials) is unaffected; the discovery path where `RV` 3.5b recommends the device advertise is not implementable on iOS as written | Erratum queued: 3.5b becomes a MAY for a peer whose platform cannot resolve identities server-side, with the host advertising instead; D7 implements discovery with the **device browsing and dialling** (roles reversed from 3.5b) |
 | 2026-08-22 | D (S1) | **`RV` 5.3c uniform failure is unachievable on iOS** (different alerts, different timing) — **narrowed on re-test**: because `K_tls` and `K_id` share one `PRK`, a wrong secret also produces an unresolvable identity, so the resolved-identity/wrong-key case cannot be reached by a scanned code, a persisted pairing or an attacker without `PRK`. The gap is real only for a future key schedule that separates the two | Note in L17 against 5.3c/5.3d; RT-11 stays `n/a` on the device's code path |
 | 2026-08-22 | H, D (S1) | RT-17 (`review` method) needs a named human reviewer; an author cannot discharge it | **For the user to assign** |
+| 2026-08-22 | L (S2) | **`ENC` 5a collides with eight message bodies.** `session_open`, `session_joined`, `session_resume`, `session_state`, `session_close`, `session_offer`, `session_accept` and `session_manifest` all define a body field named `session_id`, which 5a reserves. Emitting both produces a duplicate key, which `ENC` 4d makes malformed, so the two cannot coexist | Resolved in the library by **hoisting**: the body's `session_id` IS the envelope's, written once in the envelope position, read back out of the same flat map by the body decoder. Erratum queued for L17: 5a should say the reserved names may be used for the envelope's own purpose, or `MSG` §4/§9 should stop listing `session_id` as a body field |
+| 2026-08-22 | L (S2) | `ppcp_arena_take` aligned on the offset within the region, not on the absolute address, so an arena whose buffer began at an odd address returned misaligned storage for every aggregate | Library defect, not a specification one. Fixed in `src/ppcp_common.c`; found by the L5 catalogue test under UBSan decoding a `declare` |
 
 ---
 

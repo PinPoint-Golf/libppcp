@@ -24,8 +24,8 @@
 #ifndef PPCP_PLANNED_H
 #define PPCP_PLANNED_H
 
-#include "ppcp/timing.h"
-#include "ppcp/envelope.h"
+#include "ppcp/model.h"
+#include "ppcp/message.h"
 #include "ppcp/rv.h"
 
 #ifdef __cplusplus
@@ -33,64 +33,10 @@ extern "C" {
 #endif
 
 /* ======================================================================
- * L4 — type vocabulary and validation (CORE §5 entire)
- * ====================================================================== */
-
-typedef struct ppcp_peer_desc      ppcp_peer_desc;      /* L4 — CORE 5.2 Peer */
-typedef struct ppcp_source         ppcp_source;         /* L4 — CORE 5.6 Source */
-typedef struct ppcp_capture_profile ppcp_capture_profile;/* L4 — CORE 5.7 */
-typedef struct ppcp_session        ppcp_session;        /* L4 — CORE 5.10 */
-typedef struct ppcp_stream         ppcp_stream;         /* L4 — CORE 5.11 */
-typedef struct ppcp_candidate      ppcp_candidate;      /* L4 — CORE 5.12 */
-typedef struct ppcp_shot           ppcp_shot;           /* L4 — CORE 5.13 */
-typedef struct ppcp_capture        ppcp_capture;        /* L4 — CORE 5.14 */
-typedef struct ppcp_readiness      ppcp_readiness;      /* L4 — CORE 5.15 */
-typedef struct ppcp_annotation     ppcp_annotation;     /* L4 — CORE 5.18 */
-
-/* L4 — not yet implemented.  Validate a decoded Peer declaration against the
- * structural rules of CORE §5.2; every invariant that is expressible as a
- * constructor is a constructor instead. */
-PPCP_API ppcp_result ppcp_peer_desc_validate(const ppcp_peer_desc *p);
-/* L4 — not yet implemented.  CORE 5.6/5.7, including I19: every Source
- * declares timing, geometry and intrinsics whichever peer owns it. */
-PPCP_API ppcp_result ppcp_source_validate(const ppcp_source *s);
-/* L4 — not yet implemented.  CORE 5.7 with I22, I28 and I31. */
-PPCP_API ppcp_result ppcp_capture_profile_validate(const ppcp_capture_profile *p);
-/* L4 — not yet implemented.  CORE 5.14 Anchor: exactly one key (I27). */
-PPCP_API ppcp_result ppcp_capture_validate(const ppcp_capture *c);
-/* L4 — not yet implemented.  CORE 5.10e, and `timebase_ref` immutability (I16). */
-PPCP_API ppcp_result ppcp_session_validate(const ppcp_session *s);
-
-/* ======================================================================
- * L5 — message catalogue (MSG §3–§11)
- * ====================================================================== */
-
-/* L5 — not yet implemented.  The message's class, channel and the profile that
- * confers origination, from the table the L16 profile-boundary audit reads. */
-typedef enum ppcp_msg_class { PPCP_MSG_REQUEST = 0, PPCP_MSG_RESPONSE, PPCP_MSG_EVENT }
-    ppcp_msg_class;
-
-typedef struct ppcp_msg_info {
-    const char    *type;
-    ppcp_msg_class cls;
-    uint8_t        channel;
-    const char    *originating_profile;   /* NULL where Core confers it */
-} ppcp_msg_info;
-
-/* L5 — not yet implemented.  Looks a message type up in the catalogue; an
- * unknown type is PPCP_ERR_NOT_FOUND, never fatal (I13, I24). */
-PPCP_API ppcp_result ppcp_msg_lookup(const char *type, size_t len, ppcp_msg_info *out);
-/* L5 — not yet implemented.  MSG §10 error codes and the fatal/non-fatal split. */
-PPCP_API bool ppcp_msg_error_is_fatal(const char *code, size_t len);
-
-/* ======================================================================
  * L6 — the peer engine (CORE §2.2.2, §7, §10; MSG §3–5)
  * ====================================================================== */
 
 typedef struct ppcp_peer ppcp_peer;   /* L6 — the sans-I/O state machine */
-
-typedef enum ppcp_role { PPCP_ROLE_HOST = 0, PPCP_ROLE_CAPTURE, PPCP_ROLE_OBSERVER }
-    ppcp_role;
 
 /* L6 — not yet implemented.  Everything the engine wants from the embedding,
  * supplied as callbacks so that no threshold and no I/O lives in the library.
@@ -290,13 +236,13 @@ PPCP_API ppcp_result ppcp_shot_attach_candidate(ppcp_shot *s, const ppcp_candida
  * L11 — Markup (CORE §5.18; MSG §9.0)
  * ====================================================================== */
 
-/* L11 — not yet implemented.  `body` is opaque, at most 8 KiB, and round-trips
- * byte-identical.  Supersession is by `id`, then `revision`, then bytewise
- * `author_peer_id` — a total order, so both delivery orders converge. */
-PPCP_API ppcp_result ppcp_annotation_encode(ppcp_cbor_writer *w, const ppcp_annotation *a);
-PPCP_API ppcp_result ppcp_annotation_decode(ppcp_cbor_reader *r, ppcp_annotation *out);
-PPCP_API int         ppcp_annotation_supersedes(const ppcp_annotation *a,
-                                                const ppcp_annotation *b);
+/* L11 — not yet implemented.  The codec landed in L4 (model.h), because I24
+ * makes every peer parse an `annotation` whether or not it declares Markup.
+ * What is still missing is the BEHAVIOUR: supersession by `id`, then
+ * `revision`, then bytewise `author_peer_id` — a total order, so both delivery
+ * orders converge. */
+PPCP_API int ppcp_annotation_supersedes(const ppcp_annotation *a,
+                                        const ppcp_annotation *b);
 
 /* ⚠ There is deliberately no path from an Annotation to a Shot, a Candidate, a
  * calibration or any computed quantity.  I37 is asserted by API surface. */
