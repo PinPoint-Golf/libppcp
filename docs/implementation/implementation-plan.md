@@ -143,7 +143,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | `ppcp_peer` — the sans-I/O state machine. `hello`/`hello_accept` with version selection, support window (`CORE` 10.1e), `role_conflict`; `declare` as a complete snapshot by generation, `declare_ack` with per-profile notes (ingest policy is a **callback** the embedding supplies — no threshold in the library, I14); `session_open`/`joined`/`resume`/`state`/`close`; `stream_open`/`ack`/`close` by either peer; `arm`/`disarm`/`readiness`/`interruption`; C1–C3: parse everything, originate only what declared profiles confer, `profile_not_supported` never closes. Per-channel input (`ppcp_peer_feed(ch, bytes)`) and output queues (`ppcp_peer_drain(ch)`). **Link binding** (`ENC` §2.1): a dialler-side `link_bind` emitter and a listener-side binder that groups streams by `link_id`, takes the channel from the header, and rejects the three cases of 2.1c. |
 | Spec | `CORE` §2.2.2, §7, §10; `MSG` §3–5 |
 | Unlocks | CT-I5, CT-I12, CT-I14 (the grep has something to grep), CT-I20, CT-I24/CT-S6 |
-| Status | ☐ |
+| Status | ☑ done — S2. `ctest --preset dev -R test_ct_i24` and `ctest --preset dev -R CT-I14`. CT-I14 and CT-I20 pass; CT-I5 and CT-I24/CT-S6 are `impl` — CT-I5 needs the calibration/Capture half (L7) and CT-S6 assertion 1's "and arbitrates over the result" needs L10. |
 
 ### L7 — Captures, bulk transfer, I38
 
@@ -161,7 +161,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | `ppcp_bundle_writer` — appends frames in the order they would have been sent, manifest before any payload (`ENC` 7c); a hostless peer records `session_open` without the two arbitration parameters and **no `arm`/`disarm`** (`CORE` 7.3b). `ppcp_bundle_reader` — streams a bundle through the same `ppcp_peer_feed` path as a socket; truncated final frame → `partial` unless asserted otherwise (`ENC` 7d), never upgraded; unknown `minor` tolerated. Re-import idempotent on `Capture.id` scoped by session and peer (I34). The fixture format **is** this. |
 | Spec | `CORE` §9, §8.5c; `ENC` §7; `MSG` §9.1–9.2 |
 | Unlocks | CT-I12, CT-I15, CT-I16, CT-I34, CT-I36 (c)(d), `CONF` 2b, interop row "bundle A→B" |
-| Status | ☐ |
+| Status | ☑ done — S2. `ctest --preset dev -R test_ct_i12`. CT-I12 and CT-I34 pass and `CONF` 2b's fixture format exists; CT-I16 and CT-I36 are `impl` (the re-solve half is L9, the coverage half is L7); CT-I15 not started. |
 
 ### L9 — Clock synchronisation and liveness
 
@@ -502,6 +502,8 @@ Append-only. Newest last.
 | 2026-08-22 | D (S1) | **`RV` 5.3c uniform failure is unachievable on iOS** (different alerts, different timing) — **narrowed on re-test**: because `K_tls` and `K_id` share one `PRK`, a wrong secret also produces an unresolvable identity, so the resolved-identity/wrong-key case cannot be reached by a scanned code, a persisted pairing or an attacker without `PRK`. The gap is real only for a future key schedule that separates the two | Note in L17 against 5.3c/5.3d; RT-11 stays `n/a` on the device's code path |
 | 2026-08-22 | H, D (S1) | RT-17 (`review` method) needs a named human reviewer; an author cannot discharge it | **For the user to assign** |
 | 2026-08-22 | L (S2) | **`ENC` 5a collides with eight message bodies.** `session_open`, `session_joined`, `session_resume`, `session_state`, `session_close`, `session_offer`, `session_accept` and `session_manifest` all define a body field named `session_id`, which 5a reserves. Emitting both produces a duplicate key, which `ENC` 4d makes malformed, so the two cannot coexist | Resolved in the library by **hoisting**: the body's `session_id` IS the envelope's, written once in the envelope position, read back out of the same flat map by the body decoder. Erratum queued for L17: 5a should say the reserved names may be used for the envelope's own purpose, or `MSG` §4/§9 should stop listing `session_id` as a body field |
+| 2026-08-22 | L (S2) | **C3 cannot be derived from the message index.** `MSG` §11 tabulates the profile that confers ORIGINATION; the profile a RESPONDER needs is a different thing — `candidate` is conferred by Detect and consumed by Arbitrate, so a host with no Detect must not be told it cannot understand a Candidate | Library answers `profile_not_supported` only to the REQUEST class, from a responder-side table in the engine. Erratum queued for L17 (finding F-L6-1): `MSG` §11 gains a responder column, or §2.2.2 C3 says the rule is about requests |
+| 2026-08-22 | L (S2) | `ENC` 7d's "partial **only if** the bundle did not assert otherwise, and never upgraded" makes an unasserted, untruncated bundle neither `complete` nor `partial` | Implemented as `unknown`, which is what I10 requires — completeness is asserted, never inferred. The reader reports the assertion and the truncation separately so `CT-I36` (c) and (d), which are the same bytes, stay distinguishable. Confirm the reading in L17 |
 | 2026-08-22 | L (S2) | `ppcp_arena_take` aligned on the offset within the region, not on the absolute address, so an arena whose buffer began at an odd address returned misaligned storage for every aggregate | Library defect, not a specification one. Fixed in `src/ppcp_common.c`; found by the L5 catalogue test under UBSan decoding a `declare` |
 
 ---

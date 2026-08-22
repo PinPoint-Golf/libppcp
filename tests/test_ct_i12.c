@@ -191,10 +191,24 @@ static void write_session(buf *out, const char *stream_kind, bool with_payload,
         CHECK_EQ_I(ppcp_readiness_settled(&m.body.readiness.readiness), PPCP_OK);
         CHECK_EQ_I(emit(w, out, PPCP_CHANNEL_CONTROL, &m), PPCP_OK);
 
+        /* CT-I34's two awkward Captures, in the bundle rather than beside it:
+         * a `complete` Capture whose transfer is still `pending` and which
+         * therefore has NO digest yet, and an `absent` one that will never
+         * have one.  An importer keyed on the digest duplicates both. */
         CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_CAPTURE_ANNOUNCE, 5), PPCP_OK);
         CHECK_EQ_I(ppcp_msg_set_session_id(&m, "sess:1"), PPCP_OK);
         CHECK_EQ_I(ppcp_capture_make_shot(&m.body.capture_announce.capture, "cap:1",
                                           "shot:1", "st:1", PPCP_COMPLETE), PPCP_OK);
+        CHECK_EQ_I(m.body.capture_announce.capture.transfer, PPCP_TRANSFER_PENDING);
+        CHECK(!m.body.capture_announce.capture.digest.present);
+        CHECK_EQ_I(emit(w, out, PPCP_CHANNEL_CONTROL, &m), PPCP_OK);
+
+        CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_CAPTURE_ANNOUNCE, 6), PPCP_OK);
+        CHECK_EQ_I(ppcp_msg_set_session_id(&m, "sess:1"), PPCP_OK);
+        CHECK_EQ_I(ppcp_capture_make_shot(&m.body.capture_announce.capture, "cap:gone",
+                                          "shot:2", "st:1", PPCP_ABSENT), PPCP_OK);
+        CHECK_EQ_I(ppcp_capture_set_absent_reason(&m.body.capture_announce.capture,
+                                                  PPCP_ABSENT_OUTSIDE_BUFFER), PPCP_OK);
         CHECK_EQ_I(emit(w, out, PPCP_CHANNEL_CONTROL, &m), PPCP_OK);
     }
 
@@ -358,7 +372,7 @@ static void test_round_trip(void)
     r    = new_reader(&rm, sink);
     CHECK_EQ_I(ppcp_bundle_reader_feed(r, bundle.b, bundle.n, &consumed), PPCP_OK);
     CHECK_EQ_I(consumed, bundle.n);
-    CHECK_EQ_I(ppcp_bundle_reader_frame_count(r), 9);
+    CHECK_EQ_I(ppcp_bundle_reader_frame_count(r), 10);
     CHECK(ppcp_bundle_reader_manifest_ordered(r));
     CHECK(!ppcp_bundle_reader_truncated(r));
 
@@ -422,7 +436,7 @@ static void test_round_trip(void)
             total += took;
         }
         CHECK_EQ_I(total, bundle.n);
-        CHECK_EQ_I(ppcp_bundle_reader_frame_count(r4), 9);
+        CHECK_EQ_I(ppcp_bundle_reader_frame_count(r4), 10);
         free(r4m);
     }
 
@@ -534,17 +548,20 @@ static void test_reimport(void)
     ppcp_capture_key    key;
     bool                is_new = false;
 
-    TEST("CT-I34 — a second import of the same bundle adds nothing");
+    TEST("CT-I34 — the same bundle imported twice duplicates neither Capture");
+    /* The bundle holds exactly the two the row names: a `complete` Capture
+     * with `transfer: pending` and no digest, and an `absent` one that will
+     * never have a digest at all. */
     write_session(&bundle, PPCP_STREAM_KIND_VIDEO, true, false, PPCP_UNKNOWN);
     r = new_reader(&rm, NULL);
     CHECK_EQ_I(ppcp_bundle_reader_feed(r, bundle.b, bundle.n, &consumed), PPCP_OK);
-    CHECK_EQ_I(ppcp_capture_index_count(ppcp_bundle_reader_index(r)), 1);
+    CHECK_EQ_I(ppcp_capture_index_count(ppcp_bundle_reader_index(r)), 2);
     /* Feeding the very same bytes through the very same index again is the
      * "users connect twice" case, and it is a no-op. */
     r2 = new_reader(&r2m, NULL);
     *ppcp_bundle_reader_index(r2) = *ppcp_bundle_reader_index(r);
     CHECK_EQ_I(ppcp_bundle_reader_feed(r2, bundle.b, bundle.n, &consumed), PPCP_OK);
-    CHECK_EQ_I(ppcp_capture_index_count(ppcp_bundle_reader_index(r2)), 1);
+    CHECK_EQ_I(ppcp_capture_index_count(ppcp_bundle_reader_index(r2)), 2);
     free(rm);
     free(r2m);
 
