@@ -20,6 +20,8 @@
 
 /* ============================================================== the writer */
 
+#define PPCP_BUNDLE_MAX_PREVIEW 8
+
 struct ppcp_bundle_writer {
     bool     begun;
     bool     finished;
@@ -27,7 +29,16 @@ struct ppcp_bundle_writer {
     bool     saw_session_open;
     bool     hostless;        /* CORE 4.1d / 7.3b */
     size_t   frame_count;
+    /* CORE 5.11j: a preview Capture is live-only and MUST NOT be written to a
+     * bundle.  A Capture does not carry its Stream's `kind`, so the writer
+     * learns which Streams are preview from the `stream_open` frames it has
+     * already been given — which in a bundle always precede the Captures on
+     * them, because they would have on a socket too (ENC 7b). */
+    ppcp_id  preview_streams[PPCP_BUNDLE_MAX_PREVIEW];
+    size_t   preview_count;
     ppcp_msg scratch;
+    ppcp_arena arena;
+    uint8_t  arena_buf[4096];
 };
 
 size_t ppcp_bundle_writer_sizeof(void) { return sizeof(struct ppcp_bundle_writer); }
@@ -42,6 +53,7 @@ ppcp_result ppcp_bundle_writer_new(void *storage, size_t storage_len,
         return PPCP_ERR_NOSPACE;
     w = (ppcp_bundle_writer *)storage;
     memset(w, 0, sizeof(*w));
+    ppcp_arena_init(&w->arena, w->arena_buf, sizeof(w->arena_buf));
     *out = w;
     return PPCP_OK;
 }
@@ -102,13 +114,55 @@ static ppcp_result writer_admit(ppcp_bundle_writer *w, ppcp_msg_type t,
         if (!w->has_manifest)
             return PPCP_ERR_INVALID;
         return PPCP_OK;
+    case PPCP_MT_STREAM_OPEN: {
+        /* Noted, not refused: a preview Stream in a bundle is legal — 5.11j
+         * forbids its CAPTURES, not the Stream that says one existed. */
+        ppcp_result rc;
+        ppcp_arena_reset(&w->arena);
+        rc = ppcp_msg_decode(payload, payload_len,
+                             ppcp_cbor_limits_for_channel(channel), &w->arena,
+                             &w->scratch);
+        if (rc != PPCP_OK)
+            return rc;
+        if (ppcp_stream_is_preview(&w->scratch.body.stream_open.stream) &&
+            w->preview_count < PPCP_BUNDLE_MAX_PREVIEW)
+            w->preview_streams[w->preview_count++] =
+                w->scratch.body.stream_open.stream.id;
+        return PPCP_OK;
+    }
+    case PPCP_MT_CAPTURE_ANNOUNCE: {
+        /* CORE 5.11j / MSG 8.1i — preview is live-only: a peer that cannot
+         * deliver a preview segment promptly discards it, and MUST NOT retain
+         * it for later transfer or write it to a bundle.  A ninety-minute
+         * range session of preview frames would be a substantial fraction of
+         * the storage budgeted for shot video, spent on frames 5.11g forbids
+         * anyone from using for anything. */
+        ppcp_result rc;
+        size_t      i;
+        if (w->preview_count == 0)
+            return PPCP_OK;
+        ppcp_arena_reset(&w->arena);
+        rc = ppcp_msg_decode(payload, payload_len,
+                             ppcp_cbor_limits_for_channel(channel), &w->arena,
+                             &w->scratch);
+        if (rc != PPCP_OK)
+            return rc;
+        for (i = 0; i < w->preview_count; i++) {
+            if (ppcp_id_equal(&w->preview_streams[i],
+                              &w->scratch.body.capture_announce.capture.stream_id))
+                return PPCP_ERR_INVALID;
+        }
+        return PPCP_OK;
+    }
     case PPCP_MT_SESSION_OPEN: {
         /* 4.1d / 5.10e: the two arbitration parameters are present if and only
          * if the Session has a host, so their ABSENCE is what makes this
          * bundle hostless and is what 7.3b then keys on. */
-        ppcp_result rc = ppcp_msg_decode(payload, payload_len,
-                                         ppcp_cbor_limits_for_channel(channel),
-                                         NULL, &w->scratch);
+        ppcp_result rc;
+        ppcp_arena_reset(&w->arena);
+        rc = ppcp_msg_decode(payload, payload_len,
+                             ppcp_cbor_limits_for_channel(channel), &w->arena,
+                             &w->scratch);
         if (rc != PPCP_OK)
             return rc;
         w->saw_session_open = true;

@@ -25,36 +25,12 @@
 #define PPCP_PLANNED_H
 
 #include "ppcp/bundle.h"
+#include "ppcp/transfer.h"
 #include "ppcp/rv.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ======================================================================
- * L7 — captures and bulk transfer (CORE §5.11.1–2, §5.14; MSG §8; ENC §6)
- * ====================================================================== */
-
-/* L7 — not yet implemented.  Announce a Capture on control; AchievedFrames
- * travels with the payload and never here (I30). */
-PPCP_API ppcp_result ppcp_peer_capture_announce(ppcp_peer *p, const ppcp_capture *c);
-/* L7 — not yet implemented.  ENC §6: begin, chunks in ascending index, end,
- * with SHA-256 per chunk and over the whole payload. */
-PPCP_API ppcp_result ppcp_peer_payload_begin(ppcp_peer *p, const char *capture_id,
-                                             const ppcp_achieved_frames *frames,
-                                             size_t total_bytes, size_t chunk_bytes);
-PPCP_API ppcp_result ppcp_peer_payload_chunk(ppcp_peer *p, const char *capture_id,
-                                             uint32_t index, const uint8_t *data,
-                                             size_t len);
-PPCP_API ppcp_result ppcp_peer_payload_end(ppcp_peer *p, const char *capture_id);
-/* L7 — not yet implemented.  MSG §8: resume from the last acked index. */
-PPCP_API ppcp_result ppcp_peer_payload_resume(ppcp_peer *p, const char *capture_id,
-                                              uint32_t from_index);
-/* L7 — not yet implemented.  CORE 5.14g's four exits, and 5.14g1's refusal of
- * a fifth: a peer's own retention policy does not make shot-anchored payload
- * evictable, and `confirmed` is asserted by the receiver and by nobody else
- * (I38). */
-PPCP_API bool ppcp_capture_is_evictable(const ppcp_capture *c);
 
 /* ======================================================================
  * L9 — clock synchronisation and liveness (CORE §5.4.1, §6.3, §7.4, §8.3g)

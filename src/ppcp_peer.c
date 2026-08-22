@@ -85,6 +85,10 @@ struct ppcp_peer {
     ppcp_stream streams[PPCP_PEER_MAX_STREAMS];
     size_t      stream_count;
 
+    /* 5.14f — the owner's view of where each Capture's payload has got to.
+     * `confirmed` enters it only through `capture_committed` (8.4b). */
+    ppcp_transfer_table transfers;
+
     /* transport */
     tx_queue tx[PPCP_PEER_MAX_CHANNELS];
 
@@ -416,6 +420,7 @@ ppcp_result ppcp_peer_new(void *storage, size_t storage_len, const ppcp_peer_con
     p->health        = cfg->health;
     p->state         = PPCP_PEER_INIT;
     ppcp_msg_seq_init(&p->seq);
+    ppcp_transfer_table_init(&p->transfers);
     ppcp_arena_init(&p->decl_arena, p->decl_buf, sizeof(p->decl_buf));
     ppcp_arena_init(&p->scratch_arena, p->scratch_buf, sizeof(p->scratch_buf));
 
@@ -980,6 +985,229 @@ ppcp_result ppcp_peer_interruption(ppcp_peer *p, const char *kind,
     return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
 }
 
+/* ------------------------------------------ MSG §8 — Captures and payload */
+
+ppcp_result ppcp_peer_capture_announce(ppcp_peer *p, const ppcp_capture *c, bool is_preview,
+                                       const char *thumbnail_format,
+                                       const uint8_t *thumbnail, size_t thumbnail_len)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || c == NULL)
+        return PPCP_ERR_INVALID;
+    /* 8.1i / 5.11j is refused here rather than noticed later, and the table is
+     * updated before the frame is queued so a refusal costs nothing. */
+    rc = ppcp_transfer_observe_announce(&p->transfers, c, is_preview);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_msg_init(&m, PPCP_MT_CAPTURE_ANNOUNCE, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.capture_announce.capture = *c;
+    if (thumbnail != NULL && thumbnail_len > 0) {
+        if (thumbnail_len > PPCP_THUMBNAIL_MAX)
+            return PPCP_ERR_LIMIT;                   /* 8.1d */
+        if (thumbnail_format == NULL)
+            return PPCP_ERR_INVALID;
+        rc = ppcp_id_set_z(&m.body.capture_announce.thumbnail_format, thumbnail_format);
+        if (rc != PPCP_OK)
+            return rc;
+        m.body.capture_announce.has_thumbnail = true;
+        m.body.capture_announce.thumbnail     = thumbnail;
+        m.body.capture_announce.thumbnail_len = thumbnail_len;
+    }
+    /* 8.1a: on CONTROL, and it does not wait for payload. */
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+ppcp_result ppcp_peer_capture_update(ppcp_peer *p, const ppcp_body_capture_update *u)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || u == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_CAPTURE_UPDATE, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.capture_update = *u;
+    /* 8.4b: an owner does not set `confirmed` on its own authority, and
+     * announcing that it did would be the same act on the wire. */
+    if (u->has_transfer && u->transfer == PPCP_TRANSFER_CONFIRMED)
+        return PPCP_ERR_INVALID;
+    if (u->has_transfer)
+        (void)ppcp_transfer_set(&p->transfers, &u->capture_id, u->transfer);
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+ppcp_result ppcp_peer_capture_committed(ppcp_peer *p, const char *capture_id,
+                                        const ppcp_digest *digest)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL || digest == NULL || !digest->present)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_CAPTURE_COMMITTED, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.capture_committed.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.capture_committed.digest = *digest;
+    /* 8.4d: on CONTROL — it is what releases storage at the other end and must
+     * not queue behind the next clip. */
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+ppcp_result ppcp_peer_payload_begin(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                    uint64_t bytes, const ppcp_digest *digest,
+                                    uint32_t chunk_bytes,
+                                    const ppcp_achieved_frames *frames)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL || digest == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_PAYLOAD_BEGIN, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_begin.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.payload_begin.bytes       = bytes;
+    m.body.payload_begin.digest      = *digest;   /* 8.1e: present by here */
+    m.body.payload_begin.chunk_bytes = chunk_bytes;
+    /* 8.3g / I30 / ENC 6a1: the per-frame series belong on THIS channel, with
+     * the frames they describe, and never on control. */
+    if (frames != NULL) {
+        rc = ppcp_achieved_frames_validate(frames);
+        if (rc != PPCP_OK)
+            return rc;
+        m.body.payload_begin.has_achieved_frames = true;
+        m.body.payload_begin.achieved_frames     = *frames;
+    }
+    rc = peer_queue(p, channel, &m);
+    if (rc == PPCP_OK)
+        (void)ppcp_transfer_set(&p->transfers, &m.body.payload_begin.capture_id,
+                                PPCP_TRANSFER_IN_FLIGHT);
+    return rc;
+}
+
+ppcp_result ppcp_peer_payload_chunk(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                    uint32_t index, uint32_t chunk_bytes,
+                                    const uint8_t *data, size_t len)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL || data == NULL || len == 0)
+        return PPCP_ERR_INVALID;
+    if (chunk_bytes == 0 || len > chunk_bytes)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_PAYLOAD_CHUNK, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_chunk.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.payload_chunk.index = index;
+    /* ENC 6b and 6c computed here, from the index and the bytes, so a sender
+     * cannot state an offset or a digest that disagrees with what it sent. */
+    m.body.payload_chunk.offset   = (uint64_t)index * (uint64_t)chunk_bytes;
+    m.body.payload_chunk.data     = data;
+    m.body.payload_chunk.data_len = len;
+    rc = ppcp_payload_digest(data, len, &m.body.payload_chunk.digest);
+    if (rc != PPCP_OK)
+        return rc;
+    return peer_queue(p, channel, &m);
+}
+
+ppcp_result ppcp_peer_payload_ack(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                  uint32_t index)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_PAYLOAD_ACK, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_ack.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.payload_ack.index = index;
+    return peer_queue(p, channel, &m);
+}
+
+ppcp_result ppcp_peer_payload_end(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                  const ppcp_digest *digest)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL || digest == NULL || !digest->present)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_PAYLOAD_END, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_end.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.payload_end.digest = *digest;
+    rc = peer_queue(p, channel, &m);
+    if (rc == PPCP_OK)
+        (void)ppcp_transfer_set(&p->transfers, &m.body.payload_end.capture_id,
+                                PPCP_TRANSFER_PRESENT);
+    return rc;
+}
+
+ppcp_result ppcp_peer_payload_abort(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                    const char *reason)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL || reason == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_PAYLOAD_ABORT, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_abort.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_abort.reason, reason);
+    if (rc != PPCP_OK)
+        return rc;
+    return peer_queue(p, channel, &m);
+}
+
+ppcp_result ppcp_peer_payload_resume(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                     uint32_t from_index)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || capture_id == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_PAYLOAD_RESUME, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&m.body.payload_resume.capture_id, capture_id);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.payload_resume.from_index = from_index;
+    return peer_queue(p, channel, &m);
+}
+
+const ppcp_transfer_table *ppcp_peer_transfers(const ppcp_peer *p)
+{
+    return (p == NULL) ? NULL : &p->transfers;
+}
+
 /* --------------------------------------------------------------- receive */
 
 /* C3 — "a peer receiving a message it understands but whose behaviour it does
@@ -1297,6 +1525,33 @@ static void peer_handle(ppcp_peer *p, uint8_t channel, const ppcp_msg *m)
         /* 5.1d: either peer may close a Stream, so the engine removes it
          * whichever end sent this. */
         peer_stream_remove(p, &m->body.stream_close.stream_id);
+        break;
+    case PPCP_MT_CAPTURE_ANNOUNCE:
+        /* A Capture somebody else owns.  Recorded so a receiver can answer
+         * `capture_committed` for it later (8.4a) and, from a bundle, on its
+         * next connection with the owning peer (5.14h). */
+        (void)ppcp_transfer_observe_announce(&p->transfers,
+                                             &m->body.capture_announce.capture, false);
+        break;
+    case PPCP_MT_CAPTURE_COMMITTED:
+        /* 8.4a / 5.14f — the one route to `confirmed`, and it arrives. */
+        rc = ppcp_transfer_on_committed(&p->transfers, &m->body.capture_committed);
+        if (rc == PPCP_ERR_NOT_FOUND)
+            rc = PPCP_OK;   /* a Capture this peer never held; not an error here */
+        break;
+    case PPCP_MT_PAYLOAD_ABORT:
+        /* 8.3c / 5.14g exit 3: `already_present` means the receiver
+         * demonstrably holds the payload durably, which for eviction is
+         * equivalent to a commit. */
+        if (ppcp_cbor_key_is(m->body.payload_abort.reason.v,
+                             m->body.payload_abort.reason.len,
+                             PPCP_ERRCODE_ALREADY_PRESENT))
+            (void)ppcp_transfer_on_already_present(&p->transfers,
+                                                   &m->body.payload_abort.capture_id);
+        break;
+    case PPCP_MT_PAYLOAD_ACK:
+        (void)ppcp_transfer_on_acked(&p->transfers, &m->body.payload_ack.capture_id,
+                                     m->body.payload_ack.index);
         break;
     case PPCP_MT_ARM:    p->armed = true;  break;   /* 5.2a: answer with readiness */
     case PPCP_MT_DISARM: p->armed = false; break;

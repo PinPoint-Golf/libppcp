@@ -43,6 +43,7 @@
 
 #include "ppcp/message.h"
 #include "ppcp/frame.h"
+#include "ppcp/transfer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -290,6 +291,55 @@ PPCP_API ppcp_result ppcp_peer_readiness(ppcp_peer *p, const ppcp_readiness *r,
 PPCP_API ppcp_result ppcp_peer_interruption(ppcp_peer *p, const char *kind,
                                             const ppcp_interval *interval, bool recovered,
                                             const ppcp_id *stream_ids, size_t count);
+
+/* ---------------------------------------- MSG §8 — Captures and bulk transfer
+ *
+ * The engine keeps the owner's transfer table (5.14f) behind these, so
+ * `confirmed` arrives through `capture_committed` and through nothing else.
+ * `ppcp_capture` has no `achieved_frames` field at all, which is I30 made
+ * structural: the per-frame series cannot ride on `capture_announce` because
+ * there is nowhere to put them. */
+PPCP_API ppcp_result ppcp_peer_capture_announce(ppcp_peer *p, const ppcp_capture *c,
+                                                bool is_preview,
+                                                const char *thumbnail_format,
+                                                const uint8_t *thumbnail,
+                                                size_t thumbnail_len);
+PPCP_API ppcp_result ppcp_peer_capture_update(ppcp_peer *p,
+                                              const ppcp_body_capture_update *u);
+/* 8.4a — sent by the RECEIVER, when it holds the payload durably.  A peer
+ * calling this about its own Capture is telling itself nothing; the engine
+ * does not stop that, because "receiver" is a role in one transfer and not a
+ * property of a peer.  What it does stop is an owner setting `confirmed`
+ * without one arriving (8.4b, ppcp_transfer_set). */
+PPCP_API ppcp_result ppcp_peer_capture_committed(ppcp_peer *p, const char *capture_id,
+                                                 const ppcp_digest *digest);
+
+/* ENC §6 — `chunk_bytes` is passed to every chunk call rather than remembered,
+ * so `offset` (6b) and the chunk digest (6c) are computed here from the index
+ * and cannot disagree with what the sender believes. */
+PPCP_API ppcp_result ppcp_peer_payload_begin(ppcp_peer *p, uint8_t channel,
+                                             const char *capture_id, uint64_t bytes,
+                                             const ppcp_digest *digest,
+                                             uint32_t chunk_bytes,
+                                             const ppcp_achieved_frames *frames);
+PPCP_API ppcp_result ppcp_peer_payload_chunk(ppcp_peer *p, uint8_t channel,
+                                             const char *capture_id, uint32_t index,
+                                             uint32_t chunk_bytes,
+                                             const uint8_t *data, size_t len);
+PPCP_API ppcp_result ppcp_peer_payload_ack(ppcp_peer *p, uint8_t channel,
+                                           const char *capture_id, uint32_t index);
+PPCP_API ppcp_result ppcp_peer_payload_end(ppcp_peer *p, uint8_t channel,
+                                           const char *capture_id,
+                                           const ppcp_digest *digest);
+PPCP_API ppcp_result ppcp_peer_payload_abort(ppcp_peer *p, uint8_t channel,
+                                             const char *capture_id, const char *reason);
+PPCP_API ppcp_result ppcp_peer_payload_resume(ppcp_peer *p, uint8_t channel,
+                                              const char *capture_id, uint32_t from_index);
+
+/* The owner's view of every Capture this peer announced or was told about.
+ * Read-only from outside: the transitions are the functions above and the
+ * messages that arrive. */
+PPCP_API const ppcp_transfer_table *ppcp_peer_transfers(const ppcp_peer *p);
 
 /* The general form, and what every function above is built on: queue one
  * message on one channel.  Still C2-checked and still channel-checked, so it

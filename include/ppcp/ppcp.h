@@ -22,11 +22,12 @@
  *   ppcp/model.h     L4 — the entity vocabulary of CORE §5, with validation
  *   ppcp/message.h   L5 — the forty-five messages of MSG §11 and the §10 codes
  *   ppcp/peer.h      L6 — the sans-I/O peer engine and the ENC §2.1 link binder
+ *   ppcp/transfer.h  L7 — Captures, bulk transfer, eviction, coverage
  *   ppcp/bundle.h    L8 — the bundle writer and reader, and the ENC §7 container
  *
  * WHAT IS DECLARED BUT NOT YET BUILT:
  *
- *   ppcp/planned.h   captures and transfer (L7), the sync estimator (L9),
+ *   ppcp/planned.h   the sync estimator (L9),
  *                    detect/mint/arbitrate (L10) and annotation supersession
  *                    (L11).
  *
@@ -51,6 +52,7 @@
 #include "ppcp/model.h"
 #include "ppcp/message.h"
 #include "ppcp/peer.h"
+#include "ppcp/transfer.h"
 #include "ppcp/bundle.h"
 #include "ppcp/planned.h"
 
