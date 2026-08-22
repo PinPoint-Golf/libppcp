@@ -285,7 +285,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Spec | `CORE` §9, §8.5c, §5.14h; `ENC` §7 |
 | Unlocks | CT-I12, CT-I15, CT-I16, CT-I34 (host column), interop row "device, no host → bundle → host import" |
 | Depends | L8 |
-| Status | ☐ |
+| Status | ☑ done — S2 (`f752c96`, `5fafe6f`). `ctest --test-dir build/ppcp-tests` 5/5. CT-I12 and CT-I34 pass (host); CT-I15/I16 `impl` (interval half is H7, re-solve half is L9). Import lands clips under `PPCP Imports/<peer>/<session>/`; the join to `swing.json` waits on Session/Shot identity (host item 2). App-side wiring (menu, QML) compiled standalone only — app target unverified; menu entry is macOS-only |
 
 ### H4 — `VideoInputPpcp` behind the camera factory
 
@@ -367,7 +367,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §5.2–5.8, §5.6.1, §6.4; A12, A13 |
 | Unlocks | CT-I4, CT-I19, CT-I22, CT-I28, CT-I31, CT-S7 assertions 1–3 |
 | Depends | L4, L6 |
-| Status | ☐ |
+| Status | ☑ done — S2 (`ebfbc48`). `make test-core` 89/89. CT-I4/I19/I22/I28 pass (device); CT-S7 (1–2) pass, (3–4) D4/L13. Listener still assembles links in its own actor, not `ppcp_link_binder` (see §9 finding). `tb:hosttime` declared `monotonic` (mach_absolute_time), `tb:continuous` separately — F-D2-1, orchestrator question |
 
 ### D3 — Session store as bundle writer
 
@@ -377,7 +377,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §9, §7.3b, §5.14; `ENC` §7; A9 |
 | Unlocks | CT-S4 assertion 1 (the bundle half), CT-I12, CT-I34, interop row "device, no host → bundle" |
 | Depends | L8 |
-| Status | ☐ |
+| Status | ☑ done — S2 (`ebfbc48`). CT-I12/I34 pass (device); CT-S4 (1) bundle half passes. Nothing in `Sources/` composes a `DevicePeer`/`SessionBundleWriter` yet (D4/D6/D8); `SessionLibraryScreen` still takes one `Session`. **`make test-app` hangs in or before `LinkBindLoopbackTests` — unresolved, first item of S3-D** |
 
 ### D4 — Capture path into Captures
 
@@ -448,7 +448,7 @@ Each session runs one agent per repo in parallel. A session ends when every agen
 | Session | `libppcp` (L) | PinPointStudio (H) | PinPointCapture (D) | Gate to leave the session |
 |---|---|---|---|---|
 | **S1 — foundations** | L0, L1, L2, L3; **L12** (pulled forward — it has no dependency on the peer engine and both apps need its API for transport work); stub `include/ppcp/ppcp.h` listing every planned public symbol with a one-line contract, so H and D can code against it | H0 *(needs L0 — sequence inside the session: H starts on H1 while L0 lands)*, H1 | D0 *(same)*, D1 | `ctest` green in `libppcp`; ENC §5.1 and CORE §6.1.1 examples reproduce; RV §10 vectors reproduce; both transports complete a loopback TLS-PSK handshake with the §10 `K_tls` and report the negotiated mode |
-| **S2 — the bundle path** | L4, L5, L6, L7, L8 | H2, H3 | D2, D3 | A hostless bundle written by `libppcp` tests imports into PinPointStudio idempotently; PinPointCapture writes a bundle from its real declaration on a simulator and `libppcp` reads it back; CT-I1/3/4/13/22/27/28/29/31 passing in `libppcp` |
+| **S2 — the bundle path** ☑ closed 22 Aug (after a crash and recovery run — §9) | L4, L5, L6, L7, L8 | H2, H3 | D2, D3 | A hostless bundle written by `libppcp` tests imports into PinPointStudio idempotently; PinPointCapture writes a bundle from its real declaration on a simulator and `libppcp` reads it back; CT-I1/3/4/13/22/27/28/29/31 passing in `libppcp` |
 | **S3 — the live path** | L9, L10, L11, L13 | H4, H5, H7 | D4, D5, D6, D8 | `ppcp-sim` ↔ `libppcp` full session; PinPointStudio establishes a session with `ppcp-sim` over H1 and arbitrates; PinPointCapture (simulator) establishes with `ppcp-sim` over D1, nominates and mints; CT-S1, S3, S4, S5, S6, S7 passing in `libppcp` |
 | **S4 — conformance and rendezvous** | L14, L15, L16 | H6, H8 | D7, D9 | All three claim files exist and every matrix cell is one of *passing*, *n/a by profile*, *blocked: rig*, or has a named blocker |
 | **S5 — interoperability and freeze** | L17; run every non-rig interop row in `CONF` §5 with the real pairs (PinPointStudio ↔ `ppcp-sim` as a foreign host; PinPointCapture no-host → bundle → PinPointStudio; PinPointStudio ↔ PinPointCapture on the simulator over loopback) | fixes from interop | fixes from interop | Freeze-readiness report written; errata in the specification; remaining open rows are rig or product decisions |
@@ -506,6 +506,18 @@ Append-only. Newest last.
 | 2026-08-22 | L (S2) | **`MSG` 8.1i makes an `absent` preview segment unannounceable.** 8.1i forbids announcing a preview Capture with `transfer: pending`, and `pending` is the default state of every Capture — but the discarded preview segment 5.11c3 *requires* a peer to announce is `completeness: absent`, holds no payload, and has no other transfer state to carry | Library exempts `absent` preview segments: the rule is about queues and an absent Capture has nothing to queue. Erratum queued for L17: 8.1i says "a preview Capture holding payload", or `Capture.transfer` gains a meaning for the payload-less case |
 | 2026-08-22 | L (S2) | `ENC` 7d's "partial **only if** the bundle did not assert otherwise, and never upgraded" makes an unasserted, untruncated bundle neither `complete` nor `partial` | Implemented as `unknown`, which is what I10 requires — completeness is asserted, never inferred. The reader reports the assertion and the truncation separately so `CT-I36` (c) and (d), which are the same bytes, stay distinguishable. Confirm the reading in L17 |
 | 2026-08-22 | L (S2) | `ppcp_arena_take` aligned on the offset within the region, not on the absolute address, so an arena whose buffer began at an odd address returned misaligned storage for every aggregate | Library defect, not a specification one. Fixed in `src/ppcp_common.c`; found by the L5 catalogue test under UBSan decoding a `declare` |
+| 2026-08-22 | orchestrator (S2) | **Session S2 crashed the build machine at 15:22.** The H agent built the PinPointStudio *application* with a bare `-j` (unlimited jobs) while the D agent looped `swift build` polling for L's headers and L was building; 16 GB was exhausted and the Mac rebooted at 16:26. The PinPointStudio build notes already said Ninja `-j8`; the agent, spawned from the `libppcp` session, had never read them | **Ground rule 7** added to §1; §10 now runs L ahead of H/D when they depend on it and briefs each agent with its own repo's notes. Recovery run: L alone (`-j4`), then H and D in parallel (`-j3` each). All uncommitted work survived on disk; nothing was lost |
+| 2026-08-22 | user | Commit/push to `main` without per-change approval in PinPointStudio and PinPointCapture | **Granted for this programme's H*/D* packages only**; those repos otherwise keep their per-change rule. Recorded in each repo's memory |
+| 2026-08-22 | H (S2) | **`ENC` §6 / `CORE` 5.7 — a payload has no declared container.** `payload_begin` carries `bytes`, `digest`, `chunk_bytes` and nothing saying what the bytes are; `format.codec` is a codec, not a container, and is three hops away. A receiver writing a clip to disk must guess the extension | Erratum queued for L17: a `container` (or media type) on `payload_begin` or on the Capture |
+| 2026-08-22 | H (S2) | **`ENC` §7 does not require a bundle to carry `declare`**, yet `CORE` 8.5c scopes Capture identity by the minting peer and a bundle states that nowhere else; a bundle of bare `capture_announce` frames is unattributable and so un-deduplicable | Erratum queued for L17: §7 requires `declare` before any Capture-bearing frame, alongside 7c |
+| 2026-08-22 | H (S2) | **`ppcp_peer_drain()` has no partial-write counterpart.** It dequeues whole frames and assumes the embedding wrote all of them; a short socket write under `CORE` T2 backpressure loses bytes the engine considers sent | **L9 queue**: a `drain` told how much was taken, or peek/commit |
+| 2026-08-22 | H (S2) | The `libppcp` probe in `tests/cmake/PinPointTests.cmake` failed closed since H1 (FetchContent scope), so `ppcp_host_peer_test` had asserted the engine could not be built | Fixed in PinPointStudio `5fafe6f`; H2 re-verified against L6 |
+| 2026-08-22 | D (S2) | **`ppcp_msg` (~48 KB) imports into Swift with the union as computed members**, so `msg.body.x.y = z` copies the whole union through a stack temporary — an ordinary synchronous test hit SIGBUS. The workable pattern (heap-allocate, pointer to `body`, `withMemoryRebound`) is not discoverable | **L9 queue**: note in `message.h`; consider accessor functions for the large arms |
+| 2026-08-22 | D (S2) | **`bundle.h` has no originator for `session_manifest`**, the one message `ENC` 7c makes mandatory in a bundle; every other frame has a `ppcp_peer_*` entry point | **L9 queue**: `ppcp_peer_session_manifest(...)` |
+| 2026-08-22 | D (S2) | **`ppcp_link_binder_offer`'s `stream_channel` cannot be supplied by a stream-per-connection transport** — a freshly accepted TCP connection carries no channel number outside the `link_bind` frame header the library then checks it against | **L9 queue**: read the channel from the header inside `offer`. Until then the device listener assembles links in its own actor |
+| 2026-08-22 | D (S2) | **F-D2-1: `tb:hosttime` cannot be `mach_continuous_time`** as D2's text says — AVFoundation stamps with `mach_absolute_time`, which halts across sleep. D declares `tb:hosttime` as `monotonic` and a separate `tb:continuous` for `CORE` 5.5b | **Accepted**: D2's text is amended by this entry; a capture device declares what its frames are actually stamped with. A13 unchanged |
+| 2026-08-22 | D (S2) | CT-I28's device test asserted two `measured` capabilities where `CORE` 5.6d makes a distinct lens a distinct Source; the correct count is one | Test corrected; row still passes |
+| 2026-08-22 | D (S2) | `make test-app` hangs in or before `LinkBindLoopbackTests` (the `.serialized` E1 suite); the hanging test is not identified | **Open** — first item of S3-D. No RT row advanced on it |
 
 ---
 

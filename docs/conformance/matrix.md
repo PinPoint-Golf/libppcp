@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-22 — Session 2 in progress |
+| Last updated | 2026-08-22 — Session 2 closed (after the 15:22 crash and recovery run) |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -20,7 +20,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I1 | I1 | Core | static | L1, L2 | pass | — | — |
 | CT-I2 | I2 | Core | fixture | L8, D4 | — | — | — |
 | CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
-| CT-I4 | I4 | Core | static | L2, D2 | pass | — | — |
+| CT-I4 | I4 | Core | static | L2, D2 | pass | — | pass |
 | CT-I5 | I5 | Capture | paired | L6 | impl | — | — |
 | CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | — | — | — |
 | CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | — | — | — |
@@ -28,29 +28,29 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I9 | I9 | Core | static | L4, L10 | — | — | — |
 | CT-I10 | I10 | Capture | paired | L7, D4 | — | — | — |
 | CT-I11 | I11 | Capture | fixture | L7, D4 | — | — | — |
-| CT-I12 | I12 | Capture | fixture | L8, H3, D3 | pass | — | — |
+| CT-I12 | I12 | Capture | fixture | L8, H3, D3 | pass | pass | pass |
 | CT-I13 | I13 | Core | fixture | L1 | impl | — | — |
-| CT-I14 | I14 | Core | static | L6, H2 | pass | — | — |
-| CT-I15 | I15 | Offline | fixture | L8, H3 | — | — | — |
-| CT-I16 | I16 | Offline | paired | L8, H3 | impl | — | — |
+| CT-I14 | I14 | Core | static | L6, H2 | pass | pass | — |
+| CT-I15 | I15 | Offline | fixture | L8, H3 | — | impl | — |
+| CT-I16 | I16 | Offline | paired | L8, H3 | impl | impl | — |
 | CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | — |
 | CT-I18 | I18 | Core | paired | L9, H5, D6 | impl | — | — |
-| CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | — | — |
+| CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | pass | pass |
 | CT-I20 | I20 | Arbitrate | paired | L6, H5 | pass | — | — |
 | CT-I21 | I21 | Live | paired | L9, H5, D6 | — | — | — |
-| CT-I22 | I22 | Capture | static | L4, D2 | impl | — | — |
+| CT-I22 | I22 | Capture | static | L4, D2 | impl | — | pass |
 | CT-I23 | I23 | Mint | injected | L10 → CT-S4 | — | — | — |
 | CT-I24 | I24 | Core | injected | L6 → CT-S6 | impl | — | — |
 | CT-I25 | I25 | Offline | static | L4 | — | — | — |
 | CT-I26 | I26 | Detect | static | L4, L10, D5 | — | — | — |
 | CT-I27 | I27 | Capture | static | L4, D4 | — | — | — |
-| CT-I28 | I28 | Capture | static | L4, D2 | — | — | — |
+| CT-I28 | I28 | Capture | static | L4, D2 | — | — | pass |
 | CT-I29 | I29 | Detect | static | L4, D5 | impl | — | — |
 | CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | — |
 | CT-I31 | I31 | Capture | static | L4, D2 | impl | — | — |
 | CT-I32 | I32 | Mint | injected | L10, D5 | — | — | — |
 | CT-I33 | I33 | Detect | injected | L10, D5 | — | — | — |
-| CT-I34 | I34 | Offline | fixture | L8, H3, D3 | pass | — | — |
+| CT-I34 | I34 | Offline | fixture | L8, H3, D3 | pass | pass | pass |
 | CT-I35 | I35 | Arbitrate | injected | L10, H5 | — | — | — |
 | CT-I36 | I36 | Capture | fixture | L7, L8, D4 | impl | — | — |
 | CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | — | — |
@@ -63,11 +63,11 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 |---|---|---|---|---|---|---|---|
 | CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | — | — |
 | CT-S2 | I22 | Capture | **rig** | — | rig | rig | rig |
-| CT-S3 | I19 | Core | injected | L13, H2, D2 | — | — | — |
-| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | — | — | — |
+| CT-S3 | I19 | Core | injected | L13, H2, D2 | — | impl | — |
+| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | — | — | impl |
 | CT-S5 | I18 | Core | paired | L9, H5, D6 | — | — | — |
 | CT-S6 | I24 | Core | injected | L5, L6, L13 | impl | — | — |
-| CT-S7 | I31 | Capture | injected | L13, D2 | — | — | — |
+| CT-S7 | I31 | Capture | injected | L13, D2 | — | — | impl |
 
 ## 3. Interoperability pairings — `CONF` §5a
 
