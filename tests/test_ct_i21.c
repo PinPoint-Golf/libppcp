@@ -27,7 +27,7 @@
 /* A clock the test drives.  Several timebases from one object, each with its
  * own injected offset and skew, so a peer with three clocks is three entries
  * rather than three objects. */
-#define RIG_MAX_TB 4
+#define RIG_MAX_TB 5
 
 typedef struct rig_clock {
     struct {
@@ -211,11 +211,16 @@ static void test_sync(void)
     ppcp_timebase_relation rel;
     size_t i;
 
-    /* The host owns two clocks — `tb:hostA` and `tb:hostB` — which is CT-I21's
-     * whole point: I21 binds every multi-clock peer, hosts included (5.4.1b). */
+    /* The host owns THREE clocks — CT-I18 asks for three timebases and CT-I21
+     * asks that the assertion be made against a HOST, because I21 binds every
+     * multi-clock peer and hosts included (5.4.1b).  `tb:hostA` is also the
+     * clock its network stack stamps replies on, which is CT-S5 assertion 3:
+     * the camera is on B (and C) while the network is on A, and the peer runs
+     * the exchange per timebase rather than composing B→A with A→dev. */
     memset(&host, 0, sizeof(host));
     rig_add(&host.clock, "tb:hostA", 1000000000, 0.0);
-    rig_add(&host.clock, "tb:hostB", 7000000000, 0.0);
+    rig_add(&host.clock, "tb:hostB", 7000000000, 3.0);
+    rig_add(&host.clock, "tb:hostC", 3000000000, -7.0);
     rig_peer_new(&host, PPCP_ROLE_HOST, "peer:host", prof, 2, "tb:hostA", true);
 
     memset(&device, 0, sizeof(device));
@@ -224,10 +229,11 @@ static void test_sync(void)
     rig_add(&device.clock, "tb:dev", 1012500000, 20.0);
     rig_peer_new(&device, PPCP_ROLE_CAPTURE, "peer:dev", prof, 2, "tb:dev", true);
 
-    TEST("6.1d / I21 — one probe sequence per LOCAL timebase, on a HOST");
+    TEST("CT-I18 / 6.1d — one probe sequence per LOCAL timebase, three of them, on a HOST");
     CHECK_EQ_I(ppcp_peer_sync_add_timebase(host.p, "tb:hostA", NULL), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_sync_add_timebase(host.p, "tb:hostB", NULL), PPCP_OK);
-    CHECK_EQ_I(ppcp_peer_sync_count(host.p), 2);
+    CHECK_EQ_I(ppcp_peer_sync_add_timebase(host.p, "tb:hostC", NULL), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_sync_count(host.p), 3);
     /* A second sequence for one timebase is not a second measurement. */
     CHECK_EQ_I(ppcp_peer_sync_add_timebase(host.p, "tb:hostA", NULL), PPCP_ERR_INVALID);
 
@@ -237,8 +243,8 @@ static void test_sync(void)
     {
         size_t probes = 0;
         (void)ppcp_peer_sync_pump(host.p, host.clock.now_ns, &probes);
-        CHECK_EQ_I(probes, 2);                 /* one per timebase, not one in total */
-        CHECK_EQ_I(count_probes(host.p, PPCP_CHANNEL_CONTROL), 2);
+        CHECK_EQ_I(probes, 3);                 /* one per timebase, not one in total */
+        CHECK_EQ_I(count_probes(host.p, PPCP_CHANNEL_CONTROL), 3);
     }
     advance(&host, &device, RIG_LEG_NS);
     pump(host.p, device.p, PPCP_CHANNEL_CONTROL);
@@ -337,13 +343,13 @@ static void test_sync(void)
         /* Registering the timebase and triggering is what a peer does when it
          * needs a relation it does not hold: it measures.  The observable is a
          * probe sequence, and it is the third one. */
-        CHECK_EQ_I(ppcp_peer_sync_count(host.p), 2);
+        CHECK_EQ_I(ppcp_peer_sync_count(host.p), 3);
         CHECK_EQ_I(ppcp_peer_sync_trigger(host.p, PPCP_SYNC_ON_NETWORK_CHANGE), PPCP_OK);
         (void)ppcp_peer_drain(host.p, PPCP_CHANNEL_CONTROL, NULL, 0, &probes);
         drop_events(host.p);
         (void)ppcp_peer_sync_pump(host.p, host.clock.now_ns, &probes);
-        CHECK_EQ_I(probes, 2);
-        CHECK(count_probes(host.p, PPCP_CHANNEL_CONTROL) >= 2);
+        CHECK_EQ_I(probes, 3);
+        CHECK(count_probes(host.p, PPCP_CHANNEL_CONTROL) >= 3);
     }
 
     TEST("CT-S5 (4) / I21 — both of the HOST'S timebases end in a declared relation");
@@ -363,22 +369,31 @@ static void test_sync(void)
             CHECK(ppcp_id_equal(&ri.from, ppcp_sync_estimator_local_tb(ei)));
         }
         CHECK_EQ_I(ppcp_peer_publish_relations(host.p, &published), PPCP_OK);
-        CHECK_EQ_I(published, 2);
+        /* CT-I18 — three timebases, three DIRECTLY measured relations, and no
+         * fourth: nothing is published that was not measured. */
+        CHECK_EQ_I(published, 3);
+        CHECK_EQ_I(ppcp_relations_count(ppcp_peer_relations(host.p)), 4);   /* +the B->C
+                                                                              the test put
+                                                                              in by hand */
         pump(host.p, device.p, PPCP_CHANNEL_CONTROL);
     }
 
     TEST("6.1f — the device received both relations, and holds them uncomposed");
     {
         ppcp_relation_set *rs = ppcp_peer_relations(device.p);
-        ppcp_id a, b, d;
+        ppcp_id a, b, cc, d;
         CHECK_EQ_I(ppcp_id_set_z(&a, "tb:hostA"), PPCP_OK);
         CHECK_EQ_I(ppcp_id_set_z(&b, "tb:hostB"), PPCP_OK);
+        CHECK_EQ_I(ppcp_id_set_z(&cc, "tb:hostC"), PPCP_OK);
         CHECK_EQ_I(ppcp_id_set_z(&d, "tb:dev"), PPCP_OK);
         CHECK(ppcp_relations_find(rs, &a, &d) != NULL);
         CHECK(ppcp_relations_find(rs, &b, &d) != NULL);
-        /* A→B is exactly what composition would have produced from the two,
-         * and it is exactly what is absent. */
+        CHECK(ppcp_relations_find(rs, &cc, &d) != NULL);
+        /* A→B, A→C and B→C are exactly what composition would have produced
+         * from those three, and they are exactly what is absent. */
         CHECK(ppcp_relations_find(rs, &a, &b) == NULL);
+        CHECK(ppcp_relations_find(rs, &a, &cc) == NULL);
+        CHECK(ppcp_relations_find(rs, &b, &cc) == NULL);
     }
 
     TEST("I4 — identity is identity, and is never asserted as a relation");

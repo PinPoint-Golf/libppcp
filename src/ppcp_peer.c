@@ -1179,6 +1179,40 @@ ppcp_result ppcp_peer_capture_announce(ppcp_peer *p, const ppcp_capture *c, bool
 
     if (p == NULL || c == NULL)
         return PPCP_ERR_INVALID;
+
+    /* F-D4-1 — the Stream this Capture names is one this peer OPENED, and the
+     * engine is holding it.  So the rules that are stated over the pair are
+     * checked here, at origination, rather than left to a receiver to notice:
+     * 5.14d's `{stream: true}` only on a `continuous` Stream (CT-I27's second
+     * assertion), I11's gaps only on a `continuous` Stream, the interval in the
+     * Stream's own timebase, and 5.11j's preview rule.  L7 refused only the
+     * preview case; the other three were unenforced on the way out although
+     * the same table answered all four (plan §9, D, 22 August 2026).
+     *
+     * A Stream the engine has not seen opened is NOT an error: 8.4b lets a
+     * peer announce an `absent` Capture for an interval it no longer holds,
+     * and a `capture_request` may name a Stream that was closed. */
+    {
+        const ppcp_stream *st = NULL;
+        size_t             i;
+        for (i = 0; i < p->stream_count; i++) {
+            if (ppcp_id_equal(&p->streams[i].id, &c->stream_id)) {
+                st = &p->streams[i];
+                break;
+            }
+        }
+        if (st != NULL) {
+            rc = ppcp_capture_validate_in_stream(c, st);
+            if (rc != PPCP_OK)
+                return rc;
+            /* And the caller's belief about the Stream's kind must match the
+             * Stream: `is_preview` is a parameter only because a Capture does
+             * not carry the kind, not because the caller gets to choose. */
+            if (is_preview != ppcp_stream_is_preview(st))
+                return PPCP_ERR_INVALID;
+        }
+    }
+
     /* 8.1i / 5.11j is refused here rather than noticed later, and the table is
      * updated before the frame is queued so a refusal costs nothing. */
     rc = ppcp_transfer_observe_announce(&p->transfers, c, is_preview);

@@ -7,7 +7,7 @@
 | Implementation | `libppcp`, the MIT reference implementation |
 | Against | `PPCP-CORE` revision 9, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF` 1.0; `PPCP-RV` revision 8 |
 | Wire version | `ppcp/1.0` |
-| Session | S1 — L0, L1, L2, L3, L12 · **S2 — L4, L5, L6, L7, L8** |
+| Session | S1 — L0, L1, L2, L3, L12 · S2 — L4, L5, L6, L7, L8 · **S3 wave 1 — L9, L10, L11** |
 | Date | 2026-08-22 |
 | Matrix | [`matrix.md`](matrix.md) — this file is the human-readable form of the `libppcp` column |
 
@@ -15,17 +15,19 @@
 
 > *`libppcp` implements the **Core, Capture, Detect, Mint, Arbitrate, Live, Markup and Offline** profiles of PPCP 1.0 — all eight — and passes every test in `PPCP-CONF` §3 and §4 carrying those profiles.*
 
-**That claim is not yet true and is not yet made.** `CONF` 1a requires a claim to name its profiles, and 1b and 1c require every test carrying them to pass. At the end of session S2 the library implements the wire encoding, the timebase vocabulary, the canonical-instant conversion, the PPCP-RV payload and derivation, the `CORE` §5 type vocabulary, the forty-five-message catalogue, the peer engine and the bundle container. Not built: clock synchronisation (L9), detect/mint/arbitrate (L10), markup (L11) and the synthetic peer (L13) — and without the synthetic peer the *paired* rows are demonstrated only against this library's own second engine, which `CONF` §2c is explicit is not the same thing. What follows is the evidence that exists so far.
+**That claim is not yet true and is not yet made.** `CONF` 1a requires a claim to name its profiles, and 1b and 1c require every test carrying them to pass. At the end of session S3 wave 1 the library implements the wire encoding, the timebase vocabulary, the canonical-instant conversion, the PPCP-RV payload and derivation, the `CORE` §5 type vocabulary, the forty-five-message catalogue, the peer engine, the bundle container, clock synchronisation and liveness, Detect/Mint/Arbitrate, and Markup. `include/ppcp/planned.h` is now empty of declarations: every symbol the two applications were coding against has a definition in `libppcp.a`.
+
+Not built: the synthetic peer (L13), the conformance tool (L14), the reference run (L15) and the audits (L16) — and **without the synthetic peer the *paired* rows are demonstrated only against this library's own second engine, which `CONF` §2c is explicit is not the same thing.** What follows is the evidence that exists so far.
 
 `libppcp` also claims `PPCP-RV` conformance **in part**: the pairing-code payload (`RV` §4), the key derivation (`RV` §5.1), the resolvable identifiers (§3.4) and the PSK identity (§5.3). It does **not** implement the TLS profile (§5.2), service discovery (§3) or network join (§6), and cannot: plan A7 and A8 put TLS and discovery in the applications, and `RV` 5.2i says compliance for those clauses is demonstrated by observed handshake rather than by an API. Those rows are `n/a` for this column by construction, as the matrix §5 preamble already records.
 
 ## The command
 
 ```
-cmake --preset dev && cmake --build --preset dev -j4 && ctest --preset dev
+cmake --preset dev && cmake --build --preset dev -j3 && ctest --preset dev
 ```
 
-Nineteen tests, all passing. The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer), `cov`, `rel` and `release`. `swift build` builds the same sources as the SwiftPM C target `CPPCP`.
+Twenty-four tests, all passing. The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer), `cov`, `rel` and `release`. `swift build` builds the same sources as the SwiftPM C target `CPPCP`.
 
 Individual rows are reproduced by name, for example:
 
@@ -35,7 +37,13 @@ ctest --preset dev -R test_ct_s6     # CT-S6 assertion 4 — all forty-five mess
 ctest --preset dev -R test_ct_i24    # CT-S6 1-3, CT-I20, the peer engine, ENC 2.1
 ctest --preset dev -R test_ct_i12    # CT-I12, CT-I34, the bundle container
 ctest --preset dev -R test_ct_i38    # I38's four exits, I36's coverage, ENC §6
+ctest --preset dev -R test_ct_i21    # CT-I18, CT-I21, CT-S5, CT-S4 assertion 7
+ctest --preset dev -R test_l9_queue  # the L9 queue: partial writes, the session offer
+ctest --preset dev -R test_ct_s4     # CT-S4 1-6, CT-I23, CT-I26, CT-I29, CT-I32, CT-I33
+ctest --preset dev -R test_ct_i35    # CT-I6, CT-I7, CT-I8, CT-I9, CT-I20, CT-I35, 8.4
+ctest --preset dev -R test_ct_i37    # CT-I37
 ctest --preset dev -R CT-I14         # the threshold grep
+ctest --preset dev -R CT-I18-api-surface   # CT-I18 static, CT-I9, CT-I25, CT-I37 surface
 ctest --preset dev -R test_rv
 ```
 
@@ -56,11 +64,22 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 | CT-I14 | I14 | Core | static | L6, H2 | **pass** | — | — |
 | CT-I16 | I16 | Offline | paired | L8, H3 | impl | — | — |
 | CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | — |
-| CT-I18 | I18 | Core | paired | L9, H5, D6 | impl | — | — |
+| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | **pass** | — | — |
+| CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | **pass** | — | — |
+| CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | **pass** | — | — |
+| CT-I9 | I9 | Core | static | L4, L10 | **pass** | — | — |
+| CT-I18 | I18 | Core | paired | L9, H5, D6 | **pass** | — | — |
+| CT-I21 | I21 | Live | paired | L9, H5, D6 | **pass** | — | — |
+| CT-I23 | I23 | Mint | injected | L10 → CT-S4 | **pass** | — | — |
+| CT-I26 | I26 | Detect | static | L4, L10, D5 | **pass** | — | — |
 | CT-I20 | I20 | Arbitrate | paired | L6, H5 | **pass** | — | — |
 | CT-I22 | I22 | Capture | static | L4, D2 | impl | — | — |
 | CT-I24 | I24 | Core | injected | L6 → CT-S6 | impl | — | — |
-| CT-I29 | I29 | Detect | static | L4, D5 | impl | — | — |
+| CT-I29 | I29 | Detect | static | L4, L10, D5 | **pass** | — | — |
+| CT-I32 | I32 | Mint | injected | L10, D5 | **pass** | — | — |
+| CT-I33 | I33 | Detect | injected | L10, D5 | **pass** | — | — |
+| CT-I35 | I35 | Arbitrate | injected | L10, H5 | **pass** | — | — |
+| CT-I37 | I37 | Markup | static | L11, H7, D8 | **pass** | — | — |
 | CT-I31 | I31 | Capture | static | L4, D2 | impl | — | — |
 | CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | — |
 | CT-I34 | I34 | Offline | fixture | L8, H3, D3 | **pass** | — | — |
@@ -73,6 +92,8 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 | Test | Invariants | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
 | CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | — | — |
+| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | **pass** | — | — |
+| CT-S5 | I18 | Core | paired | L9, H5, D6 | **pass** | — | — |
 | CT-S6 | I24 | Core | injected | L5, L6, L13 | impl | — | — |
 
 ### `RV` §9 — rendezvous tests
@@ -107,14 +128,54 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 5. Row instants under both directions and `R == 1`, plus `global` geometry.
 6. The scalar exposure form and an equivalent constant array give identical instants, frame by frame.
 
-**CT-I18** — `tests/api_surface.cmake` is the static half: no function in any public header takes two `TimebaseRelation`s, which is the signature composition would have whatever it was called.
-**`impl`, not `pass`:** the row's method is *paired* — one probe sequence per timebase against a three-timebase peer — which needs L9 and the synthetic peer.
+**CT-I18 / CT-I21 / CT-S5** — `tests/test_ct_i21.c`, plus `tests/api_surface.cmake` for the static half (no function in any public header takes two `TimebaseRelation`s, which is the signature composition would have whatever it was called).
+
+A **host** with three clocks — `tb:hostA`, `tb:hostB`, `tb:hostC`, the last two skewed at +3 and −7 ppm — runs against a device on a fourth, offset 12.5 ms and skewed +20 ppm, over a jittered link. I21 binds every multi-clock peer and hosts included (5.4.1b), so the assertion is made against the host, which is CT-S5 assertion 4. Then:
+
+1. `ppcp_peer_sync_add_timebase` refuses a second sequence for one timebase, and one pump queues **three** probes, not one — counted on the wire through `ppcp_peer_drain_peek` rather than from the engine's own account.
+2. A single exchange yields no relation: `ppcp_sync_estimator_relation` returns `PPCP_ERR_NOT_FOUND` until it has a rate as well as an offset, which is 6.3a made structural.
+3. After forty exchanges the offset is recovered to within a millisecond of `12.5 ms + 20 ppm × (observed_at − epoch)` and the skew to within 5 ppm; both sigmas are non-zero and `ppcp_relation_validate` accepts the result.
+4. 6.3e: an exchange claiming an offset 40 ms away moves the published value by less than half of that. Filtered, not stepped.
+5. CT-S5 (1): the host holds A→dev and dev→other, and A→other is **absent**; A→B, A→C and B→C are absent too, which is exactly what composition would have produced from three directly-measured relations.
+6. CT-S5 (2): asked to convert into a timebase it holds no relation to, `ppcp_relations_convert` answers `PPCP_ERR_NOT_FOUND` — `relation_missing` — and a fresh probe sequence appears on the wire.
+7. `ppcp_peer_publish_relations` emits **three** relations for three timebases and nothing else: nothing is published that was not measured.
+8. I4: converting an instant into its own timebase is the identity and no `from == to` relation exists to do it with. 5.4b: an `unrelated` declaration refuses to convert rather than assuming zero.
+
+**CT-S4** — `tests/test_ct_s4.c` for assertions 1–6 and `tests/test_ct_i21.c` for assertion 7.
+
+1. A hostless Session end to end: `declare`, `session_open` with **neither** arbitration parameter, `stream_open`, `readiness`, two `candidate`s, a `shot`, a `capture_announce`, `session_manifest`, written through `ppcp_bundle_writer` from the frames `ppcp_peer_drain` produced, then read back through `ppcp_bundle_reader` into a second engine. ⚠ **The assertion's word `arm` is a specification defect** — `CORE` 7.3b forbids recording one in a hostless bundle — and the test asserts both refusals instead (see the defects section below).
+2. Two Candidates 10 ms apart, no window applied, and the promotion policy consulted for both: one Shot and one unpromoted Candidate, with **both** Candidates emitted and both retained.
+3. Every Shot carries `authority: device` and exactly one Candidate — decoded back off the wire rather than read out of the engine.
+4. The same two Candidates in a hosted Session with the 50 ms default window produce **one** Shot carrying **both**. Assertions 2 and 4 together are the test; either alone passes for the wrong reason.
+5. `ppcp_mint_new` refuses a peer that has not declared Mint, so a peer that mints without declaring it has no object to mint with (8.3d, `CONF` §1d).
+6. The live-regime half is CT-I32 below.
+7. Three missed heartbeats is a lost link; the peer enters the zero-host regime and `Session.timebase_ref`, `coincidence_window_ns` and `issue_hold_ns` are **unchanged** across it (8.3g). A heartbeat afterwards restores the link. The other entry — a Session that never had a host — needs no loss at all.
+
+**CT-I23** — see CT-S4, which is where `CONF` §3 sends it.
+
+**CT-I6 / CT-I7 / CT-I8 / CT-I9 / CT-I35 / CT-I20** — `tests/test_ct_i35.c`.
+
+- **I6**: `ppcp_shot_make` takes the first Candidate as a parameter, so a Shot with none has no representation; and an issued Shot demonstrably carries none from a peer that nominated nothing.
+- **I7**: a Candidate delivered after issue attaches and `t0` is compared with `memcmp` before and after — byte-identical, which is what the row asks for.
+- **I8**: a Candidate excluded for a 40 ms relation sigma under a 5 ms host policy is present in `Shot.candidates` with its `evidence_capture_id` intact; a host microphone and a device microphone, both `basis: acoustic`, both appear; and an unpromoted Candidate in a hostless Session is emitted and retained with no Shot (CT-S4). A Candidate with a missing or `unrelated` relation is retained and starts no Shot.
+- **I9**: `ppcp_shot_adopt_extension` refuses any difference in `id`, `t0`, `authority` or `issued_by`, so there is no way to make one Shot out of two; `ppcp_shot_link_confirm` refuses `confirmed_by: observer` on a retrospective basis and there is no way to set `confirmed` without saying which kind it was. The absence of a merge operation is `tests/api_surface.cmake`.
+- **I20**: `ppcp_arbiter_new` refuses a peer whose role is not host, and refuses one that has not declared Arbitrate.
+- **I35**: a device-minted `shot` for a Candidate the host holds is attached to — one `shot` on the wire, carrying the device's `id`, `t0`, `authority` and `issued_by` unchanged and the host's Candidate added — and **no** competing Shot is issued. A forced collision emits `shot_link` with `basis: shared_candidate` and `confirmed_by: observer`, and neither Shot is withdrawn. Two extensions applied in either order produce byte-identical Shots, because the candidate list is kept sorted.
+
+**CT-I26 / CT-I29 / CT-I33** — `tests/test_ct_s4.c`.
+
+- **I33**: a `motion` Candidate from a `nominal_frame_start` Source is emitted at `t + 120000 + d/2`, the correction is reported in `canonical_correction_ns` so the raw instant is recoverable, and converting a second time is off by exactly `frame_start_to_exposure_offset_ns + d/2`. An acoustic Candidate from a Source whose profile has no `format` is unaffected (6.1d), and such a profile declaring anything but `mid` is unconstructible.
+- **I26**: a Candidate naming an undeclared Source, one stamped in a timebase that is not the Source's, and one carrying another peer's id are each refused before a wire sees them. A record with no clock cannot **become** a Candidate: `ppcp_candidate_make` takes an Instant and `ppcp_instant_make` refuses a missing `tb`, so the shape 8.1e forbids a peer from synthesising has nothing to synthesise into.
+- **I29**: at the Candidate level now as well as the Estimate level — `tof_correction` with a value and a non-real sigma fails validation, fails encoding and fails `ppcp_peer_nominate`, and the reverse is not expressible because `ppcp_estimate_make` takes both or neither.
+
+**CT-I32** — `tests/test_ct_s4.c`, all four halves the row names. A host receives a Candidate and never answers. Nothing is minted at `issue_hold_ns + heartbeat_interval_ms − 1`; one Shot is minted at the deadline; the **same silence** over a Candidate below the peer's own promotion floor mints nothing and retains it. Two independent engines with the same declared parameters and the same policy agree at both instants. And the case the interoperability pairing lands on: a peer declaring `unrelated` timebases against a silent host mints **nothing**, retains **every** Candidate, and its promotion policy is never even consulted — 8.2i1 is decided before policy, because a Shot the peer cannot express is not a decision it gets to make.
+
+**CT-I37** — `tests/test_ct_i37.c` and `tests/api_surface.cmake`. The surface half refuses any `PPCP_API` declaration putting an Annotation and a Shot, Candidate, Calibration or TimebaseRelation in one signature, whatever it is called, and refuses a tree with no `markup.h` at all so the scan cannot pass by the feature having been dropped (the scan was checked by injecting such a declaration, and it catches it). The behavioural half: a `body` of thirteen bytes including a NUL, a lone `0xFF` and invalid UTF-8, under a `format` no version of this library has heard of, round-trips byte-identical through encode and decode; a lower revision for a known `id` is ignored; and the equal-revision race is driven in **both** delivery orders against two stores, which converge on the same author, the same revision and the same opaque bytes. Placement follows 5.18j and 5.18g together, with 5.18h asserted by refusing a view-specific annotation against another Stream and an unregistered `kind` treated as view-specific if and only if `stream_id` is present.
+
+**The L9 queue** — `tests/test_l9_queue.c`. Not a `CONF` row; it is the four API gaps teams H and D reported in S2, and the offline session offer the user decided on. A transport that writes 11 bytes and then 7 at a time loses nothing and duplicates nothing; `ppcp_peer_drain` refuses a half-written head rather than describing a fragment as a frame; a device offers a stored Session, a host accepts naming one digest it already holds, and `ppcp_bundle_replay` puts the bundle's frames onto the live link with that Capture's **payload** skipped and its **announce** still sent.
 
 **CT-I22 and CT-I31** — the Timing and geometry halves pass inside `tests/test_ct_s1.c`: `ppcp_timing_make` refuses `nominal_frame_start`, `ppcp_timing_make_nominal_frame_start` requires the offset *and* its provenance, a `start` profile carrying an offset is malformed, a `nominal_frame_start` profile without one is malformed, and `rolling_shutter.readout_ns` cannot be declared without `readout_provenance`.
 **`impl`, not `pass`:** both rows are stated over a `CaptureProfile`, which is L4. `AchievedFrames.exposure_ns` provenance is already mandatory-with-the-value here, which is the third quantity I31 names.
-
-**CT-I29** — `tests/test_ct_i29.c` covers the `Estimate` half, which `ENC` 4.1e says is where I29 is made structural.
-**`impl`, not `pass`:** the row is stated over `Candidate.tof_correction`, which is L4/L10.
 
 **CT-I12** — `tests/test_ct_i12.c`. A hostless bundle is written through `ppcp_bundle_writer` and read back through `ppcp_bundle_reader` into a real `ppcp_peer`, three times: video-only, IMU-only, and a Session with no Streams at all. Each loads, each yields the Session, the declaration and whatever Streams it had, and none of the three is an error. The reader is additionally driven one byte at a time and consumes nothing until a frame is whole.
 
@@ -184,8 +245,28 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 
 **8. `CORE` 5.3 does not say whether `Timebase.kind` is an open registry.** §10.3 lists eight open registries and `Timebase.kind` is not among them, so it reads as closed — which is what is implemented here (an unknown `kind` is malformed). Worth confirming, because I13 is phrased over "`kind` values" generally and a reader could take it to cover this one.
 
+**9. `CORE` §8.2 does not say WHICH contributing Candidate sets `t0`.** 8.2b groups Candidates and 8.2h says when to issue, but nothing names the winner among them. Two conformant hosts arbitrating the same three Candidates may therefore issue different `t0` for one event, and I7 then freezes whichever each chose.
+
+*Effect here:* the Candidate with the smallest combined timing uncertainty — the relation's `offset_sigma_ns` evaluated at that instant, widened by `tof_correction.sigma_ns` where present — with the earliest instant breaking a tie so the choice is independent of arrival order. That is 8.2h's own rationale read as a rule: "a fast IMU nomination followed 30 ms later by a sample-accurate acoustic one should resolve to the acoustic instant". `Candidate.confidence` is deliberately **not** consulted, because it is a belief that the event happened rather than a statement about *when*, and using it would put a quality judgement in the protocol layer (I14). *Suggested erratum:* 8.2 states a rule, or states explicitly that the choice is the host's and that `t0` is therefore host-dependent.
+
+**10. `CONF` §4.4 assertion 1 asks a hostless Session to run `arm` end to end, and `CORE` 7.3b forbids recording one.** `arm` is conferred by Live; a bundle with nobody controlling carries the *effect* — Streams, `readiness`, Captures — not a command nobody sent. `CONF` 5b1's own list of four found defects already names this one for the bundle writer.
+
+*Effect here:* `tests/test_ct_s4.c` asserts both refusals in place of the assertion's word — `ppcp_bundle_writer_append_msg` refuses an `arm` once a hostless `session_open` has been recorded, and `ppcp_peer_arm` refuses a peer that is not the host. *Suggested erratum:* strike `arm` from CT-S4 assertion 1, or qualify it as applying only where a host is present.
+
+**11. `MSG` §11 lists `stream_close`'s `closed_at` unmarked while `CORE` 5.11 has `Stream.closed_at` at cardinality 0..1** — and 5.1d lets the **consumer** close a Stream whose `timebase_id` is the owner's clock, which the consumer has no reading of. Raised by PinPointStudio (F-H4-2).
+
+*Effect here:* `closed_at` is encoded when present and tolerated absent on receipt, and `ppcp_peer_stream_close()` accepts NULL. Under the other reading a consumer-originated close is not expressible at all. *Suggested erratum:* 5.11a1 names the closing peer's timebase for `closed_at`, or `MSG` §11 marks the field optional.
+
+**12. `CORE` §5.14 gives an `absent` shot-anchored Capture nowhere to say which span it lost.** 5.14d makes `interval` mandatory for a stream-anchored segment and absent otherwise, and 8.4b's answer to an orphan `capture_request` is shot-anchored — so `absent_reason: outside_buffer` is the whole of the report and "the buffer no longer reached back that far" has no field. Raised by PinPointCapture (F-D4-2).
+
+**13. `CORE` §5.8 `AchievedSummary` is camera vocabulary, and 5.11b requires stream-anchored Captures on every `continuous` Stream.** A 100 Hz attitude Stream has no frames, no exposure and no ISO. Raised by PinPointCapture (F-D4-3). *Suggested erratum:* the summary becomes optional for a non-framed Stream, or 5.8 gains a form stated over samples.
+
+**14. `CONF` editorial.** CT-S1 says "the other four" over six assertions; "CT-I36a" is written as though I36a were an invariant, when §3 is giving I36 a second test. Raised by PinPointCapture (F-D4-4).
+
 ## What is not claimed
 
-Not started, and named so nobody reads a silence as a claim: CT-I2, I6–I11, I15, I19, I21, I23, I25–I28, I32, I33, I35, I37; CT-S2 (`rig`), S3, S4, S5, S7; RT-4, 5, 7, 9–13, 15–17; every interoperability pairing. `impl` and not yet `pass`: CT-I5, I13, I16, I18, I22, I24, I29, I30, I31, I36, I36a, I38, CT-S6, RT-6, RT-8. The work packages that reach them are L7, L9–L11 and L13–L15 across sessions S3 and S4.
+Not started, and named so nobody reads a silence as a claim: CT-I2, I10, I11, I15, I19, I25, I27, I28; CT-S2 (`rig`), S3, S7; RT-4, 5, 7, 9–13, 15–17; every interoperability pairing. `impl` and not yet `pass`: CT-I5, I13, I16, I22, I24, I30, I31, I36, I36a, I38, CT-S6, RT-6, RT-8. The work packages that reach them are L13–L15 across sessions S3 wave 2 and S4, and D4/D5 for the rows stated over a real capture device.
 
-**One thing worth stating plainly about the *paired* rows.** CT-I12, CT-I20 and CT-I34 are demonstrated by running two `libppcp` engines against each other through a byte buffer. That is a real end-to-end run and it is not an interoperability demonstration: `CONF` §2c says an implementation tested only against itself passes I19, I22, I24 and I31 by accident. The synthetic peer of L13 is what turns these into evidence against a foreign declaration, and until it exists these rows rest on one implementation agreeing with itself.
+**CT-S6 assertion 1 is now half-owed rather than wholly owed.** "A peer declaring `Core + Arbitrate + Live + Offline` and not Detect parses `candidate` completely — **and arbitrates over the result**." The parse half passes in `tests/test_ct_i24.c` and the arbitration half now exists (`ppcp_arbiter` refuses nothing about a Candidate on the grounds of the receiver's profiles, because C1 gates comprehension nowhere). Wiring the two together is a `ppcp-sim` scenario and is left to L13 rather than asserted against this library's own engine.
+
+**One thing worth stating plainly about the *paired* rows.** CT-I7, CT-I8, CT-I12, CT-I18, CT-I20, CT-I21, CT-I34 and CT-S5 are demonstrated by running two `libppcp` engines against each other through a byte buffer. That is a real end-to-end run and it is not an interoperability demonstration: `CONF` §2c says an implementation tested only against itself passes I19, I22, I24 and I31 by accident. The synthetic peer of L13 is what turns these into evidence against a foreign declaration, and until it exists these rows rest on one implementation agreeing with itself.

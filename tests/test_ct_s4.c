@@ -243,6 +243,47 @@ static void test_canonical(void)
         CHECK_EQ_I(ppcp_peer_nominate(d.p, &c), PPCP_ERR_INVALID);
     }
 
+    TEST("I26 / 7.1c / 8.1b — a record with no timebase cannot BECOME a Candidate");
+    {
+        /* The launch-monitor row: no peer, no timebase, no clock relation.
+         * There is no constructor that takes a bare number, because
+         * ppcp_candidate_make takes an Instant and ppcp_instant_make refuses a
+         * missing or empty `tb` (I1).  So the shape 8.1e forbids a peer from
+         * synthesising has no representation to synthesise INTO — it is
+         * associated by `shot_link` and never enters arbitration. */
+        ppcp_instant   nowhere;
+        ppcp_candidate c;
+        CHECK_EQ_I(ppcp_instant_make(&nowhere, NULL, 0, raw), PPCP_ERR_INVALID);
+        CHECK_EQ_I(ppcp_instant_make(&nowhere, "", 0, raw), PPCP_ERR_INVALID);
+        memset(&nowhere, 0, sizeof(nowhere));
+        nowhere.ns = raw;                       /* a timestamp with no clock */
+        CHECK_EQ_I(ppcp_candidate_make(&c, "cand:file", "peer:dev", "src:mic", "external",
+                                       &nowhere, 0.9), PPCP_ERR_INVALID);
+    }
+
+    TEST("CT-I29 — a Candidate whose tof_correction lost its sigma is refused, both ways");
+    {
+        ppcp_candidate c = mic;
+        double         inf = 1e308 * 10.0;
+        double         nan = inf - inf;
+        uint8_t        buf[4096];
+        size_t         n = 0;
+        ppcp_msg       m;
+
+        c.has_tof_correction     = true;
+        c.tof_correction.value_ns = 5800000;
+        c.tof_correction.sigma_ns = nan;        /* a dispersion that is not one */
+        CHECK_EQ_I(ppcp_candidate_validate(&c), PPCP_ERR_INVALID);
+        CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_CANDIDATE, 1), PPCP_OK);
+        m.body.candidate.candidate = c;
+        CHECK(ppcp_msg_encode(buf, sizeof(buf), PPCP_CHANNEL_CONTROL, &m, &n) != PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_nominate(d.p, &c), PPCP_ERR_INVALID);
+        /* And the reverse: a sigma with no value is not expressible either,
+         * because ppcp_estimate_make takes both or neither. */
+        CHECK_EQ_I(ppcp_estimate_make(&c.tof_correction, 0, 900000.0), PPCP_OK);
+        CHECK_EQ_I(ppcp_candidate_validate(&c), PPCP_OK);
+    }
+
     TEST("7.1d — a well-formed Candidate is emitted, whatever anyone thinks of it");
     CHECK_EQ_I(ppcp_peer_nominate(d.p, &cam), PPCP_OK);
     CHECK(ppcp_peer_pending(d.p, PPCP_CHANNEL_CONTROL) > 0);
@@ -573,6 +614,76 @@ static void test_silent_host(void)
         CHECK_EQ_I(ppcp_mint_minted_count(m), before);
     }
 
+    TEST("CT-I32 — two peers with the SAME declared parameters agree on whether a Shot exists");
+    {
+        /* The invariant is about agreement, not about the answer: given one
+         * Candidate, one Session and one promotion policy, two independent
+         * engines must reach the same verdict at the same instant.  A
+         * disagreement here is two conformant implementations disagreeing
+         * about whether an event happened, which is what 8.2i exists to
+         * prevent. */
+        rig        twin;
+        void      *tm  = malloc(ppcp_mint_sizeof());
+        ppcp_mint *tw  = NULL;
+        promo      same = { 0.5, 0 };
+        id_seq     tids = { "shot:t", 0 };
+        uint8_t    buf[8192];
+        size_t     n = 0, consumed = 0, a_before = 0, b_before = 0;
+        ppcp_candidate c;
+
+        rig_new(&twin, PPCP_ROLE_CAPTURE, "peer:dev", "tb:dev", dprof, 5);
+        CHECK_EQ_I(ppcp_peer_session_open(host.p, &s), PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_drain(host.p, PPCP_CHANNEL_CONTROL, buf, sizeof(buf), &n),
+                   PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_feed(twin.p, PPCP_CHANNEL_CONTROL, buf, n, &consumed), PPCP_OK);
+        drop_events(twin.p);
+        {
+            ppcp_timebase_relation rel;
+            ppcp_instant           at;
+            CHECK_EQ_I(ppcp_instant_make_z(&at, "tb:dev", 0), PPCP_OK);
+            CHECK_EQ_I(ppcp_relation_make_affine(&rel, "tb:dev", "tb:host", 0, 0.0,
+                                                 50000.0, 1.0, PPCP_RELM_ESTIMATED_ONLINE,
+                                                 &at), PPCP_OK);
+            CHECK_EQ_I(ppcp_relations_put(ppcp_peer_relations(twin.p), &rel), PPCP_OK);
+        }
+        CHECK(tm != NULL);
+        CHECK_EQ_I(ppcp_mint_new(tm, ppcp_mint_sizeof(), twin.p, next_id, &tids, &tw),
+                   PPCP_OK);
+        CHECK_EQ_I(ppcp_mint_set_promotion_policy(tw, promote_above, &same), PPCP_OK);
+
+        CHECK_EQ_I(ppcp_candidate_make_canonical(&c, "cand:agree", &twin.src[1],
+                                                 &twin.cp[1], "acoustic",
+                                                 t0_ns + 2000000000, 0, 0.9, NULL),
+                   PPCP_OK);
+        CHECK_EQ_I(ppcp_mint_observe_own(m,  &c), PPCP_OK);
+        CHECK_EQ_I(ppcp_mint_observe_own(tw, &c), PPCP_OK);
+
+        /* One nanosecond before the shared deadline: neither. */
+        a_before = ppcp_mint_minted_count(m);
+        b_before = ppcp_mint_minted_count(tw);
+        CHECK_EQ_I(ppcp_mint_pump(m,  t0_ns + 2000000000 + PPCP_DEFAULT_ISSUE_HOLD_NS +
+                                      (int64_t)PPCP_DEFAULT_HEARTBEAT_MS * 1000000 - 1,
+                                  &minted), PPCP_OK);
+        CHECK_EQ_I(minted, 0);
+        CHECK_EQ_I(ppcp_mint_pump(tw, t0_ns + 2000000000 + PPCP_DEFAULT_ISSUE_HOLD_NS +
+                                      (int64_t)PPCP_DEFAULT_HEARTBEAT_MS * 1000000 - 1,
+                                  &minted), PPCP_OK);
+        CHECK_EQ_I(minted, 0);
+        /* And at it: both. */
+        CHECK_EQ_I(ppcp_mint_pump(m,  t0_ns + 2000000000 + PPCP_DEFAULT_ISSUE_HOLD_NS +
+                                      (int64_t)PPCP_DEFAULT_HEARTBEAT_MS * 1000000,
+                                  &minted), PPCP_OK);
+        CHECK_EQ_I(minted, 1);
+        CHECK_EQ_I(ppcp_mint_pump(tw, t0_ns + 2000000000 + PPCP_DEFAULT_ISSUE_HOLD_NS +
+                                      (int64_t)PPCP_DEFAULT_HEARTBEAT_MS * 1000000,
+                                  &minted), PPCP_OK);
+        CHECK_EQ_I(minted, 1);
+        CHECK_EQ_I(ppcp_mint_minted_count(m)  - a_before, 1);
+        CHECK_EQ_I(ppcp_mint_minted_count(tw) - b_before, 1);
+        free(tm);
+        rig_free(&twin);
+    }
+
     TEST("CT-I32 / 8.2i1 — a peer whose timebases are `unrelated` mints NOTHING");
     {
         static const char *const uprof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_CAPTURE,
@@ -625,11 +736,256 @@ static void test_silent_host(void)
     rig_free(&host);
 }
 
+/* ============================== CT-S4 (1) — a hostless Session, end to end */
+
+/* Everything the device queued, appended to the bundle exactly as it would
+ * have been sent.  ENC 7a: live bytes ARE bundle bytes, and this function is
+ * the whole of the claim. */
+static void record(ppcp_peer *p, ppcp_bundle_writer *w, uint8_t ch, uint8_t *out,
+                   size_t cap, size_t *len)
+{
+    uint8_t frames[65536];
+    size_t  n = 0, got = 0;
+    while (ppcp_peer_pending(p, ch) > 0) {
+        CHECK_EQ_I(ppcp_peer_drain(p, ch, frames, sizeof(frames), &n), PPCP_OK);
+        if (n == 0)
+            break;
+        CHECK_EQ_I(ppcp_bundle_writer_append_frames(w, frames, n, out + *len, cap - *len,
+                                                    &got), PPCP_OK);
+        *len += got;
+    }
+}
+
+static void test_hostless_end_to_end(void)
+{
+    static const char *const prof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_CAPTURE,
+                                        PPCP_PROFILE_DETECT, PPCP_PROFILE_MINT,
+                                        PPCP_PROFILE_OFFLINE };
+    rig                 d, sink;
+    ppcp_session        s;
+    ppcp_stream         st;
+    ppcp_readiness      ready;
+    ppcp_capture        cap;
+    ppcp_instant        opened;
+    void               *wm  = malloc(ppcp_bundle_writer_sizeof());
+    void               *rm  = malloc(ppcp_bundle_reader_sizeof());
+    void               *mm  = malloc(ppcp_mint_sizeof());
+    ppcp_bundle_writer *w   = NULL;
+    ppcp_bundle_reader *rd  = NULL;
+    ppcp_mint          *m   = NULL;
+    id_seq              ids = { "shot:e", 0 };
+    promo               pol = { 0.5, 0 };
+    static uint8_t      bundle[131072];
+    size_t              len = 0, got = 0, minted = 0;
+    const int64_t       t   = 1000000000;
+
+    CHECK(wm != NULL && rm != NULL && mm != NULL);
+    rig_new(&d, PPCP_ROLE_CAPTURE, "peer:dev", "tb:dev", prof, 5);
+    CHECK_EQ_I(ppcp_bundle_writer_new(wm, ppcp_bundle_writer_sizeof(), &w), PPCP_OK);
+    CHECK_EQ_I(ppcp_bundle_writer_begin(w, bundle, sizeof(bundle), &got), PPCP_OK);
+    len = got;
+
+    TEST("CT-S4 (1) — declare, session_open, stream_open, readiness, candidates, shot");
+    /* `declare` is already queued by rig_new(); it goes into the bundle first,
+     * which is what makes the Captures below attributable (a finding H raised
+     * in S2: ENC §7 does not require it, and it must). */
+    record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
+
+    CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:e2e", "tb:dev"), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_session_open(d.p, &s), PPCP_OK);
+    record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
+    CHECK(ppcp_bundle_writer_is_hostless(w));
+
+    TEST("CORE 7.3b — and NO `arm`, because nobody is controlling");
+    {
+        /* CONF §4.4 assertion 1 lists `arm` in the hostless end-to-end run,
+         * and 7.3b forbids recording one: `arm` is conferred by Live and a
+         * hostless bundle carries the EFFECT — Streams, readiness, Captures —
+         * not a command nobody sent.  Finding queued for L17. */
+        ppcp_msg arm;
+        size_t   n = 0;
+        CHECK_EQ_I(ppcp_msg_init(&arm, PPCP_MT_ARM, 1), PPCP_OK);
+        CHECK_EQ_I(ppcp_bundle_writer_append_msg(w, PPCP_CHANNEL_CONTROL, &arm,
+                                                 bundle + len, sizeof(bundle) - len, &n),
+                   PPCP_ERR_INVALID);
+        /* The device could not have originated one either: 7.3a makes arming
+         * host-controlled and this peer is not the host. */
+        CHECK_EQ_I(ppcp_peer_arm(d.p, NULL, 0), PPCP_ERR_INVALID);
+    }
+
+    CHECK_EQ_I(ppcp_instant_make_z(&opened, "tb:dev", t - 100000000), PPCP_OK);
+    CHECK_EQ_I(ppcp_stream_make(&st, "stream:video", "sess:e2e", "src:cam",
+                                PPCP_STREAM_KIND_VIDEO, "cp:cam", "tb:dev",
+                                PPCP_SHOT_WINDOWED, &opened), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_stream_open(d.p, &st), PPCP_OK);
+    /* 5.15a — readiness is a MEASUREMENT; no state name crosses the wire. */
+    CHECK_EQ_I(ppcp_readiness_settled(&ready), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_readiness(d.p, &ready, NULL, 0), PPCP_OK);
+    record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
+
+    CHECK_EQ_I(ppcp_mint_new(mm, ppcp_mint_sizeof(), d.p, next_id, &ids, &m), PPCP_OK);
+    CHECK_EQ_I(ppcp_mint_set_promotion_policy(m, promote_above, &pol), PPCP_OK);
+    nominate_at(&d, m, "cand:e1", t, 0.9);
+    nominate_at(&d, m, "cand:e2", t + 10000000, 0.2);
+    CHECK_EQ_I(ppcp_mint_pump(m, t + 10000000, &minted), PPCP_OK);
+    CHECK_EQ_I(minted, 1);
+    record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
+
+    TEST("CT-S4 (1) — a Capture anchored to the Shot, then the manifest, then the bundle");
+    {
+        ppcp_id shot_id;
+        CHECK_EQ_I(ppcp_id_set_z(&shot_id, "shot:e01"), PPCP_OK);
+        CHECK_EQ_I(ppcp_capture_make_shot(&cap, "cap:e1", "shot:e01", "stream:video",
+                                          PPCP_COMPLETE), PPCP_OK);
+        {
+            ppcp_interval iv;
+            CHECK_EQ_I(ppcp_interval_make(&iv, "tb:dev", strlen("tb:dev"),
+                                          t - 500000000, t + 500000000), PPCP_OK);
+            CHECK_EQ_I(ppcp_capture_set_interval(&cap, &iv), PPCP_OK);
+        }
+        CHECK_EQ_I(ppcp_peer_capture_announce(d.p, &cap, false, NULL, NULL, 0), PPCP_OK);
+    }
+
+    TEST("CT-I27 / I11 — a `{stream: true}` Capture and gaps are refused on a "
+         "shot_windowed Stream, at ORIGINATION");
+    {
+        /* F-D4-1 — the engine holds the Stream it opened, so 5.14d and I11 are
+         * checked on the way out rather than left for a receiver to notice.
+         * `stream:video` above is `shot_windowed`. */
+        ppcp_capture  seg;
+        ppcp_interval iv;
+        CHECK_EQ_I(ppcp_interval_make(&iv, "tb:dev", strlen("tb:dev"), t, t + 1000000),
+                   PPCP_OK);
+        CHECK_EQ_I(ppcp_capture_make_segment(&seg, "cap:seg", "stream:video",
+                                             PPCP_COMPLETE, &iv), PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_capture_announce(d.p, &seg, false, NULL, NULL, 0),
+                   PPCP_ERR_INVALID);
+
+        /* And a gap on a Capture that is otherwise legal here. */
+        {
+            ppcp_capture  gapped;
+            ppcp_interval gap;
+            CHECK_EQ_I(ppcp_capture_make_shot(&gapped, "cap:gap", "shot:e01",
+                                              "stream:video", PPCP_PARTIAL), PPCP_OK);
+            CHECK_EQ_I(ppcp_capture_set_interval(&gapped, &iv), PPCP_OK);
+            CHECK_EQ_I(ppcp_interval_make(&gap, "tb:dev", strlen("tb:dev"),
+                                          t + 100000, t + 200000), PPCP_OK);
+            CHECK_EQ_I(ppcp_capture_add_gap(&gapped, &gap), PPCP_OK);
+            CHECK_EQ_I(ppcp_peer_capture_announce(d.p, &gapped, false, NULL, NULL, 0),
+                       PPCP_ERR_INVALID);
+        }
+
+        /* 5.11j — and the caller's `is_preview` must agree with the Stream it
+         * named, rather than being a claim the engine takes on trust. */
+        CHECK_EQ_I(ppcp_peer_capture_announce(d.p, &cap, true, NULL, NULL, 0),
+                   PPCP_ERR_INVALID);
+    }
+    {
+        ppcp_body_session_manifest man;
+        memset(&man, 0, sizeof(man));
+        CHECK_EQ_I(ppcp_id_set_z(&man.session_id, "sess:e2e"), PPCP_OK);
+        CHECK_EQ_I(ppcp_id_set_z(&man.streams[0], "stream:video"), PPCP_OK);
+        man.stream_count   = 1;
+        CHECK_EQ_I(ppcp_id_set_z(&man.captures[0].capture_id, "cap:e1"), PPCP_OK);
+        CHECK_EQ_I(ppcp_id_set_z(&man.captures[0].stream_id, "stream:video"), PPCP_OK);
+        man.captures[0].bytes = 1024;
+        man.capture_count  = 1;
+        man.completeness   = PPCP_COMPLETE;
+        man.count_shots    = 1;
+        man.count_candidates = 2;
+        man.count_captures = 1;
+        CHECK_EQ_I(ppcp_peer_session_manifest(d.p, &man), PPCP_OK);
+    }
+    record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
+    CHECK(ppcp_bundle_writer_has_manifest(w));
+    CHECK_EQ_I(ppcp_bundle_writer_finish(w), PPCP_OK);
+
+    TEST("CT-S4 (1) / ENC 7a — the same bytes read back through the ordinary feed");
+    rig_new(&sink, PPCP_ROLE_CAPTURE, "peer:reader", "tb:reader", prof, 5);
+    CHECK_EQ_I(ppcp_bundle_reader_new(rm, ppcp_bundle_reader_sizeof(), sink.p, &rd),
+               PPCP_OK);
+    {
+        /* Fed in windows, with the sink's events drained between them.  The
+         * event ring is four deep by design (a caller that is not draining has
+         * already lost the earlier events' timeliness), so a reader that
+         * swallowed a whole session in one call would be testing the ring
+         * rather than the bundle. */
+        size_t off = 0;
+        bool   session = false, stream = false, shot = false, capture = false;
+        size_t candidates = 0;
+
+        while (off < len) {
+            size_t win = 256, c = 0;
+            for (;;) {
+                if (off + win > len)
+                    win = len - off;
+                CHECK_EQ_I(ppcp_bundle_reader_feed(rd, bundle + off, win, &c), PPCP_OK);
+                if (c > 0 || win == len - off)
+                    break;
+                win *= 2;
+            }
+            off += c;
+            {
+                ppcp_event ev;
+                while (ppcp_peer_next_event(sink.p, &ev) == PPCP_OK) {
+                    if (ev.msg == NULL)
+                        continue;
+                    switch (ev.msg->type) {
+                    case PPCP_MT_SESSION_OPEN:
+                        session = true;
+                        /* 4.1d / 5.10e — neither arbitration parameter, which
+                         * IS the bundle's statement that no arbitration
+                         * occurred. */
+                        CHECK(!ev.msg->body.session_open.has_arbitration);
+                        break;
+                    case PPCP_MT_STREAM_OPEN:      stream = true;  break;
+                    case PPCP_MT_CANDIDATE:        candidates++;   break;
+                    case PPCP_MT_SHOT:
+                        shot = true;
+                        CHECK_EQ_I(ev.msg->body.shot.shot.authority, PPCP_AUTHORITY_DEVICE);
+                        CHECK_EQ_I(ev.msg->body.shot.shot.candidate_count, 1);
+                        break;
+                    case PPCP_MT_CAPTURE_ANNOUNCE: capture = true; break;
+                    default: break;
+                    }
+                }
+            }
+            if (c == 0)
+                break;
+        }
+        CHECK_EQ_I(off, len);
+
+        TEST("CT-S4 (1)(3) — Session, Stream, Shot and Capture all arrive");
+        CHECK(session && stream && shot && capture);
+        /* 7.1d / I8 — BOTH Candidates reached the bundle, including the one
+         * the detector did not promote. */
+        CHECK_EQ_I(candidates, 2);
+    }
+    {
+        ppcp_completeness c = PPCP_UNKNOWN;
+        CHECK_EQ_I(ppcp_bundle_reader_finish(rd, &c), PPCP_OK);
+        /* ENC 7d / I10 — the manifest ASSERTED `complete`, so that is what the
+         * Session is.  Nothing was inferred from the bytes having all
+         * arrived. */
+        CHECK_EQ_I(c, PPCP_COMPLETE);
+        CHECK(!ppcp_bundle_reader_truncated(rd));
+        CHECK(ppcp_bundle_reader_manifest_ordered(rd));
+    }
+    CHECK(ppcp_peer_session_id(sink.p) != NULL);
+
+    free(wm);
+    free(rm);
+    free(mm);
+    rig_free(&d);
+    rig_free(&sink);
+}
+
 int main(void)
 {
     test_canonical();
     test_zero_host();
     test_hosted_pair();
     test_silent_host();
+    test_hostless_end_to_end();
     TEST_MAIN_END();
 }

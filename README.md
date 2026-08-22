@@ -18,7 +18,7 @@ A mobile phone has a 120–240 fps camera, a microphone, an IMU and a hardware e
 To build and run the conformance suite:
 
 ```
-cmake --preset dev && cmake --build --preset dev -j4 && ctest --preset dev
+cmake --preset dev && cmake --build --preset dev -j3 && ctest --preset dev
 ```
 
 The explicit job count is not decoration. On 22 August 2026 a build launched
@@ -36,7 +36,7 @@ The specification is approved by both first-party implementation teams. It is **
 | `docs/specification/` | **The single authority on PPCP.** Core model, message catalogue, wire encoding, conformance |
 | `docs/implementation/` | [The implementation plan](docs/implementation/implementation-plan.md) — work packages across `libppcp`, PinPointStudio and PinPointCapture, and the session tracker |
 | `docs/conformance/` | [The conformance matrix](docs/conformance/matrix.md) — every `CT-*`, `RT-*` and interoperability row against all three implementations |
-| `include/ppcp/` | **The port surface.** [`ppcp.h`](include/ppcp/ppcp.h) is the umbrella. Built: the CBOR codec and framing, the timebase and canonical-instant machinery, the `CORE` §5 vocabulary, the forty-five-message catalogue, the peer engine, Captures and bulk transfer, and the bundle container. [`planned.h`](include/ppcp/planned.h) declares what is not built yet — clock synchronisation, detect/mint/arbitrate, and annotation supersession — with the work package named on every block |
+| `include/ppcp/` | **The port surface.** [`ppcp.h`](include/ppcp/ppcp.h) is the umbrella. Built: the CBOR codec and framing, the timebase and canonical-instant machinery, the `CORE` §5 vocabulary, the forty-five-message catalogue, the peer engine, Captures and bulk transfer, the bundle container and its replay onto a live link, clock synchronisation and liveness, Detect/Mint/Arbitrate, and Markup. [`planned.h`](include/ppcp/planned.h) is now empty of declarations — every symbol the applications code against has a definition — and stays in the tree for the next package that needs to publish a name ahead of its body |
 | `src/` | The reference implementation. C11, no dependencies, sans-I/O — no socket, thread, timer, clock or file, asserted at build time by [`tests/purity.cmake`](tests/purity.cmake) |
 | `tests/` | The conformance suite. Tests are named after the `CT-`/`RT-` row they satisfy |
 | `tools/` | `ppcp-sim` and `ppcp-conform` — the synthetic peer and the conformance driver. Not yet written |

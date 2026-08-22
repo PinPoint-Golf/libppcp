@@ -381,6 +381,12 @@ PPCP_API ppcp_result ppcp_peer_interruption(ppcp_peer *p, const char *kind,
  * `ppcp_capture` has no `achieved_frames` field at all, which is I30 made
  * structural: the per-frame series cannot ride on `capture_announce` because
  * there is nowhere to put them. */
+/* ⚠ Where the engine has seen the named Stream opened, the Capture is checked
+ * against it before the frame is queued: 5.14d (`{stream: true}` only on a
+ * `continuous` Stream), I11 (gaps only there), the interval's timebase, and
+ * 5.11j's preview rule.  `is_preview` must then agree with the Stream — the
+ * parameter exists because a Capture does not carry the Stream's `kind`, not
+ * because the caller gets to choose one. */
 PPCP_API ppcp_result ppcp_peer_capture_announce(ppcp_peer *p, const ppcp_capture *c,
                                                 bool is_preview,
                                                 const char *thumbnail_format,
