@@ -563,6 +563,10 @@ PPCP_API ppcp_result ppcp_peer_error(ppcp_peer *p, uint8_t channel, const char *
 /* ------------------------------------------------------------- accessors */
 
 PPCP_API ppcp_peer_state ppcp_peer_get_state(const ppcp_peer *p);
+/* This peer's own id and role.  5.2a: both are fixed for the Session's life,
+ * which is why they are accessors and not setters. */
+PPCP_API const ppcp_id *ppcp_peer_id(const ppcp_peer *p);
+PPCP_API ppcp_role      ppcp_peer_get_role(const ppcp_peer *p);
 /* The agreed wire version, or NULL before `hello_accept`. */
 PPCP_API const char *ppcp_peer_version(const ppcp_peer *p);
 /* The counterpart's declaration, or NULL before it declared.  Valid until it

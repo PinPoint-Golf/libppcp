@@ -110,6 +110,7 @@ set(PPCP_SOURCES
     src/ppcp_message.c
     src/ppcp_peer.c
     src/ppcp_sync.c
+    src/ppcp_shot.c
     src/ppcp_transfer.c
     src/ppcp_bundle.c)
 

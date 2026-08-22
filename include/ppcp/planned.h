@@ -36,41 +36,9 @@ extern "C" {
  * ppcp/sync.h and ppcp/peer.h, and the bundle replay of MSG §9.1 is in
  * ppcp/bundle.h.  Nothing about clock synchronisation is planned any more. */
 
-/* ======================================================================
- * L10 — Detect, Mint, Arbitrate (CORE §5.12, §5.13, §5.16, §8)
- * ====================================================================== */
-
-/* L10 — not yet implemented.  Promotion is a callback, not a threshold: I14
- * again, and I32's negative half depends on the peer having a policy of its
- * own to decline with. */
-typedef bool (*ppcp_promotion_policy)(void *ctx, const ppcp_candidate *c);
-/* L10 — not yet implemented.  Exclude-and-retain on a missing, unrelated or
- * over-uncertain relation; the excluded Candidate stays in `Shot.candidates`
- * (I8). */
-typedef bool (*ppcp_arbitration_policy)(void *ctx, const ppcp_candidate *c,
-                                        const ppcp_timebase_relation *rel);
-
-/* L10 — not yet implemented.  Emits a Candidate.  `at` is the canonical
- * instant, converted here by the nominator from its raw instant, profile and
- * exposure (I33) — a consumer never applies the conversion a second time. */
-PPCP_API ppcp_result ppcp_peer_nominate(ppcp_peer *p, const ppcp_candidate *c);
-/* L10 — not yet implemented.  Mint installs the promotion policy; the 8.2i
- * deadline is issue_hold_ns plus one heartbeat interval, and 8.2i1 refuses to
- * mint at all with no affine relation to `timebase_ref`. */
-PPCP_API ppcp_result ppcp_peer_set_promotion_policy(ppcp_peer *p,
-                                                    ppcp_promotion_policy fn, void *ctx);
-/* L10 — not yet implemented.  Arbitrate is available only to the peer with
- * role host (I20). */
-PPCP_API ppcp_result ppcp_peer_set_arbitration_policy(ppcp_peer *p,
-                                                      ppcp_arbitration_policy fn, void *ctx);
-/* L10 — not yet implemented.  Attaches a late Candidate to an issued Shot
- * without moving `t0` (I7), additively and order-independently (5.13d–e). */
-PPCP_API ppcp_result ppcp_shot_attach_candidate(ppcp_shot *s, const ppcp_candidate *c);
-
-/* ⚠ There is deliberately NO ppcp_shot_merge() and no ppcp_session_merge().
- * I9: reconciliation creates links; no entity is rewritten or merged.  CT-I9
- * asserts that by API surface rather than by behaviour, which is why the
- * absence is documented here rather than left to be noticed. */
+/* L10 landed: Detect, Mint and Arbitrate are in ppcp/shot.h, with the two
+ * policy callbacks, ppcp_shot_attach_candidate() and the deliberate absence of
+ * any merge operation. */
 
 /* ======================================================================
  * L11 — Markup (CORE §5.18; MSG §9.0)

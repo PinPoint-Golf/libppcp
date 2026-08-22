@@ -2479,6 +2479,16 @@ ppcp_peer_state ppcp_peer_get_state(const ppcp_peer *p)
     return (p == NULL) ? PPCP_PEER_CLOSED : p->state;
 }
 
+const ppcp_id *ppcp_peer_id(const ppcp_peer *p)
+{
+    return (p == NULL) ? NULL : &p->peer_id;
+}
+
+ppcp_role ppcp_peer_get_role(const ppcp_peer *p)
+{
+    return (p == NULL) ? PPCP_ROLE_OBSERVER : p->role;
+}
+
 const char *ppcp_peer_version(const ppcp_peer *p)
 {
     if (p == NULL || !p->has_version)
