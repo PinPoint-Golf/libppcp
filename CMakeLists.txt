@@ -101,7 +101,16 @@ set(PPCP_SOURCES
     src/ppcp_sha256.c
     src/ppcp_base64url.c
     src/ppcp_rv_derive.c
-    src/ppcp_rv_payload.c)
+    src/ppcp_rv_payload.c
+    src/ppcp_codec.c
+    src/ppcp_model_capability.c
+    src/ppcp_model_source.c
+    src/ppcp_model_session.c
+    src/ppcp_model_event.c
+    src/ppcp_message.c
+    src/ppcp_peer.c
+    src/ppcp_transfer.c
+    src/ppcp_bundle.c)
 
 set(PPCP_HEADERS
     include/ppcp/version.h
@@ -113,6 +122,11 @@ set(PPCP_HEADERS
     include/ppcp/timing.h
     include/ppcp/hash.h
     include/ppcp/rv.h
+    include/ppcp/model.h
+    include/ppcp/message.h
+    include/ppcp/peer.h
+    include/ppcp/transfer.h
+    include/ppcp/bundle.h
     include/ppcp/planned.h
     include/ppcp/ppcp.h)
 

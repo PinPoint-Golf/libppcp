@@ -404,6 +404,33 @@ ppcp_result ppcp_achieved_frames_validate(const ppcp_achieved_frames *af)
         return PPCP_ERR_MALFORMED;
     if (af->exposure_ns.form != PPCP_PER_FRAME_ABSENT && !af->has_exposure_provenance)
         return PPCP_ERR_MALFORMED;
+    /* ENC 4.1c: a parallel array has exactly frames.ns length.  ENC 4.1d: the
+     * intrinsics array is never empty — but a SCALAR intrinsics is one Matrix3
+     * whatever the frame count, so only the array form is length-checked. */
+    if (af->intrinsics.form == PPCP_PER_FRAME_ARRAY) {
+        if (af->intrinsics.count == 0 || af->intrinsics.values == NULL)
+            return PPCP_ERR_MALFORMED;
+        if (af->intrinsics.count != af->frame_count)
+            return PPCP_ERR_MALFORMED;
+    }
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_achieved_frames_set_iso(ppcp_achieved_frames *af,
+                                         const ppcp_per_frame_i64 *iso)
+{
+    if (af == NULL || iso == NULL)
+        return PPCP_ERR_INVALID;
+    af->iso = *iso;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_achieved_frames_set_intrinsics(ppcp_achieved_frames *af,
+                                                const ppcp_per_frame_m3 *intrinsics)
+{
+    if (af == NULL || intrinsics == NULL)
+        return PPCP_ERR_INVALID;
+    af->intrinsics = *intrinsics;
     return PPCP_OK;
 }
 

@@ -176,6 +176,31 @@ PPCP_API ppcp_result ppcp_per_frame_i64_array(ppcp_per_frame_i64 *out,
 PPCP_API ppcp_result ppcp_per_frame_i64_at(const ppcp_per_frame_i64 *pf, size_t frame_count,
                                            size_t index, int64_t *out);
 
+/* ENC 4.1d's exception.  `intrinsics` is the field most likely to BE constant
+ * — focus is locked for a session's lifetime — and therefore the field the
+ * scalar form was most worth having for.  Its element type is itself an array,
+ * so the major-type rule cannot distinguish the two forms: `[f64 x 9]` and
+ * `[[f64 x 9], ...]` are both CBOR arrays.  The forms are distinguished by the
+ * type of the FIRST ELEMENT — a number means one constant Matrix3, an array
+ * means one per frame — and an EMPTY intrinsics array is malformed, because it
+ * has no first element to branch on. */
+typedef struct ppcp_matrix3 {
+    double m[9];    /* row-major (ENC §4.1) */
+} ppcp_matrix3;
+
+typedef struct ppcp_per_frame_m3 {
+    ppcp_per_frame_form  form;
+    ppcp_matrix3         scalar;
+    const ppcp_matrix3  *values;   /* caller-owned */
+    size_t               count;
+} ppcp_per_frame_m3;
+
+PPCP_API ppcp_result ppcp_per_frame_m3_scalar(ppcp_per_frame_m3 *out, const ppcp_matrix3 *v);
+PPCP_API ppcp_result ppcp_per_frame_m3_array(ppcp_per_frame_m3 *out,
+                                             const ppcp_matrix3 *values, size_t count);
+PPCP_API ppcp_result ppcp_per_frame_m3_at(const ppcp_per_frame_m3 *pf, size_t frame_count,
+                                          size_t index, ppcp_matrix3 *out);
+
 /* CORE 5.8 exposure_provenance.  Carried, not judged: whether `sampled` is good
  * enough is the consumer's policy and the protocol carries the fact (6.1e,
  * I14). */
@@ -193,6 +218,7 @@ typedef struct ppcp_achieved_frames {
     bool                     has_exposure_provenance;
     ppcp_exposure_provenance exposure_provenance;
     ppcp_per_frame_i64       iso;
+    ppcp_per_frame_m3        intrinsics;   /* where the profile says per_frame */
 } ppcp_achieved_frames;
 
 PPCP_API ppcp_result ppcp_achieved_frames_make(ppcp_achieved_frames *out,
@@ -201,6 +227,10 @@ PPCP_API ppcp_result ppcp_achieved_frames_make(ppcp_achieved_frames *out,
 PPCP_API ppcp_result ppcp_achieved_frames_set_exposure(ppcp_achieved_frames *af,
                                                        const ppcp_per_frame_i64 *exposure,
                                                        ppcp_exposure_provenance provenance);
+PPCP_API ppcp_result ppcp_achieved_frames_set_iso(ppcp_achieved_frames *af,
+                                                  const ppcp_per_frame_i64 *iso);
+PPCP_API ppcp_result ppcp_achieved_frames_set_intrinsics(ppcp_achieved_frames *af,
+                                                         const ppcp_per_frame_m3 *intrinsics);
 PPCP_API ppcp_result ppcp_achieved_frames_validate(const ppcp_achieved_frames *af);
 
 /* The accessor the product path uses: the exposure duration of frame `index`,

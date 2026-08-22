@@ -79,6 +79,25 @@ PPCP_API ppcp_result ppcp_id_set_z(ppcp_id *id, const char *s);
 PPCP_API bool        ppcp_id_is_set(const ppcp_id *id);
 PPCP_API bool        ppcp_id_equal(const ppcp_id *a, const ppcp_id *b);
 
+/* A bump region over caller storage.
+ *
+ * Not an allocator: it hands out slices of a buffer the caller already owns and
+ * has no free().  It exists because CORE §5's aggregates nest — a Peer holds
+ * Sources, each holding CaptureProfiles — and a decoder that never allocates
+ * still has to put them somewhere.  The caller sizes the region; running out is
+ * PPCP_ERR_LIMIT on the way in, which is ENC 3a's "reject before allocating"
+ * expressed as "there was never anything to allocate from". */
+typedef struct ppcp_arena {
+    uint8_t *buf;
+    size_t   cap;
+    size_t   used;
+} ppcp_arena;
+
+PPCP_API void  ppcp_arena_init(ppcp_arena *a, void *buf, size_t cap);
+PPCP_API void  ppcp_arena_reset(ppcp_arena *a);
+PPCP_API void *ppcp_arena_take(ppcp_arena *a, size_t count, size_t elem_size, size_t align);
+PPCP_API size_t ppcp_arena_used(const ppcp_arena *a);
+
 /* Constant-time comparison, for the two places RV needs one: resolving a `rid`
  * (3.4b) and resolving a PSK identity tag (5.3b), where 5.3c requires the
  * unresolvable and wrong-key cases to fail uniformly and 5.3d asks for them to

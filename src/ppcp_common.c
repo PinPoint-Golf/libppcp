@@ -78,3 +78,54 @@ bool ppcp_ct_equal(const void *a, const void *b, size_t n)
         diff = (unsigned char)(diff | (x[i] ^ y[i]));
     return diff == 0;
 }
+
+/* ------------------------------------------------------------------ arena */
+
+void ppcp_arena_init(ppcp_arena *a, void *buf, size_t cap)
+{
+    if (a == NULL)
+        return;
+    a->buf  = (uint8_t *)buf;
+    a->cap  = (buf == NULL) ? 0 : cap;
+    a->used = 0;
+}
+
+void ppcp_arena_reset(ppcp_arena *a)
+{
+    if (a != NULL)
+        a->used = 0;
+}
+
+size_t ppcp_arena_used(const ppcp_arena *a)
+{
+    return (a == NULL) ? 0 : a->used;
+}
+
+void *ppcp_arena_take(ppcp_arena *a, size_t count, size_t elem_size, size_t align)
+{
+    size_t off, need;
+    uint8_t *p;
+
+    if (a == NULL || a->buf == NULL || align == 0)
+        return NULL;
+    if (count != 0 && elem_size > (size_t)-1 / count)
+        return NULL;                       /* overflow */
+    need = count * elem_size;
+
+    off = a->used;
+    if (off % align != 0) {
+        size_t pad = align - (off % align);
+        if (pad > a->cap - off)
+            return NULL;
+        off += pad;
+    }
+    if (need > a->cap - off)
+        return NULL;
+
+    p = a->buf + off;
+    a->used = off + need;
+    /* Zeroed, so an aggregate whose optional members were never written reads
+     * as absent rather than as whatever the caller's buffer held before. */
+    { size_t i; for (i = 0; i < need; i++) p[i] = 0; }
+    return p;
+}
