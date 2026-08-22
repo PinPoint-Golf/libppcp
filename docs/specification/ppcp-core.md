@@ -8,7 +8,7 @@
 | Version | **1.0** |
 | Wire version | `ppcp/1.0` |
 | Status | **APPROVED for implementation**, 22 August 2026 |
-| Revision | 5 — B11 closed: continuous stream carriage |
+| Revision | 6 — revision 5 reviewed by both teams |
 | Date | 22 August 2026 |
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
@@ -115,6 +115,23 @@ One defect, found by tracing a host-side requirement rather than by review, and 
 | — | **A consumer had no way to see that a capture peer reflects what the user is doing.** Heartbeat proves the link is live; only frames prove the rest. | **`preview` defined** ([§5.11.2](#5112-preview-streams)) — a second Stream from an existing Source, low rate, `continuous`, never used for measurement, carried on its own bulk channel and the first thing dropped under contention. It is [§5.11.1](#5111-how-a-continuous-stream-is-carried) applied to a camera, and needs nothing new. |
 
 The change is additive: no field is removed, no type narrowed, and no existing field changes meaning. It lands in `1.0` rather than a MINOR bump because `1.0` is approved and **not yet frozen** ([Annex B0](#annex-b--open-issues)) — and because a flag with nothing behind it is a defect rather than a missing feature.
+
+### 0.6 What changed in revision 6
+
+Both teams reviewed revision 5 and both approved it. Three findings were made independently by both.
+
+| # | Finding | Disposition |
+|---|---|---|
+| Both | **A deliberately-shed interval was indistinguishable from a failed one**, and a Stream that recorded *nothing* for a span had no way to say so — `interval` was required absent on an `absent` Capture and required present on a stream-anchored one. | **Accepted.** `interval` is mandatory on every stream-anchored Capture including `absent` ([§5.14d](#514-capture)); [5.11c2](#5111-how-a-continuous-stream-is-carried) separates the two accounts — `gaps` mean **loss**, an `absent` segment means **nothing was captured** — and [5.11c3](#5111-how-a-continuous-stream-is-carried) makes deliberate non-retention an `absent` segment, never a gap. |
+| Both | **A preview profile is a derived view, not a mode a Source can enter.** No camera runs two configurations at once; the preview is decimated from the active capture stream. | **Accepted.** [5.11k–m](#5112-preview-streams): realised rate and format are derived while a capture Stream is open, the profile is activatable only on a `preview` Stream, and it declares `intrinsics: none` because scaling changes the matrix. |
+| Both | `preview` was missing from the `Stream.kind` enumeration. | **Accepted.** |
+| PPS-S2 | **I36 read an honestly truncated bundle as a defect** — and the bundle is the v1 path. | **Accepted.** [5.11c1](#5111-how-a-continuous-stream-is-carried): the obligation binds a `complete` Session; a hole **between** segments is a defect in any Session, time **after** the last one is the incompleteness already declared. Nothing truncates a bundle in the middle. |
+| PPS-S3 | **Preview Captures would be queued and bundled**, because `pending` is where an announced Capture starts — the inversion 5.11i forbids, arriving through the transfer queue. | **Accepted.** [5.11j](#5112-preview-streams): preview is **live-only**, never queued, never bundled, and what was dropped is announced absent. |
+| PPS-S5 | A concurrent preview makes `MeasuredCapability` optimistic, and the acceptance decision is taken before the preview is opened. | **Accepted.** [5.8k](#58-capability): a measurement describes its profile **running alone** unless the peer says otherwise. |
+| PPS-S4 | 5.8d appeared to require per-frame exposure on preview Captures. | **Already addressed** at 5.8j in revision 5, which sits below the clauses that follow 5.8d and was easy to miss. 5.8d now points at it. |
+| PPS c2 | Two different `evidence_ref` fields meant different things, and revision 5 made the first usable for the first time — so it will now be implemented by someone reading the other's definition. | **Accepted.** Renamed `evidence_stream_id` and `evidence_capture_id`. |
+| PPC-3 | Unclear whether a producer may close a preview it has open — the thermal case. | **Accepted.** [5.11a1](#511-stream): either peer may close, with a reason. |
+| PPC-4 | Control traffic now scales with session length, and window length has one voice. | **Answered.** [5.11e–e1](#5111-how-a-continuous-stream-is-carried): the window is the producer's and is not negotiable in `1.0`; the volume is stated and accepted, because the control channel is protected against large payloads rather than against message count. |
 
 ---
 
@@ -370,7 +387,7 @@ This is the mechanism, not merely the rule: a port that assumes camera and mic s
 | `skew_sigma_ppm` | `Sigma` | affine: 1 | **Mandatory.** |
 | `method` | `declared` \| `measured` \| `estimated_online` | 1 | |
 | `observed_at` | `Instant` | 1 | Expressed in `from`. |
-| `evidence_ref` | `Id` | 0..1 | Stream carrying raw evidence. |
+| `evidence_stream_id` | `Id` | 0..1 | The **Stream** carrying raw evidence for this relation — sensor packet arrivals, connection-interval jitter. Carried as stream-anchored Captures ([§5.11.1](#5111-how-a-continuous-stream-is-carried)). |
 
 - **(5.4a) MUST** `class: affine` carries all four of `offset_ns`, `skew_ppm`, `offset_sigma_ns`, `skew_sigma_ppm`. A relation missing either sigma is malformed and MUST be rejected (I3).
 - **(5.4b) MUST** `class: unrelated` carries none of them. **`unrelated` is a legal, complete declaration.** An honest Android `UNKNOWN` device declares `unrelated` and remains a conformant peer; the host may refuse it under its own policy. The alternative — a fabricated offset — is the failure mode this contract exists to prevent.
@@ -516,7 +533,9 @@ Three distinct things, routinely different, all on the wire: **claimed** (the pr
 - **(5.8b) MUST** `method: sustained` is used only for a measurement taken under sustained thermal load. A short sample taken during onboarding is `cold_sample`, and a consumer MUST NOT treat it as a sustained figure.
 - **(5.8c) SHOULD** A peer re-measure after an operating-system or firmware update.
 
-5.8a and 5.8b answer a specific implementation finding: onboarding affords seconds, sustained verification wants tens of minutes, and without `method` the cold number quietly becomes the displayed one.
+- **(5.8k)** A `MeasuredCapability` describes its profile **running alone** unless the peer states otherwise. A peer SHOULD re-measure, or qualify the figure, where it expects a `preview` or any second Stream from the same Source to run concurrently.
+
+5.8a and 5.8b answer a specific implementation finding: onboarding affords seconds, sustained verification wants tens of minutes, and without `method` the cold number quietly becomes the displayed one. 5.8k is the same principle applied to concurrency, which revision 5 made reachable: every self-test is taken with one profile running, and a second concurrent encode shares the same hardware encoder, thermal budget and bulk path. The order of events is what makes it bite — a consumer reads `measured`, accepts the peer under its ingest policy, and *then* opens a preview, so the acceptance was decided against a figure the next action invalidated. `AchievedCapability` reports the truth per shot, which means it surfaces eventually as dropped frames on real swings.
 
 **Achieved capability is split in two**, because the two halves have different sizes, different consumers and different urgency.
 
@@ -541,7 +560,7 @@ Three distinct things, routinely different, all on the wire: **claimed** (the pr
 | `iso` | `[int]` or `int` | 0..1 | Same parallel-or-scalar rule. |
 | `intrinsics` | `[Matrix3]` or `Matrix3` | 0..1 | Same rule, where `intrinsics: per_frame`. |
 
-- **(5.8d) MUST** On a Capture from a camera Source **that has frames** — that is, `completeness` is `complete` or `partial` — `AchievedFrames.exposure_ns` is present, in parallel or scalar form. Without it the canonical-instant conversion is impossible (I17). A Capture of `completeness: absent` has no frames and carries no `AchievedFrames`.
+- **(5.8d) MUST** On a Capture from a camera Source **that has frames** — that is, `completeness` is `complete` or `partial` — `AchievedFrames.exposure_ns` is present, in parallel or scalar form. Without it the canonical-instant conversion is impossible (I17). A Capture of `completeness: absent` has no frames and carries no `AchievedFrames`. **A `preview` Stream is exempt — see 5.8j.**
 - **(5.8j)** A Capture on a `preview` Stream is exempt from 5.8d: nothing is measured from it ([§5.11g](#5112-preview-streams)), so the conversion it feeds does not exist. It still carries `frames`, because every sample is placed in time whatever it is for (I1, I2).
 - **(5.8e) MUST NOT** Time be inferred from frame index anywhere (I2). Frames drop; indices lie. Sequence numbers, where present, are for loss detection only. **`frames.ns` therefore has no scalar form** — a nominal rate is not a substitute for measured timestamps.
 - **(5.8f) MUST** A parallel array has exactly `frames.ns` length. A scalar means the value was constant for every frame in the Capture, and MUST NOT be used to mean "unknown" or "not sampled".
@@ -632,7 +651,7 @@ The **contract**: what is invariant for the stream's lifetime.
 | `id` | `Id` | 1 | Unique within the Session. |
 | `session_id` | `Id` | 1 | |
 | `source_id` | `Id` | 1 | |
-| `kind` | `video` \| `audio` \| `imu` \| `wrist` \| `event` \| `metadata` \| … | 1 | Open registry. |
+| `kind` | `video` \| `preview` \| `audio` \| `imu` \| `wrist` \| `event` \| `metadata` \| … | 1 | Open registry. `preview` is defined normatively in [§5.11.2](#5112-preview-streams). |
 | `profile_id` | `Id` | 1 | Activated from the Source's supported set. |
 | `calibration_id` | `Id` | 0..1 | Restated for locality; fixed for the stream's lifetime. |
 | `timebase_id` | `Id` | 1 | Inherited from the Source, restated for locality. |
@@ -641,6 +660,7 @@ The **contract**: what is invariant for the stream's lifetime.
 | `closed_at` | `Instant` | 0..1 | |
 
 - **(5.11a) MUST** A Stream's `source_id`, `profile_id`, `timebase_id` and `calibration_id` are fixed for **the stream's** lifetime. A change closes the Stream and opens another *within the same Session* (I5).
+- **(5.11a1) MUST** **Either peer may close a Stream** — the owner because it can no longer produce, the consumer because it no longer wants the data — and `reason` says why, from the same open vocabulary as `Readiness.blocked_reason`: `thermal_limit`, `storage_full`, `not_needed`, `calibration_changed`. A peer under sustained thermal load closes a `preview` rather than keeping it nominally open and announcing absence for the rest of the session.
 
 Stream lifetime, not session lifetime. A knocked tripod does not end a session; it closes one Stream and opens another. A useful consequence: which shots share a calibration reads straight off the data, because Captures partition by `stream_id`.
 
@@ -663,10 +683,20 @@ Stream lifetime, not session lifetime. A knocked tripod does not end a session; 
 
 - **(5.11b) MUST** A `continuous` Stream is realised as a sequence of Captures anchored to **an interval of the Stream itself** ([§5.14](#514-capture)), not to any Shot or Candidate.
 - **(5.11c) MUST** Those Captures and their declared `gaps` together account for the whole of the Stream's open interval — from `opened_at` to `closed_at`, or to the present. **Time accounted for by neither is a defect, not a dropout** (I36): a dropout is asserted, never inferred (I10, I11).
-- **(5.11d) MUST** Accounting is over Captures that have been **announced**, not over payload that has arrived. `completeness` and `transfer` remain independent axes ([§5.14a](#514-capture)).
-- **(5.11e)** The window length of each Capture is peer policy and appears nowhere in this specification (I14). A shorter window costs more messages and delivers sooner; that trade is the peer's to make against what its consumer is doing with the data.
+- **(5.11c1) MUST** The obligation binds a Session asserted `completeness: complete`. In a `partial` or `unknown` Session, time **after** the last announced Capture is the incompleteness the Session already declares, not a defect; time unaccounted for **between** announced Captures is a defect in either case. Nothing truncates a bundle in the middle.
+- **(5.11c2) MUST** There are **two** ways to account for time that carries no data, and they are not interchangeable:
 
-Until revision 5 a `continuous` Stream could carry nothing at all. Every payload message is keyed on `capture_id`, and every Capture anchored to a Shot or a Candidate — so the interval a continuity flag exists to describe was the one interval with no carriage. Three stated obligations were unmeetable: continuous device attitude and gravity on a `metadata` Stream, which this table says is *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry, which `TimebaseRelation.evidence_ref` describes as "a Stream carrying raw evidence"; and `imu` or `wrist` running continuously while armed.
+  | | Means | Use |
+  |---|---|---|
+  | **`gaps`** on a Capture | data was **lost** inside a segment that otherwise exists | a sensor dropped out mid-segment, a link stalled |
+  | **an `absent` segment** — a stream-anchored Capture with `completeness: absent`, its `interval`, and an `absent_reason` | **nothing was captured** for that span | storage filled, the source was shed deliberately, a thermal limit closed it |
+
+- **(5.11c3) MUST** **Deliberate non-retention is an `absent` segment with `absent_reason: not_retained`, never a gap.** `gaps` mean loss (I11), so a peer that sheds a preview frame on purpose and records a gap is reporting a dropout it did not have — which is exactly the conflation the continuity flag exists to prevent.
+- **(5.11d) MUST** Accounting is over Captures that have been **announced**, not over payload that has arrived. `completeness` and `transfer` remain independent axes ([§5.14a](#514-capture)).
+- **(5.11e)** The window length of each Capture is **the producing peer's alone** and appears nowhere in this specification (I14). A shorter window costs more messages and delivers sooner. A consumer **cannot negotiate it in `ppcp/1.0`**; what a consumer controls is which Streams it opens at all, and what it asks for is a profile, not a window.
+- **(5.11e1)** **Control traffic now scales with session length rather than with shot count**, and implementers should size for it. Three continuous Streams at a one-second window is of order three `capture_announce` messages per second, against roughly fifty shot events in a session. They are small, and the control channel is protected against large *payloads* rather than against message count ([§3.1](#31-why-two-channels-is-not-negotiable)) — a shot event queued behind a few hundred bytes of announce is delayed immeasurably. The volume is understood and accepted; it is not a reason to move announces off the control channel.
+
+Until revision 5 a `continuous` Stream could carry nothing at all. Every payload message is keyed on `capture_id`, and every Capture anchored to a Shot or a Candidate — so the interval a continuity flag exists to describe was the one interval with no carriage. Three stated obligations were unmeetable: continuous device attitude and gravity on a `metadata` Stream, which this table says is *always* continuous; the raw sensor-arrival evidence [§9.1b](#91-clock-authority-inverts) requires a bundle to carry, which `TimebaseRelation.evidence_stream_id` names; and `imu` or `wrist` running continuously while armed.
 
 #### 5.11.2 Preview streams
 
@@ -676,8 +706,17 @@ A consumer watching a capture peer needs to see that the link is live **and that
 - **(5.11g) MUST NOT** A `preview` Stream be used for measurement, pose, arbitration, or any quantity that reaches a result. It exists to be looked at.
 - **(5.11h) SHOULD** A peer carry preview payload on a **bulk channel distinct** from the one carrying shot payload ([`PPCP-CORE` §3](#3-transport-contract) permits more than one), so a preview never queues behind a clip.
 - **(5.11i) MUST** Under contention, preview degrades **before** transfer, which degrades before capture. Capture degrades last ([§7.4d](#74-liveness)); a preview frame is the cheapest thing in the session to drop.
+- **(5.11j) MUST** A preview Capture is **live-only**. A peer that cannot deliver one promptly **discards** it rather than queueing it, and MUST NOT retain it for later transfer or write it to a bundle. A consumer therefore never sees `transfer: pending` on a preview Capture. What was discarded is recorded as an `absent` segment with `absent_reason: not_retained` (5.11c3), which costs one small message and is the honest account.
 
-Opening one is an ordinary `stream_open` from the consumer that wants it. A peer that does not offer a suitable profile simply refuses, and nothing else changes.
+5.11j exists because the default state of an announced Capture is `pending`, and a queue told nothing else will do the wrong thing twice over: it fills with the cheapest data in the session, competing for the same bulk capacity as shot payload — the exact inversion 5.11i forbids, arriving through the transfer queue rather than through the channel — and then it reaches the bundle, because an exported session *is* the recorded message stream. A preview running for a ninety-minute range session would be a substantial fraction of the storage budgeted for shot video, spent on frames 5.11g forbids anyone from using for anything.
+
+- **(5.11k) MUST** Where a `preview` Stream is open **alongside a capture Stream from the same Source**, its realised rate and format are **derived** from the active capture profile — a decimation, a downscale, or both — and its declared profile is a **request rather than an independent mode**. `AchievedSummary` on each segment reports what was actually produced. Where a `preview` Stream is the only Stream open on that Source, its profile is activated normally.
+- **(5.11l) MUST** A preview profile MAY therefore describe a **derived view** rather than a mode the Source can enter, which no other `CaptureProfile` may. It is activatable only on a Stream of `kind: preview`; a peer MUST refuse it for any other Stream kind, and a consumer MUST NOT select it for capture.
+- **(5.11m) MUST** A preview profile declares `intrinsics: none`. Decimation and downscaling change the intrinsic matrix, so declaring the capture profile's would be false — and 5.11g forbids anything that would consume it. `geometry` is the sensor's readout and is unchanged by decimation, so it is declared honestly.
+
+**A camera runs one configuration at a time.** A Source capturing at its highest rate cannot simultaneously operate a small low-rate mode; the preview is produced by decimating and downscaling what the capture stream is already producing. So the same declared profile is an independent mode in one situation — preview alone, during setup and framing, which is its main use — and a derived view in the other. 5.11k puts the answer where every other realised-versus-claimed question in this specification is already answered: in `achieved`. 5.11l stops the meaning of "profile" widening silently, and stops a consumer activating a preview profile for capture and being refused a profile the peer itself advertised.
+
+Opening one is an ordinary `stream_open` from the consumer that wants it. A peer that does not offer a suitable profile simply refuses, and nothing else changes — which is the conformant way for a peer to decline preview entirely until it has measured what a second concurrent encode costs it.
 
 ### 5.12 Candidate
 
@@ -694,7 +733,7 @@ A nomination: one observer's claim that an event occurred at a time it measured.
 | `canonical_correction_ns` | `int64` | 0..1 | The canonical-instant correction applied, so a consumer can recover the raw timestamp. |
 | `confidence` | float `0..1` | 1 | |
 | `classifier` | basis-specific map | 0..1 | For `acoustic`: the transient taxonomy. Meaningless for `external`. |
-| `evidence_ref` | `Id` | 0..1 | A Capture id — the audio window attached to this Candidate. |
+| `evidence_capture_id` | `Id` | 0..1 | The **Capture** holding this Candidate's evidence — the audio window. |
 
 - **(5.12a) MUST** `source_id` names a Source owned by a Peer in the Session, with a declared Timebase (I26). See [§8.1](#81-nomination) for why, and for what to do with records that have no clock.
 - **(5.12b) MUST** `classifier` is interpreted only in the context of `basis`. A consumer that applies an acoustic taxonomy to an `external` candidate is in error.
@@ -706,7 +745,7 @@ A nomination: one observer's claim that an event occurred at a time it measured.
 
 **`canonical_correction_ns` is deliberately a bare integer while `tof_correction` beside it is an `Estimate` with a mandatory sigma.** The asymmetry is intended and should not be tidied away. Time of flight is a *converging* estimate whose dispersion changes shot to shot, and its sigma is the only way a consumer knows where in that convergence a given shot sits. The canonical correction is **arithmetic over declared values** — the profile's convention, its `frame_start_to_exposure_offset_ns`, and that frame's measured exposure. Its trustworthiness is not a per-shot quantity: it is `frame_start_to_exposure_offset_provenance`, which already lives on the profile under I31 and is one hop away through `source_id`. Adding an `Estimate` here would duplicate that and invite a peer to invent a per-candidate sigma it does not have.
 
-**Why the nominator converts and not the consumer.** The conversion of [§6.1](#61-canonical-instant) needs that frame's exposure duration, and **a Candidate carries no frame reference and no exposure**. `evidence_ref` points at a Capture, and for an acoustic candidate that Capture is the *audio* window — there is no route from a Candidate to the exposure of the frame it came from. The nominating peer is the only party holding both.
+**Why the nominator converts and not the consumer.** The conversion of [§6.1](#61-canonical-instant) needs that frame's exposure duration, and **a Candidate carries no frame reference and no exposure**. `evidence_capture_id` points at a Capture, and for an acoustic candidate that Capture is the *audio* window — there is no route from a Candidate to the exposure of the frame it came from. The nominating peer is the only party holding both.
 
 For an acoustic candidate this was harmless by accident: a microphone Source's profile has no `format`, so [§6.1d](#61-canonical-instant) fixes `convention: mid` and the canonical instant is `t`. For a `motion` candidate — a camera-side detection, one of the three nominators the model admits — it is not. Its Source is a camera declaring `start` or `nominal_frame_start`, and a host instructed to apply `t + offset + d/2` has no `d` in reach.
 
@@ -759,9 +798,9 @@ The **realisation** of a Shot or a Candidate on one Stream.
 | `id` | `Id` | 1 | |
 | `anchor` | `{ shot_id: Id }` \| `{ candidate_id: Id }` \| `{ stream: true }` | 1 | **Exactly one key** (I27). `{ stream: true }` is a segment of the Capture's own `continuous` Stream, belonging to no event. |
 | `stream_id` | `Id` | 1 | |
-| `interval` | `Interval` | 0..1 | In the Stream's timebase. Absent when `completeness: absent`. |
+| `interval` | `Interval` | 0..1 | In the Stream's timebase. Absent when `completeness: absent` — **except on a stream-anchored Capture, where it is always mandatory** (5.14d). For a segment the interval *is* the claim. |
 | `completeness` | `complete` \| `partial` \| `absent` | 1 | Asserted, never inferred (I10). |
-| `absent_reason` | `Kind` | absent: 1 | e.g. `outside_buffer`, `not_retained`, `storage_full`, `not_armed`. |
+| `absent_reason` | `Kind` | absent: 1 | e.g. `outside_buffer`, `not_retained`, `storage_full`, `not_armed`, `thermal_limit`, `link_lost`. Open registry. |
 | `gaps` | `[Interval]` | 0..n | Meaningful only on `continuous` streams (I11). |
 | `achieved_summary` | `AchievedSummary` | 0..1 | Travels on control, in `capture_announce`. |
 | `achieved_frames` | `AchievedFrames` | 0..1 | Travels with the payload, never on control (I30). |
@@ -770,7 +809,7 @@ The **realisation** of a Shot or a Candidate on one Stream.
 | `bytes` | int64 | 0..1 | Payload size. |
 
 - **(5.14a) MUST** `completeness` and `transfer` are independent axes. A Capture may be `complete` + `pending` (captured fine, not yet sent) or `partial` + `present` (arrived intact, sensor dropped mid-swing).
-- **(5.14d) MUST** `anchor` carries **exactly one** key (I27). `{ stream: true }` is permitted only on a Stream whose `continuity` is `continuous`, and `interval` is then mandatory — a segment with no interval says nothing about what it covers.
+- **(5.14d) MUST** `anchor` carries **exactly one** key (I27). `{ stream: true }` is permitted only on a Stream whose `continuity` is `continuous`, and `interval` is then mandatory **including when `completeness: absent`** — a segment with no interval says nothing about what it covers, and an `absent` segment *with* an interval is how a peer states that a named span was not recorded.
 - **(5.14e) MUST NOT** A stream-anchored Capture overlap another on the same Stream. Segments abut or leave a declared gap; they do not overlap, because two accounts of one interval are two answers to one question.
 - **(5.14b) MUST NOT** Gaps be interpolated across or implicitly spanned (I11).
 - **(5.14c) MUST** `achieved_frames` carries the per-frame exposure durations on which [§6.1](#61-canonical-instant) depends, and reaches a consumer before it converts. The split between the two halves is [§5.8](#58-capability).
@@ -1209,7 +1248,7 @@ Both read as constraints and were in fact instructions to decide. The corrected 
 | **I25** | Cross-session alignment is a `SessionLink`. It mutates neither Session and is never composed with a `TimebaseRelation`. | Offline |
 | **I26** | A Candidate references a Source owned by a Peer in the Session with a declared Timebase. A record without one is reconciled by `ShotLink`, never nominated. | Detect |
 | **I27** | Every Capture anchors to exactly one of a Shot, a Candidate, or an interval of its own Stream. *(Amended in revision 5: the third form was missing, so a `continuous` Stream could carry nothing.)* | Capture |
-| **I36** | On a `continuous` Stream, the announced stream-anchored Captures and their declared gaps account for its whole open interval. Time accounted for by neither is a defect, not a dropout. | Capture |
+| **I36** | On a `continuous` Stream in a Session asserted `complete`, the announced stream-anchored Captures — present and `absent` alike — and their declared gaps account for its whole open interval. Time unaccounted for **between** announced Captures is a defect, not a dropout, in any Session. *(Amended in revision 6: as first written it read an honestly truncated bundle, and an honestly shed preview, as implementation errors.)* | Capture |
 | **I28** | `MeasuredCapability`, where present, declares `method` and `duration_ns`; its absence means not measured and MUST NOT be inferred or synthesised. | Capture |
 | **I29** | `Candidate.tof_correction`, where present, carries both `value_ns` and `sigma_ns`. No applied estimate travels without its dispersion. | Detect |
 | **I30** | `capture_announce` carries summary capability only. Per-frame series travel with the payload they describe, with one exception: `capture_update` MAY carry `AchievedFrames` for a Capture whose payload will not transfer, because the series would otherwise be lost with the payload. *(Amended: Draft 2 forbade the control channel outright, contradicting the exception `PPCP-MSG` already permitted.)* | Capture |

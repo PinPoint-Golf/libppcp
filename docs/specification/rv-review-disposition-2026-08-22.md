@@ -6,7 +6,7 @@
 |---|---|
 | Status | Record of decisions. Non-normative. |
 | Date | 22 August 2026 |
-| Rounds covered | **First pass** on Draft 1 (V1–V4, and the mobile team's platform concern), which produced Draft 2. **Second pass** on Draft 2 (W1–W3 and four consistency items, plus the executed platform check), which produced Draft 3. All four reviews are in [`reviews/`](reviews/). |
+| Rounds covered | **First pass** on Draft 1 (V1–V4), which produced Draft 2. **Second pass** on Draft 2 (W1–W3, four consistency items, and the executed platform check), which produced Drafts 3 and 4. **Third pass** on Draft 4 (R1–R6 and two from the mobile side), which produced Draft 5. All six reviews are in [`reviews/`](reviews/). |
 | Separate from | [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md), which covers PPCP itself. `PPCP-RV` has its own review cycle and is not covered by the PPCP approval. |
 
 Both teams read the document hardest where it asked to be read hardest, and one of them found something there. Every finding is dispositioned; the ones **not** actioned are listed with reasons.
@@ -312,3 +312,72 @@ Four things now carry more weight because they are what is left ([`RV` §5.4.3](
 - **5.4i** — a deployment that judges its payload differently reverses this by choosing Route A or B, and only `§5` changes.
 
 **B12** is recorded as the cheapest route back to property 2 without changing the transport: a per-session ratchet, re-deriving `PRK` at each close and erasing its predecessor, which restores forward secrecy for every session after the first. It is not specified and needs no decision now.
+
+
+---
+
+# Third pass — Draft 4
+
+Both teams accepted the relaxation, and the host reviewer's framing of *how* it was taken is worth keeping:
+
+> The decision was taken the right way. It was measured before it was argued, argued against stated properties rather than convenience, and recorded with both dissenting reviews quoted rather than summarised. **I would rather be overruled like that than agreed with quietly.**
+
+Every finding in this pass was in **§5**, and every one was the same shape: a clause written while the property was required, still reading that way after it stopped being. As the host review put it — *"the clauses around it were written when the property was required, and they still read that way."*
+
+## 15. The findings
+
+### 15.1 R1 — the conformance suite forbade what 5.2a now permits
+
+**Accepted, highest.** RT-4 required a handshake negotiating TLS 1.2 to be **refused**. Draft 4's 5.2a permits exactly that where a platform cannot do better, and §5.4.1 measured that the mobile platform negotiates precisely `TLS_PSK_WITH_AES_128_GCM_SHA256` at TLS 1.2. **The implementation the relaxation exists for failed its own suite.**
+
+RT-4 is rewritten against **5.2b1** — refuse anything weaker than both peers can reach — which is what the requirement has become, rather than against a version number that is no longer the rule.
+
+The reviewer's count is right and worth carrying: this is the **fourth** time a conformance test has been left asserting the behaviour a fix removed — I23/`CT-S4`, I32/`CT-I32`, `CT-I36`'s gaps, and now RT-4. [`PPCP-CORE` §11.1](ppcp-core.md#111-the-rule-for-writing-an-invariant) carries the rule for writing an invariant; the companion habit is that **a clause and its test are edited in the same pass.**
+
+### 15.2 R2 — the decision rested on a measurement not taken on the platform it was about
+
+**Accepted, and the gate restored.** Draft 4 demoted the device confirmation to *"still worth having, but no longer gates anything."* That was wrong, and the reviewer identified why precisely: **it gates the premise.** Route D was chosen because forward secrecy is unobtainable *in any TLS version through this interface* — a finding from the desktop variant. Shared availability annotations and a shared ciphersuite enumeration are good evidence; they are not the measurement.
+
+[5.4b](ppcp-rv.md#541-what-was-measured) now requires it repeated on the device before an implementation ships a pairing that relies on the relaxation, worded so that **a favourable result changes no clause**: 5.2b1 already requires the strongest reachable mode, so if TLS 1.3 works on the phone the relaxation simply never applies. B8 is re-opened narrowly for this. The mobile team asked for the same confirmation independently.
+
+### 15.3 R4 — the decision named an exception and did not take it
+
+**Accepted as a SHOULD with an explicit escape, and it needs the owner's word to finish.**
+
+§5.4.3 argues the relaxation on swing video and then states that the part of the payload carrying a privacy dimension is not the video but the **candidate-attached audio** — whose count is unbounded by anything the user does, and which in the lesson case is a coach and a pupil talking. The reviewer's summary is exact: **the trade was argued on video and paid for by audio.**
+
+[5.4j](ppcp-rv.md#543-the-decision) applies the decision's own reasoning to the payload that reasoning named: a peer SHOULD not transfer candidate-attached audio payload over a connection without forward secrecy, unless the user has been told and agreed. The Capture is announced as normal, so its metadata and its absence stay assertable; only the payload waits. It costs a session nothing, because the diagnostic value of candidate audio is entirely after the fact.
+
+**This is the one place where the specification has gone slightly beyond what the owner decided**, and it is deliberately reversible: if the judgement covers the audio too, **the clause is deleted rather than worked around**, and the text says so. What should not happen is §5.4.3 continuing to name an exception that nothing acts on, because the next reader will take it for an oversight.
+
+### 15.4 R3, R5, R6 and the mobile team's finding
+
+| | Finding | Disposition |
+|---|---|---|
+| **R3** | The two clauses now carrying property 2 — 5.2b1 and 5.4f — had no test, and cannot have an external one: an observer cannot distinguish a peer that offered less than it had from one that had less to offer | **RT-17**, `review` method, with the operative instruction to **re-read it whenever the TLS path is touched or a platform SDK updates** — because a platform that gains TLS 1.3 external PSK silently restores property 2, but only for an implementation that asks rather than assumes |
+| **R5** | Forward secrecy became a per-connection outcome and nothing reported it, so 5.4i's own policy hook could not be applied and a peer could tell a user "encrypted" without telling the whole of it | **5.4k**: the achieved version and mode are available to the application layer and recorded in the diagnostic export, which is where every other "what actually happened" figure in this project already lives |
+| **R6** | Property 3's server-side obligation — an empty `psk_identity_hint` — exists **only** on the newly-permitted TLS 1.2 path, and had no test | **RT-14 extended.** A requirement that applies solely to the mode Draft 4 made normal for one implementation |
+| **PPC §2** | 5.2b1 and property 3 are unassertable on the platform that caused the relaxation, and 5.2i named only 5.2b | **5.2i widened** to any mechanism §5.2 constrains that a platform does not expose, with the three cases tabulated. *"Compliance by construction and compliance by accident look identical from outside"* |
+
+### 15.5 The mobile team's second measurement
+
+Recorded because it de-risks something that could have gone badly. RFC 4279 says a PSK identity "should" be UTF-8, and [5.3a](ppcp-rv.md#53-psk-identity) mandates 17 raw octets that generally are not — **the most likely second-order casualty of the TLS 1.2 floor.** It was tested with the §10.2 vector and the handshake completes unchanged.
+
+[5.3f](ppcp-rv.md#53-psk-identity) now records it as a requirement: the identity is binary, and a peer MUST NOT transcode, validate as text, or truncate one.
+
+### 15.6 Restated, and already addressed
+
+The mobile team restated §4.3b as unqualified, noting they could not find it dispositioned and were *"restating it rather than assuming it was declined."* It **was** taken, in Draft 3: 4.3b is scoped to *"every key of the **top-level payload map**"*, with 4.3b1 naming `h`, `p`, `k` and `s` explicitly, and it is dispositioned at [§7.1](#71-the-scope-of-43b--w2-and-the-mobile-teams-2) of this document. The host reviewer confirmed the fix in the same round. It appears to be a stale copy rather than a missed finding — but the restatement was the right call, and the correct thing for a reviewer to do when a finding seems to have vanished.
+
+### 15.7 Recorded, not the protocol's to answer
+
+The mobile team raise that because they sit at the TLS 1.2 floor, **every** session between their app and any host has no forward secrecy, not some — and ask whether a user should be told. They do not think it belongs on a screen, and would rather it were a decision than an omission. That is exactly right, and it is a product question. [B13](ppcp-rv.md#annex-b--open-issues) records it; 5.4k makes it answerable either way by making the outcome readable.
+
+## 16. Status after the third pass
+
+`PPCP-RV` is **Draft 5**. §4, §6 and §7 are approved without reservation by both teams, and §4 — the part that cannot be corrected after a code is printed — has now survived three passes and three independent recomputations of its vectors.
+
+Two things remain, and neither is a drafting question:
+
+- **The device measurement** ([5.4b](ppcp-rv.md#541-what-was-measured)). An afternoon. A favourable result changes no clause and quietly restores the property.
+- **Whether 5.4j stands or is deleted** — the owner's word on whether the sensitivity judgement covers candidate audio.

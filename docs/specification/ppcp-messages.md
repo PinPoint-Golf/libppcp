@@ -241,7 +241,7 @@ session_close  { session_id, reason: Kind }
 |---|---|---|---|---|
 | `stream_open` | Request | any → owner | control | Capture |
 | `stream_open_ack` | Response | owner → any | control | Capture |
-| `stream_close` | Event | owner → any | control | Capture |
+| `stream_close` | Event | **any → any** | control | Capture |
 | `arm` | Request | host → capture peer | control | Live |
 | `disarm` | Request | host → capture peer | control | Live |
 | `readiness` | Event | capture peer → any | control | Capture |
@@ -260,6 +260,7 @@ stream_close     { stream_id, closed_at: Instant, reason: Kind }
 - **(5.1a) MUST** The Stream fixes `source_id`, `profile_id`, `timebase_id`, `calibration_id` and `continuity` for its lifetime (I5).
 - **(5.1b) MUST** A change to any of those closes the Stream and opens another **within the same Session**. It does not end the Session.
 - **(5.1c) MUST** In a zero-host session the capturing peer originates `stream_open` for its own Streams and records it in the bundle.
+- **(5.1d) MUST** **Either peer may originate `stream_close`** ([`PPCP-CORE` §5.11a1](ppcp-core.md#511-stream)) — the owner because it can no longer produce, the consumer because it no longer wants the data. `reason` carries `thermal_limit`, `storage_full`, `not_needed` or `calibration_changed`.
 
 ### 5.2 `arm` / `disarm` / `readiness`
 
@@ -408,7 +409,9 @@ capture_announce {
 - **(8.1a) MUST** `capture_announce` is sent as soon as the Capture's metadata is known, independently of whether its payload has begun transferring.
 - **(8.1b) MUST NOT** `capture_announce` carry `AchievedFrames` — the per-frame series (I30). It carries `achieved_summary` only. The series travel with the payload ([§8.3](#83-the-payload_-family)).
 - **(8.1c) MUST** A Capture sets exactly one anchor key (I27): `{ shot_id }` for a clip around a Shot's `t0`, `{ candidate_id }` for the evidence window explaining a nomination, or `{ stream: true }` for a segment of a `continuous` Stream belonging to no event.
-- **(8.1f) MUST** A stream-anchored `capture_announce` carries `interval`, and the announced segments plus their gaps account for the Stream's whole open interval (I36). This is the route by which continuous attitude, sensor-arrival evidence and `preview` frames reach a consumer during capture — none of which has a Shot to hang from.
+- **(8.1f) MUST** A stream-anchored `capture_announce` carries `interval` **even when `completeness: absent`**, and the announced segments plus their gaps account for the Stream's whole open interval (I36). This is the route by which continuous attitude, sensor-arrival evidence and `preview` frames reach a consumer during capture — none of which has a Shot to hang from.
+- **(8.1h) MUST** Deliberate non-retention is announced as an **`absent` segment** with `absent_reason: not_retained`, never as a `gaps` entry ([`PPCP-CORE` §5.11c3](ppcp-core.md#5111-how-a-continuous-stream-is-carried)). `gaps` mean loss.
+- **(8.1i) MUST NOT** A `preview` Capture be announced with `transfer: pending`. Preview is live-only: what could not be delivered promptly is discarded and announced absent ([`PPCP-CORE` §5.11j](ppcp-core.md#5112-preview-streams)).
 - **(8.1g) SHOULD** Preview payload travels on a **bulk channel distinct** from shot payload, and is the first thing dropped under contention ([`PPCP-CORE` §5.11h–i](ppcp-core.md#5112-preview-streams)). A preview frame that arrives late is worth nothing; a clip that arrives late is worth everything.
 - **(8.1d) MUST NOT** A thumbnail exceed 64 KiB. Larger previews are Captures with their own payload.
 - **(8.1e)** `Capture.digest` MAY be absent from the announce and MUST be present by `payload_begin`. The digest covers the whole payload, so requiring it here would make the immediate message wait for the clip to be fully extracted and hashed — which is the opposite of what the message is for.
@@ -920,7 +923,7 @@ sequenceDiagram
         D->>D: record arrival ⟨tb:device⟩
         D->>D: update device-to-sensor estimate
         D->>S: relation_update (device to sensor, method=estimated_online)
-        D->>S: raw arrival evidence (evidence_ref stream)
+        D->>S: raw arrival evidence (evidence_stream_id)
     end
 
     Note over D,S: Estimate AND evidence both stored.<br/>Evidence is unrecoverable after capture.

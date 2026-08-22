@@ -51,7 +51,7 @@ Build order matters here: each of these is needed to test the layer above it, an
 
 ## 3. The invariant test matrix
 
-Thirty-six invariants, thirty-six tests. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
+Thirty-six invariants, thirty-seven tests — I36 carries two, because the coverage rule and the preview-shedding rule fail in different ways. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
 
 | Test | Invariant | Profile | Method | Assertion |
 |---|---|---|---|---|
@@ -89,7 +89,8 @@ Thirty-six invariants, thirty-six tests. Identifiers match [`PPCP-CORE` §11](pp
 | **CT-I25** | I25 | Offline | static | Creating a `SessionLink` alters neither Session. Assert byte-equality of both Sessions before and after. Assert no operation composes a `SessionLink` with a `TimebaseRelation`. |
 | **CT-I26** | I26 | Detect | static | A Candidate whose `source_id` names no declared Source, or a Source with no declared Timebase, is rejected. Assert a filesystem-imported record is not emitted as a Candidate. |
 | **CT-I27** | I27 | Capture | static | Every Capture's `anchor` carries exactly one key of `shot_id`, `candidate_id`, `stream`. Assert that zero keys and two keys are both rejected and neither is constructible, and that `{stream: true}` is refused on a `shot_windowed` Stream. |
-| **CT-I36** | I36 | Capture | fixture | Replay a session with a `continuous` Stream. Assert the announced stream-anchored Captures and their gaps account for the whole interval from `opened_at` onward, with no overlap. Then remove one segment **without** declaring a gap and assert the implementation reports a defect rather than silently reading it as a dropout. |
+| **CT-I36** | I36 | Capture | fixture | Replay a session with a `continuous` Stream. Assert the announced segments and their gaps account for the whole interval from `opened_at` onward, with no overlap. Then four cases the rule turns on: **(a)** remove one segment from the middle without declaring a gap — a **defect**, in any Session; **(b)** an `absent` segment carrying an `interval` and an `absent_reason` **satisfies** coverage rather than breaching it; **(c)** a **truncated** fixture in a Session asserted `partial` — the unaccounted tail is the declared incompleteness, **not** a defect; **(d)** the same truncation in a Session asserted `complete` — a defect. |
+| **CT-I36a** | I36 | Capture | paired | A `preview` Stream under induced contention. Assert shed intervals are announced as `absent` segments with `absent_reason: not_retained` and **never** as `gaps`; assert no preview Capture is ever announced `transfer: pending`; assert none reaches the bundle. |
 | **CT-I28** | I28 | Capture | static | A profile with no self-test carries no `measured`. Assert the implementation never synthesises one from claimed values or a device-profile table, and that a short onboarding sample is emitted as `method: cold_sample`. |
 
 ---
@@ -217,6 +218,7 @@ Conformance to the document is necessary and not sufficient. Two implementations
 | Reference host **owning its own acoustic Source** ↔ device with an acoustic Source | | I8 — two nominators of the same `basis`, both retained. A per-modality slot drops one and the failure is silent |
 | Reference host that never issues a `shot` ↔ nominating peer | | I32 — both ends agree on when the peer may mint, and the peer mints only what it would have promoted |
 | Reference host delayed past the mint deadline ↔ nominating peer | | I35 — the host attaches to the device's Shot rather than issuing a second one, and a forced collision links rather than duplicates |
+| Reference host ↔ capture peer with a `continuous` Stream and a `preview` | | I36 — coverage across a whole session, `absent` segments accepted, preview live-only and absent from the bundle |
 | Bundle written by A → read by B, both directions | | [`PPCP-ENC` §7a](ppcp-encoding.md#7-bundle-container) — that live and file are one format |
 
 - **(5b) MUST** The `unrelated` pairing asserts the host **refuses or excludes with a reason**, and never substitutes a zero offset ([`PPCP-MSG` §10c](ppcp-messages.md#10-errors)).

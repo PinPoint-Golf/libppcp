@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **APPROVED for implementation**, 22 August 2026. Revision 5 — one defect fixed since approval ([`CORE` §0.5](ppcp-core.md#05-what-changed-in-revision-5)) |
+| Status | **APPROVED for implementation**, 22 August 2026. Revision 6 — one defect fixed since approval and reviewed by both teams ([`CORE` §0.5](ppcp-core.md#05-what-changed-in-revision-5), [§0.6](ppcp-core.md#06-what-changed-in-revision-6)) |
 | Date | 22 August 2026 |
 | Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
@@ -39,11 +39,24 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
-| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 4** — two review passes carried and the mechanism decided, [dispositioned separately](rv-review-disposition-2026-08-22.md). Not covered by the PPCP approval |
+| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 5** — three review passes; §4, §6 and §7 approved without reservation, §5 awaiting a device measurement. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Not covered by the PPCP approval |
 | — | [**Review disposition**](review-disposition-2026-08-22.md) | Record | Every review comment across all three rounds, what was done with it, and the calls a reviewer may want to reverse |
-| — | [**reviews/**](reviews/) | Input | All ten reviews as submitted |
+| — | [**reviews/**](reviews/) | Input | All fourteen reviews as submitted |
 
 If you have an hour, read `PPCP-CORE` §2 (profiles), §5 (the model) and §6.1 (the canonical instant), then `PPCP-MSG` Annex A. If you have twenty minutes, read the review disposition and `PPCP-CORE` §6.1.
+
+## What changed in revision 6
+
+Both teams reviewed revision 5 and approved it. Three findings were made independently by both.
+
+| | Change |
+|---|---|
+| **1** | **A deliberately-shed interval was indistinguishable from a failed one.** `gaps` mean **loss**; an `absent` segment means **nothing was captured**. Deliberate non-retention is now the second, never the first — and `interval` is mandatory on every stream-anchored Capture including `absent`, which is what lets a peer say "nothing was recorded for this span" at all. |
+| **2** | **A preview profile is a derived view, not a mode a Source can enter.** No camera runs two configurations at once. Its realised rate and format are derived while a capture Stream is open, it is activatable only on a `preview` Stream, and it declares `intrinsics: none`. |
+| **3** | **I36 read an honestly truncated bundle as a defect** — and the bundle is the v1 path. The obligation binds a `complete` Session; a hole *between* segments is a defect in any Session, time *after* the last one is the incompleteness already declared. |
+| **4** | **Preview Captures would have been queued and bundled**, because `pending` is where an announced Capture starts. Preview is now **live-only**: never queued, never bundled, and what was dropped is announced absent. |
+| **5** | `MeasuredCapability` describes its profile **running alone** — a concurrent preview makes it optimistic, and the ingest decision is taken before the preview is opened. |
+| **6** | Either peer may close a Stream, with a reason; `evidence_ref` split into `evidence_stream_id` and `evidence_capture_id`; `preview` added to the `kind` enumeration; the control-channel volume stated and accepted. |
 
 ## What changed in revision 5
 
