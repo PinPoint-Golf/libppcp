@@ -15,6 +15,14 @@ A mobile phone has a 120–240 fps camera, a microphone, an IMU and a hardware e
 
 [`docs/specification/README.md`](docs/specification/README.md) — what the specification settles, how it got here across four review rounds, and what remains open.
 
+To build and run the conformance suite:
+
+```
+cmake --preset dev && cmake --build --preset dev && ctest --preset dev
+```
+
+Presets are `dev` (warnings as errors), `san` (ASan + UBSan), `cov` (gcov), `rel` (optimised, keeps debug info) and `release` (the shipping artefact). `swift build` builds the same sources as the SwiftPM C target `CPPCP`. What passes today is recorded in [`docs/conformance/claim-libppcp.md`](docs/conformance/claim-libppcp.md).
+
 The specification is approved by both first-party implementation teams. It is **not yet frozen**: `ppcp/1.0` becomes stable when the conformance suite passes on both implementations and the interoperability pairings are demonstrated.
 
 ## Layout
@@ -24,4 +32,7 @@ The specification is approved by both first-party implementation teams. It is **
 | `docs/specification/` | **The single authority on PPCP.** Core model, message catalogue, wire encoding, conformance |
 | `docs/implementation/` | [The implementation plan](docs/implementation/implementation-plan.md) — work packages across `libppcp`, PinPointStudio and PinPointCapture, and the session tracker |
 | `docs/conformance/` | [The conformance matrix](docs/conformance/matrix.md) — every `CT-*`, `RT-*` and interoperability row against all three implementations |
-| `src/`, `tests/`, `tools/` | Reference implementation. Empty — the specification is approved and this is where the work starts. |
+| `include/ppcp/` | **The port surface.** [`ppcp.h`](include/ppcp/ppcp.h) is the umbrella; [`planned.h`](include/ppcp/planned.h) declares what is not built yet, with the work package named on every block |
+| `src/` | The reference implementation. C11, no dependencies, sans-I/O — no socket, thread, timer, clock or file, asserted at build time by [`tests/purity.cmake`](tests/purity.cmake) |
+| `tests/` | The conformance suite. Tests are named after the `CT-`/`RT-` row they satisfy |
+| `tools/` | `ppcp-sim` and `ppcp-conform` — the synthetic peer and the conformance driver. Not yet written |
