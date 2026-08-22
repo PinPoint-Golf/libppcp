@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Document | `PPCP-MSG` |
-| Version | **1.0, Draft 2** |
+| Version | **1.0, Draft 3** |
 | Status | **Draft — for approval to implement** |
 | Date | 22 August 2026 |
 | Depends on | [`PPCP-CORE`](ppcp-core.md) for the entity model, [`PPCP-ENC`](ppcp-encoding.md) for framing and encoding |
@@ -190,14 +190,17 @@ session_open {
   timebase_ref            Id            MUST be a timebase declared by the sender
   epoch                   { wall_utc_ns, at: Instant }    optional, label only
   coincidence_window_ns   Duration      pairwise tolerance, default 50000000  (50 ms)
+                                        present iff the Session has a host
   issue_hold_ns           Duration      collection deadline, default 200000000 (200 ms)
+                                        present iff the Session has a host
   heartbeat_interval_ms   uint          default 1000
 }
 ```
 
 - **(4.1a) MUST** `timebase_ref` is immutable for the life of the Session (I16). A second `session_open` for the same `session_id` with a different `timebase_ref` is an error.
 - **(4.1b) MUST** In a session with no host, the capturing peer performs the equivalent locally and **records a `session_open` frame in the bundle** with its own timebase as `timebase_ref`. The bundle is the same message stream either way.
-- **(4.1c) MUST** `coincidence_window_ns` and `issue_hold_ns` are different quantities and are declared separately: a tolerance for *"are these the same event"*, a deadline for *"how long do I wait"* ([`PPCP-CORE` §8.2](ppcp-core.md#82-arbitration)). `issue_hold_ns` is also what gives a nominating peer a deterministic point at which to mint locally (I32), so it is required even by a host that issues immediately.
+- **(4.1c) MUST** `coincidence_window_ns` and `issue_hold_ns` are different quantities and are declared separately: a tolerance for *"are these the same event"*, a deadline for *"how long do I wait"* ([`PPCP-CORE` §8.2](ppcp-core.md#82-arbitration)). `issue_hold_ns` is also what gives a nominating peer a deterministic point at which to mint locally (I32), so it is required even of a host that issues immediately.
+- **(4.1d) MUST** Both are present **if and only if** the Session has a peer with `role: host` ([`PPCP-CORE` §5.10e](ppcp-core.md#510-session)). A hostless session recording a `session_open` frame in its bundle omits them, and their absence is the statement that no arbitration occurs.
 
 ### 4.2 `session_joined`
 
@@ -345,6 +348,7 @@ candidate { candidate: Candidate }
 
 - **(7.1a) MUST** `Candidate.source_id` names a Source the sender declared, on a declared Timebase (I26).
 - **(7.1b) MUST** `Candidate.at` is emitted **after** acoustic time-of-flight correction where the basis is `acoustic`, with the correction and its uncertainty reported in `tof_correction` (I29). A correction that was estimated online is *converging*, and its sigma is how a consumer knows where in that convergence this shot sits.
+- **(7.1e) MUST** `Candidate.at` is the **canonical instant** ([`PPCP-CORE` §6.1](ppcp-core.md#61-canonical-instant)), converted by the nominator before emission (I33). The nominator is the only party holding the frame and its exposure duration; a receiver that converts again doubles the correction. The applied correction SHOULD be reported in `canonical_correction_ns`.
 - **(7.1c) MUST NOT** A record with no peer, no timebase and no clock relation be sent as a `candidate`, and a peer MUST NOT synthesise a timebase to make one eligible. It is associated by `shot_link` ([§9.3](#93-shot_link)) and never enters arbitration ([`PPCP-CORE` §8.1](ppcp-core.md#81-nomination)).
 - **(7.1d) MUST** A peer emits `candidate` for every nomination — one it promotes, one it does not, and one that is later excluded by a host. Losers and unpromoted candidates are sent, not withheld (I8).
 
@@ -356,7 +360,9 @@ shot { shot: Shot }
 
 - **(7.2a) MUST** A host issuing a Shot from several peers' Candidates sets `authority: host` and `t0` in `Session.timebase_ref`, and sends `shot` to every peer in the Session.
 - **(7.2b) MUST** A peer minting a Shot from its own Candidate sets `authority: device` (Mint profile). In a zero-host session **no coincidence window is applied and each Shot carries exactly one Candidate** (I23). Which candidates the peer promotes is its own detector policy; the unpromoted ones are still sent (7.1d).
-- **(7.2d) MUST NOT** A peer that has sent a Candidate to a host mint a Shot for it before `issue_hold_ns` plus one `heartbeat_interval_ms` has elapsed with no `shot` referencing it (I32). Without that deadline two conformant peers can disagree about whether a Shot exists.
+- **(7.2d) MUST NOT** A peer that has sent a Candidate to a host mint a Shot for it before `issue_hold_ns` plus one `heartbeat_interval_ms` has elapsed with no `shot` referencing it, **and then only for a Candidate its own promotion policy would have promoted hostless** (I32). Host silence is not a promotion: nothing obliges a host to answer a Candidate it declined, so the silent branch is the one that fires for every nomination it rejected.
+- **(7.2e) MUST** A minting peer sends `shot` immediately on minting ([`PPCP-CORE` §8.2j](ppcp-core.md#82-arbitration)).
+- **(7.2f) MUST** A host that receives a device-minted `shot` referencing a Candidate it is still holding attaches to it — re-sending `shot` with an extended `candidates` list and the unchanged `t0` — rather than issuing a competing Shot (I35). Where both were nevertheless issued, the host links them with `shot_link`, `basis: shared_candidate`, and neither is withdrawn.
 - **(7.2c) MUST NOT** A second `shot` for the same `shot.id` carry a different `t0` (I7). A late Candidate is attached by re-sending `shot` with an extended `candidates` list and the **unchanged** `t0`.
 
 ### 7.3 `capture_request`
@@ -412,7 +418,7 @@ capture_update { capture_id, completeness, transfer, gaps, digest, achieved_fram
 ```
 
 - **(8.2a) MUST** `completeness` and `transfer` are updated independently. `complete` + `pending` and `partial` + `present` are both normal.
-- **(8.2b) MAY** `capture_update` carry `achieved_frames` for a Capture whose payload will not transfer — a `complete` + `failed` clip whose frame timing is still worth having. It is the only route by which the series reach a consumer on the control channel, and it is a fallback, not the normal path (I30).
+- **(8.2b) MAY** `capture_update` carry `achieved_frames` for a Capture whose payload will not transfer — a `complete` + `failed` clip whose frame timing is still worth having. This is the **one exception** I30 admits, and it is a fallback rather than the normal path: for any Capture whose payload will transfer, the series ride with it.
 
 ### 8.3 The `payload_*` family
 
@@ -477,12 +483,14 @@ shot_link { link: ShotLink }
 
 | Record shape | `basis` | Confirmation |
 |---|---|---|
-| Observed live by a peer, attributed by arrival order — a launch monitor writing one row per shot to a watched file | `arrival_pairing` | asserted by the observing peer; no later confirmation, because no later evidence |
-| A multi-record export matched after the fact | `sequence_alignment`, `interval_alignment`, `acoustic_correlation` | **required** |
-| A human said so | `manual` | implicit |
+| Observed live by a peer, attributed by arrival order — a launch monitor writing one row per shot to a watched file | `arrival_pairing` | `confirmed_by: observer` — asserted live, because no later evidence improves it |
+| Two Shots referencing the same Candidate, from the race of [`PPCP-CORE` §8.2l](ppcp-core.md#82-arbitration) | `shared_candidate` | `confirmed_by: observer` — exact by construction |
+| A multi-record export matched after the fact | `sequence_alignment`, `interval_alignment`, `acoustic_correlation` | **`confirmed_by: user` required** |
+| A human said so | `manual` | `confirmed_by: user` |
 
 - **(9.3d) MUST NOT** `basis: sequence_alignment` be used for a single-record source. There is no sequence in a file holding one row (`CORE` §8.5g).
 - **(9.3e) MUST NOT** A `shot_link` of any basis influence `t0` or be converted into a `TimebaseRelation`.
+- **(9.3f) MUST** `confirmed_by` accompanies `confirmed: true` and distinguishes an observer's live assertion from a human decision ([`PPCP-CORE` §5.16e](ppcp-core.md#516-shotlink)). A consumer MUST NOT treat them as equivalent.
 
 ### 9.4 `session_link`
 
@@ -758,7 +766,7 @@ sequenceDiagram
 
     rect rgba(128,128,128,0.07)
     Note over H: Arbitration — host role privilege (I20)
-    H->>H: convert each candidate to tb:host<br/>relation + canonical-instant conversion
+    H->>H: convert each candidate to tb:host<br/>relation only — candidates arrive canonical (I33)
     H->>H: apply coincidence_window_ns
     H->>H: issue shot: id, t0 ⟨tb:host⟩, authority=host,<br/>candidates = ALL of them
     end
@@ -779,7 +787,7 @@ sequenceDiagram
 | 2–3, 7 | REQ-MIC-2 | Onset refined to sample index within the buffer; buffer granularity is not good enough. |
 | 4, 8 | [`CORE` §8.1d](ppcp-core.md#81-nomination) | 2.9 ms/m. A device 2 m out lags 5.8 ms — most of a frame at 150 fps. **Different mic, different constant**, which is why the two are separate Sources. |
 | 5 | 7.1b | The correction is applied before `at`, and reported so the host can undo it. |
-| 10 | **I17** | Conversion needs the relation **and** the canonical-instant conversion. Either alone gives a wrong answer. |
+| 10 | **I33** | The host applies the **relation** only. The canonical-instant conversion was already applied by each nominator, which is the only party holding the frame and its exposure; converting again would double it. |
 | 11 | 8.2c of `CORE` | The coincidence window is a declared Session parameter, not a constant. Default 50 ms. |
 | 12 | **I8** | All candidates retained, winners and losers. Arbitration is a conclusion; candidates are the evidence. |
 | 15 | 8.1a, **I30** | Small and immediate on the **control** channel, so the host correlates and displays before any video arrives. Summary only — the per-frame series would be ~44 KB and would defeat the purpose. |

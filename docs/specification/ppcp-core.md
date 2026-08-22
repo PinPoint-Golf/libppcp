@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | Document | `PPCP-CORE` |
-| Version | **1.0, Draft 2** |
+| Version | **1.0, Draft 3** |
 | Wire version | `ppcp/1.0` |
 | Status | **Draft — for approval to implement** |
 | Date | 22 August 2026 |
@@ -19,7 +19,7 @@
 
 ## 0. Status of this document
 
-**Draft 2.** Draft 1 was reviewed by both first-party implementation teams. Both returned **approve to implement**, each with changes requested; those changes are made here and dispositioned in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md). The reviews themselves are in [`reviews/`](reviews/).
+**Draft 3.** Both first-party implementation teams have now reviewed twice. Both returned **approve to implement** at each round, with changes requested; those changes are made here and dispositioned in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md). The reviews themselves are in [`reviews/`](reviews/). The host reviewer states that Draft 3 carrying its four findings and five consistency items leaves it with no further findings.
 
 It is not yet stable: [Annex B](#annex-b--open-issues) lists what is expected to move. Implementation may proceed; `ppcp/1.0` is declared stable when the conformance suite of [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings of [`PPCP-CONF` §5](ppcp-conformance.md#5-interoperability) are demonstrated.
 
@@ -61,6 +61,24 @@ From the two implementation-team reviews of Draft 1. Both teams approved; these 
 | PPC-3 | Per-frame exposure may not be attachable per sample buffer on iOS; the specification should state the honest conformance position. | **Answered.** `exposure_provenance` distinguishes a value attached to the frame from a sampled device property from a locked constant. [§5.8](#58-capability) |
 | Q5 | Both teams answered the support-window question compatibly. | **Settled**, closing Annex B6. [§10.1](#101-version-negotiation) |
 | PPS-F3, F6, F7, PPC-3 (partial) | Host-side and application-side work items, and requirements-document defects. | **No specification change.** Recorded in the disposition and referred on. |
+
+### 0.3 What changed in Draft 3
+
+From the second round of reviews. Both teams approved again; both independently found the same defect in the fix that closed the first round's most serious one.
+
+| # | Finding | Disposition |
+|---|---|---|
+| PPS-R1 / PPC-1.1 | **The issue-hold fix reintroduced "every Candidate becomes a Shot" in the live regime**, and `CT-I32` certified it. Nothing obliges a host to answer a Candidate it declines, so after the deadline a peer minted a Shot for every nomination the host had rejected. Separately, a deadline narrows the mint/issue race rather than closing it: a host `shot` arriving after the deadline produces two immutable, unmergeable Shots with no withdraw message to reach for. | **Accepted in full, from both angles.** The mint is now conditioned on the peer's own promotion policy; the host's issue window is bounded so it cannot overlap the mint window; a host that receives a device-minted Shot attaches to it instead of competing; and where both fire, they are linked by `shared_candidate`. I32 amended, I35 added, [§7.1](#71-roles) gains the third row. |
+| PPS-R3 | **`Candidate.at` had no stated convention**, and §8.2a told the host to apply the canonical-instant conversion with an input — that frame's exposure — that a Candidate does not carry. Harmless for acoustic by accident; a ~1 ms systematic error for a `motion` candidate, inside any plausible window, so arbitration still succeeds and `t0` is quietly wrong. | **Accepted.** The nominator converts before emission ([§5.12e](#512-candidate)); §8.2a drops the clause. I33 added, and `canonical_correction_ns` keeps the correction visible. |
+| PPS-R2 | **`PPCP-MSG` 8.2b permitted what I30 and 5.8g forbade** — a straight contradiction between two normative documents, which the suite did not catch. | **Accepted.** I30 and 5.8g narrowed to admit the one exception, which is right: a `complete` + `failed` capture is a session whose link died, and the frame timeline is what says what was lost. |
+| PPS-R4 | **The scalar form was ambiguous for `intrinsics`** — the one field it was added for — because its element type is itself an array. | **Accepted.** [`PPCP-ENC` 4.1d](ppcp-encoding.md#41-composite-types) disambiguates by the type of the first element. |
+| PPC-1.2 | **`Capture.digest` was the stated identity for idempotent re-import**, and an absent capture has no payload to hash. | **Accepted.** Identity is `Capture.id` scoped by session and owning peer; the digest is a content check. I34 added. |
+| PPC-1.3 | **Two arbitration parameters were mandatory on sessions that never arbitrate.** | **Accepted.** Present if and only if the Session has a host ([§5.10e](#510-session)) — I23 expressed structurally. |
+| PPC-3 | 5.8d was unsatisfiable for an absent capture. | **Accepted.** Conditioned on the Capture having frames. |
+| PPS §6 | **The same failure mode twice: an invariant that constrains a choice rather than a shape.** | **Accepted and promoted.** [§11.1](#111-the-rule-for-writing-an-invariant) is now a rule for writing invariants in this document. |
+| PPS §3 | `ShotLink.confirmed` had come to carry two epistemic states. | **Accepted.** `confirmed_by: observer \| user` ([§5.16e](#516-shotlink)). Closes Annex B9. |
+| PPC §2 | The coincidence window's floor and ceiling may be incompatible, so a per-`basis` tolerance may be needed. | **Not added speculatively; the measurement redesigned.** Only an arbitrating host consumes the window, so a per-basis override is additive in a MINOR version. Annex B8 now asks for the floor **per nominator class**. |
+| PPS §2 | Five consistency items — counts, stale field names, support-window wording. | **All accepted.** |
 
 ---
 
@@ -112,11 +130,11 @@ An implementation need not implement all of PPCP. Requiring that would be hostil
 |---|---|---|---|
 | **Core** | Peer, Timebase, TimebaseRelation, ClockDiscontinuity declaration; version and extension negotiation | — | I1, I2, I3, I4, I13, I14, I18, I19, I24 |
 | **Capture** | Source, CaptureProfile, Stream, Capture; arm/disarm response; readiness | Core | I5, I10, I11, I12, I17, I22, I27, I28, I30, I31 |
-| **Detect** | Candidate | Core | I26, I29 |
+| **Detect** | Candidate | Core | I26, I29, I33 |
 | **Mint** | Shot issuance from the peer's **own** Candidates, `authority: device` | Core, Detect | I6, I7, I8, I23, I32 |
-| **Arbitrate** | Shot issuance from **any peer's** Candidates: coincidence window, canonical t₀, `authority: host` | Core | I6, I7, I8, I20 |
+| **Arbitrate** | Shot issuance from **any peer's** Candidates: coincidence window, canonical t₀, `authority: host` | Core | I6, I7, I8, I20, I35 |
 | **Live** | Sync exchange, heartbeat, event/payload split, session control over a live link | Core | I21 |
-| **Offline** | Bundle read and write, ShotLink, SessionLink, reconciliation | Core | I9, I15, I16, I25 |
+| **Offline** | Bundle read and write, ShotLink, SessionLink, reconciliation | Core | I9, I15, I16, I25, I34 |
 
 **Core is mandatory.** Every other profile has the dependencies stated above and no others.
 
@@ -170,7 +188,7 @@ Note that the v1 device's profile set changed: **Mint is new and is what v1 actu
 
 ### 2.3 Invariants are conformance tests
 
-The thirty-two invariants of [§11](#11-invariants) are the conformance surface. An implementation that violates one is non-conformant, whatever else it does. [`PPCP-CONF`](ppcp-conformance.md) maps each to a required test.
+The thirty-five invariants of [§11](#11-invariants) are the conformance surface. An implementation that violates one is non-conformant, whatever else it does. [`PPCP-CONF`](ppcp-conformance.md) maps each to a required test.
 
 ---
 
@@ -483,10 +501,10 @@ Three distinct things, routinely different, all on the wire: **claimed** (the pr
 | `iso` | `[int]` or `int` | 0..1 | Same parallel-or-scalar rule. |
 | `intrinsics` | `[Matrix3]` or `Matrix3` | 0..1 | Same rule, where `intrinsics: per_frame`. |
 
-- **(5.8d) MUST** On a Capture from a camera Source, `AchievedFrames.exposure_ns` is present, in parallel or scalar form. Without it the canonical-instant conversion is impossible (I17).
+- **(5.8d) MUST** On a Capture from a camera Source **that has frames** — that is, `completeness` is `complete` or `partial` — `AchievedFrames.exposure_ns` is present, in parallel or scalar form. Without it the canonical-instant conversion is impossible (I17). A Capture of `completeness: absent` has no frames and carries no `AchievedFrames`.
 - **(5.8e) MUST NOT** Time be inferred from frame index anywhere (I2). Frames drop; indices lie. Sequence numbers, where present, are for loss detection only. **`frames.ns` therefore has no scalar form** — a nominal rate is not a substitute for measured timestamps.
 - **(5.8f) MUST** A parallel array has exactly `frames.ns` length. A scalar means the value was constant for every frame in the Capture, and MUST NOT be used to mean "unknown" or "not sampled".
-- **(5.8g) MUST NOT** `AchievedFrames` be carried on the control channel (I30). It travels with the payload it describes, which is also the only context in which it is interpretable.
+- **(5.8g) MUST NOT** `AchievedFrames` be carried on `capture_announce` (I30). It travels with the payload it describes, which is also the only context in which it is interpretable. **One exception**: `capture_update` MAY carry it for a Capture whose payload will not transfer ([`PPCP-MSG` §8.2b](ppcp-messages.md#82-capture_update)), because the series would otherwise be lost with the payload — a `complete` + `failed` clip is exactly a session whose link died, and the frame timeline is what tells a consumer what it lost.
 
 **`exposure_provenance`** answers a question the specification was previously silent on: some platforms do not attach exposure to the frame.
 
@@ -538,8 +556,8 @@ The resolution is not to weaken I5. Exempting `method: estimated_online` from I5
 | `peers` | `[Peer]` | 1..n | With roles. |
 | `timebase_ref` | `Id` | 1 | The session's canonical timebase. **IMMUTABLE once set** (I16). |
 | `epoch` | `{ wall_utc_ns: int64, at: Instant }` | 0..1 | Wall-clock **label** only. Never used to compute an interval (I15). |
-| `coincidence_window_ns` | `Duration` | 1 | **Pairwise tolerance**: are two nominations the same event. See [§8.2](#82-arbitration). Default `50000000` (50 ms). |
-| `issue_hold_ns` | `Duration` | 1 | **Deadline**: how long a host collects before issuing. See [§8.2](#82-arbitration). Default `200000000` (200 ms). |
+| `coincidence_window_ns` | `Duration` | host: 1 | **Pairwise tolerance**: are two nominations the same event. See [§8.2](#82-arbitration). Default `50000000` (50 ms). |
+| `issue_hold_ns` | `Duration` | host: 1 | **Deadline**: how long a host collects before issuing. See [§8.2](#82-arbitration). Default `200000000` (200 ms). |
 | `heartbeat_interval_ms` | int | Live: 1 | See [§7.4](#74-liveness). |
 | `streams` | `[Stream]` | 0..n | |
 | `shots` | `[Shot]` | 0..n | |
@@ -550,6 +568,9 @@ The resolution is not to weaken I5. Exempting `method: estimated_online` from I5
 - **(5.10a) MUST** `timebase_ref` is set when the Session opens and never changes. Online it is a host Timebase; offline it is the capturing peer's. Making it a field means the offline case is the same structure with a different value, not a special mode.
 - **(5.10b) MUST** A host that re-solves a clock mapping on import expresses its improved estimate as a **new `TimebaseRelation` from `timebase_ref`**, never as a rewrite of it. Otherwise re-solving becomes exactly the destructive merge [§8.5](#85-reconciliation) forbids.
 - **(5.10c) MUST** A Session is valid with any subset of Streams, including none and including video-only (I12).
+- **(5.10e) MUST** `coincidence_window_ns` and `issue_hold_ns` are present **if and only if** the Session has a peer with `role: host`. Their absence is the structural statement that no arbitration occurs in this Session — the same fact I23 states in prose, expressed where it cannot be got wrong.
+
+5.10e matters more than it looks. Both are arbitration parameters and neither has any meaning in a hostless session, which is the **normal** case for an entry-level capture device. Making them unconditionally mandatory would have every range bundle carry two numbers nothing consults, from which a reader could reasonably infer arbitration was in play — and a mandatory field cannot be made optional after 1.0.
 - **(5.10d) MUST** `completeness` is asserted by the peer that owns the data. A partially transferred session MUST NOT present as whole.
 
 **`ContextChange`** is a timestamped change, not a per-shot attribute: "7-iron from shot 12" is one record, not twelve.
@@ -606,8 +627,9 @@ A nomination: one observer's claim that an event occurred at a time it measured.
 | `peer_id` | `Id` | 1 | |
 | `source_id` | `Id` | 1 | **Mandatory** — see below. |
 | `basis` | `acoustic` \| `motion` \| `external` \| … | 1 | Open registry. |
-| `at` | `Instant` | 1 | In the Source's timebase, **after** any time-of-flight correction. |
+| `at` | `Instant` | 1 | The **canonical instant** ([§6.1](#61-canonical-instant)) in the Source's timebase, after time-of-flight correction. See 5.12e. |
 | `tof_correction` | `Estimate` | 0..1 | `{ value_ns, sigma_ns }` — the correction applied and its uncertainty. Both mandatory together (I29). |
+| `canonical_correction_ns` | `int64` | 0..1 | The canonical-instant correction applied, so a consumer can recover the raw timestamp. |
 | `confidence` | float `0..1` | 1 | |
 | `classifier` | basis-specific map | 0..1 | For `acoustic`: the transient taxonomy. Meaningless for `external`. |
 | `evidence_ref` | `Id` | 0..1 | A Capture id — the audio window attached to this Candidate. |
@@ -616,6 +638,15 @@ A nomination: one observer's claim that an event occurred at a time it measured.
 - **(5.12b) MUST** `classifier` is interpreted only in the context of `basis`. A consumer that applies an acoustic taxonomy to an `external` candidate is in error.
 - **(5.12c) MUST** Candidates are never discarded — losers, excluded ones, ones a minting peer chose not to promote, and ones from peers whose clocks later proved badly offset — and neither is their evidence (I8). Arbitration and promotion are conclusions; candidates are the evidence, and a consumer may re-derive t₀ later with a better clock estimate.
 - **(5.12d) MUST** Where `tof_correction` is present it carries **both** `value_ns` and `sigma_ns` (I29). A correction with no dispersion is a point estimate of exactly the kind [§5.4a](#54-timebaserelation) refuses for clock offsets, and for the same reason.
+
+- **(5.12e) MUST** `Candidate.at` is the **canonical instant** of the observation ([§6.1](#61-canonical-instant)), converted by the nominating peer **before emission** (I33). A consumer MUST NOT apply the canonical-instant conversion to a Candidate a second time.
+- **(5.12f) SHOULD** A nominator whose Source profile declares a `convention` other than `mid` reports the correction it applied in `canonical_correction_ns`, on the same principle as `tof_correction`: the observer corrects, and the correction is visible.
+
+**Why the nominator converts and not the consumer.** The conversion of [§6.1](#61-canonical-instant) needs that frame's exposure duration, and **a Candidate carries no frame reference and no exposure**. `evidence_ref` points at a Capture, and for an acoustic candidate that Capture is the *audio* window — there is no route from a Candidate to the exposure of the frame it came from. The nominating peer is the only party holding both.
+
+For an acoustic candidate this was harmless by accident: a microphone Source's profile has no `format`, so [§6.1d](#61-canonical-instant) fixes `convention: mid` and the canonical instant is `t`. For a `motion` candidate — a camera-side detection, one of the three nominators the model admits — it is not. Its Source is a camera declaring `start` or `nominal_frame_start`, and a host instructed to apply `t + offset + d/2` has no `d` in reach.
+
+The discrepancy is around 1 ms at a 6.67 ms frame period with a 2 ms exposure, which is comfortably inside any plausible coincidence window — so **arbitration still succeeds and nothing looks broken**, while `t0` carries a systematic error that moves with exposure. That is precisely the signature [§6.1](#61-canonical-instant) exists to warn about, arriving in the one place the conversion was not being applied consistently.
 
 **Why the correction carries its own uncertainty.** Acoustic time of flight is ~2.9 ms per metre, so a device 2 m from the ball lags 5.8 ms — most of a frame at 150 fps. Where the distance is estimated online rather than surveyed ([§5.9](#59-calibration)) that estimate is *converging*: wide early in a session, tight late, and the difference is the whole point. Being able to undo the correction is not a substitute — it recovers the raw timestamp but says nothing about how far to trust the corrected one, and a consumer that undoes every correction has discarded work the nominating peer was better placed to do.
 
@@ -702,15 +733,21 @@ Reconciliation produces a **link, not a merge**.
 | `local_shot_id` | `Id` | 1 | |
 | `foreign_shot_id` | `Id` | 1 | |
 | `foreign_session_id` | `Id` | 0..1 | Present where the shots are in different Sessions. |
-| `basis` | `arrival_pairing` \| `interval_alignment` \| `acoustic_correlation` \| `sequence_alignment` \| `manual` | 1 | Open registry. See [§8.5](#85-reconciliation). |
+| `basis` | `arrival_pairing` \| `shared_candidate` \| `interval_alignment` \| `acoustic_correlation` \| `sequence_alignment` \| `manual` | 1 | Open registry. See [§8.5](#85-reconciliation). |
 | `foreign_system` | `Kind` | 0..1 | Reverse-DNS identifier of the system the foreign record came from, where it is not a PPCP peer. |
 | `confidence` | float `0..1` | 1 | |
 | `confirmed` | `bool` | 1 | |
+| `confirmed_by` | `observer` \| `user` | `confirmed`: 1 | **Which kind of confirmation this is.** See 5.16e. |
 
 - **(5.16a) MUST NOT** A conformant implementation provide any operation that merges or rewrites Shots on reconciliation (I9). Unconfirmed links are visible and reversible; nothing is rewritten. There is no merge operation in the model to invoke by accident.
 - **(5.16b) MUST** A ShotLink whose `basis` is **retrospective** — `interval_alignment`, `acoustic_correlation`, `sequence_alignment` — is presented for confirmation before `confirmed: true` is set. Sequence alignment over ~50 ordered shots with inter-shot intervals is a well-determined problem, but the confirmation requirement is about the cost of being wrong, not the difficulty of being right.
 - **(5.16c)** `basis: arrival_pairing` is **not** retrospective: it records an association a peer made live, at capture time, from the order in which a record arrived. It carries `confidence` like any other link and MAY be set `confirmed` by the peer that observed the arrival, because there is no later moment at which the evidence would be better. See [§8.5](#85-reconciliation).
 - **(5.16d) MUST NOT** A ShotLink of any basis influence `t0`, or be converted into a `TimebaseRelation`. It associates; it does not time.
+- **(5.16e) MUST** Where `confirmed` is true, `confirmed_by` states which kind of confirmation it was: `observer` is a live assertion by the peer that saw the arrival; `user` is a human decision. A consumer MUST NOT treat them as equivalent.
+- **(5.16f) MUST** A retrospective basis — `interval_alignment`, `acoustic_correlation`, `sequence_alignment` — may only be `confirmed_by: user`.
+- **(5.16g) MUST** `basis: shared_candidate` links two Shots that reference the same Candidate. It is exact by construction and arises from [§8.2l](#82-arbitration).
+
+`confirmed_by` exists because a single boolean had come to carry two different epistemic states: before `arrival_pairing`, `confirmed` meant *a human agreed*; after it, it also meant *a machine asserted this live and no human will ever be asked*. That is exactly the conflation this specification refuses everywhere else — `claimed`/`measured`/`achieved`, `cold_sample`/`sustained`, `assumed`/`vendor`/`measured` — and one boolean was doing what three enumerations do elsewhere. The mis-pair it guards against is real: a host that arms a slot on detection and lets the next arriving record claim it will pair to the wrong swing if a record arrives after a second swing has displaced the slot.
 
 ### 5.17 SessionLink
 
@@ -747,7 +784,7 @@ This is a derived measurement over retained evidence, which is why it is express
 
 The reason it matters does not depend on any particular consumer existing. The error a missed conversion produces is **exposure-dependent**, so it varies with the light in the room and cannot be calibrated out as a constant. A consumer that models clock error will absorb it and attribute it to the clock; a consumer that does not will carry it as unexplained systematic error in fused output. Neither can detect it from the data, because it has the shape of the thing they are already trying to estimate.
 
-Given a sample timestamped `t` on a Stream whose profile declares `timing.convention`, and an exposure duration `d` taken from that frame's entry in `Capture.achieved.exposure_ns`:
+Given a sample timestamped `t` on a Stream whose profile declares `timing.convention`, and an exposure duration `d` taken from that frame's entry in `Capture.achieved_frames.exposure_ns` ([§5.8](#58-capability)):
 
 | `convention` | Canonical instant |
 |---|---|
@@ -853,6 +890,7 @@ A device wall clock jumps on NTP correction, timezone change, manual adjustment 
 |---|---|---|---|
 | 0 | a capturing peer's timebase | `device` | **none occurs** ([§8.3](#83-the-zero-host-regime)) |
 | 1 | the host's timebase | `host` | the host arbitrates |
+| 1, for a Candidate the host did not use | the host's timebase | `device` | none — minted under [§8.2i](#82-arbitration), linked by `ShotLink` |
 
 - **(7.1a) MUST** At most one peer per Session declares `role: host` (I20). Not exactly one: sessions exist with no host at all, and that is the normal case for an entry-level capture device.
 - **(7.1b)** Multi-host is unmodelled. Two offline peers are two independent Sessions, reconciled at import ([§8.5](#85-reconciliation)).
@@ -922,19 +960,30 @@ At 343 m/s the correction is ~2.9 ms per metre; a device 2 m from the ball lags 
 
 Available only to a peer with `role: host` (I20).
 
-- **(8.2a) MUST** The host converts every Candidate into `Session.timebase_ref` using the current `TimebaseRelation` set **and** the canonical-instant conversion of [§6.1](#61-canonical-instant), before comparing them.
+- **(8.2a) MUST** The host converts every Candidate into `Session.timebase_ref` using the current `TimebaseRelation` set, before comparing them. **The canonical-instant conversion of [§6.1](#61-canonical-instant) has already been applied by the nominator** ([§5.12e](#512-candidate)); a host that applies it again doubles the correction (I33).
 - **(8.2b) MUST** Two Candidates are treated as nominating the same Shot if their converted instants fall within `Session.coincidence_window_ns`.
 - **(8.2c) MUST** `coincidence_window_ns` is a declared Session parameter, not a constant. Acoustic time-of-flight spread sets its floor and that is rig-dependent. The default is 50 ms.
-- **(8.2g) MUST** The host declares `issue_hold_ns` — the interval it collects Candidates for, opened by the **earliest** Candidate contributing to a Shot — in `session_open`.
-- **(8.2h) SHOULD NOT** A host issue a Shot before `issue_hold_ns` has elapsed on that earliest Candidate. Issuing on the first arrival locks `t0` to whichever modality happened to be fastest, which is not the same as whichever is most accurate, and I7 forbids correcting it afterwards.
-- **(8.2i) MUST** A nominating peer MUST NOT mint locally for a Candidate it has sent to a host until `issue_hold_ns` has elapsed since that Candidate's instant, plus a margin of at least one `heartbeat_interval_ms` to cover the link (I32). After that, with no `shot` referencing it, the peer MAY mint.
 - **(8.2d) MUST** A Candidate whose relation to `timebase_ref` is missing, `unrelated`, or too uncertain under host policy is **excluded from arbitration and retained** (I8). Exclusion is a conclusion; the Candidate remains evidence.
 - **(8.2e) MUST** A Candidate arriving after the Shot has been issued attaches to that Shot. `t0` is **not** revised (I7). The host MAY re-derive t₀ offline from the retained candidate set; that produces a new analysis, not a mutation of the Shot.
 - **(8.2f) MUST** The issued Shot retains references to **every** contributing and excluded Candidate.
+- **(8.2g) MUST** The host declares `issue_hold_ns` — the interval it collects Candidates for, opened by the **earliest** Candidate contributing to a Shot — in `session_open`.
+- **(8.2h) MUST** A host issues a Shot **no earlier than** `issue_hold_ns` after the earliest contributing Candidate, and **no later than** the mint deadline of 8.2i. Issuing early locks `t0` to whichever modality happened to be fastest, which is not the same as whichever is most accurate, and I7 forbids correcting it afterwards. Issuing after the deadline overlaps the window in which a nominating peer is entitled to mint, and produces two Shots for one event with no defect on either side.
+- **(8.2i) MUST** A nominating peer MUST NOT mint locally for a Candidate it has sent to a host until `issue_hold_ns` has elapsed since that Candidate's instant, plus a margin of at least one `heartbeat_interval_ms` to cover the link. After that, with no `shot` referencing it, the peer MAY mint — **but only for a Candidate its own promotion policy would have promoted in a hostless session ([§8.3b](#83-the-zero-host-regime)). Host silence does not promote a Candidate the peer did not believe** (I32). The resulting Shot carries `authority: device` and is reconciled to the host's Shots through `ShotLink`, as [§8.3f](#83-the-zero-host-regime) requires of a Shot minted during a link outage.
+- **(8.2j) MUST** A minting peer sends `shot` immediately on minting, so its counterpart learns of it without waiting for a payload.
+- **(8.2k) MUST** A host that receives a device-minted `shot` referencing a Candidate it is still holding **MUST NOT issue a competing Shot for that Candidate**. It attaches its own Candidates to the device's Shot by re-sending `shot` with an extended `candidates` list and the **unchanged** `t0`, exactly as 8.2e requires of a late Candidate (I35).
+- **(8.2l) MUST** Where both peers nevertheless issue — because the two messages crossed — neither Shot is withdrawn (I7, I9). The host links them with `ShotLink`, `basis: shared_candidate`, and a consumer MUST NOT count them as two events. Two Shots referencing one Candidate is the detectable signature of this case.
 
 **A tolerance and a deadline are different quantities and Draft 1 had only one field for both.** `coincidence_window_ns` answers *"are these two nominations the same event?"*; `issue_hold_ns` answers *"how long do I wait before deciding?"*. A host may reasonably run a 40 ms tolerance inside a 200 ms hold — a fast IMU nomination followed 30 ms later by a sample-accurate acoustic one should resolve to the acoustic instant, which requires waiting for it. Collapsing the two into one number forces a host to choose between a tolerance that is too wide and a hold that is too short, and neither default can be measured because the measurement would not know which quantity it was estimating.
 
 8.2i closes the other half: without a declared hold, a peer that nominated to a live, healthy host had no deadline after which to conclude no Shot was coming, so two conformant implementations could disagree about whether a Shot exists at all.
+
+**Why the deadline alone was not enough, and what 8.2i–8.2l add.** Draft 2 gave the nominating peer a deadline and stopped there, which introduced two faults that both review teams found independently.
+
+The first is that **nothing obliges a host to answer a Candidate it declines.** A host that correctly rejects a dropped club, a club-on-mat or a shot in the next bay issues no `shot` at all, so the branch that fires on the device is the silent one — and after the deadline it minted a Shot for *every* candidate the host had declined, including ones its own detector never believed. That is the defect [§8.3](#83-the-zero-host-regime) had just removed from the hostless regime, reappearing in the live one through the clause that fixed its sibling. The promotion condition in 8.2i is the fix: host silence does not promote a Candidate the peer did not promote itself.
+
+The second is that a deadline **narrows a race rather than closing it**. A host that issues at the deadline, over a link that then stalls, produces a `shot` arriving after the device has already minted — two Shots, both immutable under I7, both unmergeable under I9, and there is deliberately no `withdraw` or `supersede` message to reach for. 8.2h bounds the host's window so the two do not overlap by design; 8.2j and 8.2k make the residual case resolve in one direction rather than two, and the direction is forced: the device's Shot may already anchor an extracted Capture, so the device's Shot is the one that exists and the host attaches to it.
+
+The cost of 8.2k is that in this rare case `t0` is the device's rather than the host's arbitrated value, which is the worse estimate. That is accepted. It only arises when a host has already exceeded the bound of 8.2h, and one slightly worse `t0` is a much smaller harm than two Shots for one swing.
 
 ### 8.3 The zero-host regime
 
@@ -962,7 +1011,9 @@ This is why `Shot.candidates` is non-empty **per Session** and not per peer: a S
 
 - **(8.5a) MUST** Reconciliation creates **links**. No entity is rewritten or merged (I9).
 - **(8.5b) MUST NOT** An implementation auto-merge. Candidate matches are surfaced and confirmation is required.
-- **(8.5c) MUST** Re-import of a session already held is a no-op, never a duplicate. Identity is `Session.id` plus the minting `Peer.id`; Capture identity is `Capture.digest`.
+- **(8.5c) MUST** Re-import of a session already held is a no-op, never a duplicate. Session identity is `Session.id` plus the minting `Peer.id`. **Capture identity is `Capture.id`, scoped by those two** (I34); `Capture.digest` is a **content** check where present, not the identifier.
+
+8.5c named the digest as the identifier until Draft 3, which left two ordinary cases with no identity at all: a Capture of `completeness: absent` has no payload and therefore no hash, and a `complete` + `pending` Capture may reach a bundle before its digest is computed — a case 8.1e of [`PPCP-MSG`](ppcp-messages.md#81-capture_announce) deliberately permits so the announce need not wait for the clip. Absent captures are the most important content of a partial session, and identifying them by a hash they cannot have would have duplicated them on exactly the second import the rule exists to make safe.
 - **(8.5d) MUST** A host that re-solves a clock mapping on import declares a **new relation from `Session.timebase_ref`** and leaves `timebase_ref` untouched (I16).
 - **(8.5e)** Cross-session alignment, where implemented, is a `SessionLink` ([§5.17](#517-sessionlink)) and mutates neither Session (I25).
 - **(8.5f) MUST** A record associated by **arrival order** rather than by any instant uses `basis: arrival_pairing`, is asserted by the peer that observed the arrival, and carries `confidence`. It does not require later confirmation, because there is no later moment at which the evidence improves — but it MUST NOT influence `t0` and MUST NOT be turned into a `TimebaseRelation` ([§5.16d](#516-shotlink)).
@@ -1006,7 +1057,7 @@ Offline, the capturing peer is the session's time authority and must do the job 
 - **(10.1b) MUST** The wire version is `MAJOR.MINOR`. A change that removes a field, narrows a type, or changes the meaning of an existing field increments MAJOR. Additive change increments MINOR.
 - **(10.1c) MUST** Peers operate at the highest MINOR both support within a common MAJOR. No common MAJOR is a connection failure with `error` / `unsupported_version`.
 - **(10.1d) MUST** Unknown fields, unknown `kind` values, unknown `basis` values and unknown profile fields are **ignored, never fatal**, on both ends (I13).
-- **(10.1e) MUST** A peer states its **support window** — the oldest wire version it accepts — in `hello_accept.min_version`. The window is **two MINOR versions back or twelve months, whichever is longer**.
+- **(10.1e) MUST** A **responder** states its **support window** — the oldest wire version it accepts — in `hello_accept.min_version`. The window is **at least two MINOR versions back or twelve months, whichever is longer**; a peer may support more. An initiator's window is the `versions` list it sends in `hello`.
 - **(10.1f) MUST** An `error` / `unsupported_version` carries the sender's full supported range in `detail`, so the receiving peer can tell its user **which end is stale**. Without it the code is fatal and uninformative, and the user is told only that something failed.
 - **(10.1g) SHOULD** A peer facing a version it cannot speak reports the two ranges to its user rather than a generic failure.
 
@@ -1033,7 +1084,22 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 
 ## 11. Invariants
 
-**Thirty-two invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, and I29–I32 in Draft 2. I6, I8, I17 and I23 have been amended in text without renumbering.
+**Thirty-five invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2 and I33–I35 in Draft 3. I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
+
+### 11.1 The rule for writing an invariant
+
+*Normative for this document's own maintenance.*
+
+- **(11.1a) MUST** An invariant constrains the **shape of an implementation's output**, never the **choice** an implementation makes. Where a rule names what an implementation should decide rather than what its result should look like, it is a threshold, and thresholds are host or detector policy (I14).
+
+This rule is stated because the same defect has been found twice, both times by a reviewer and both times after the conformance suite had been written to certify it.
+
+| Draft | The invariant | What it wrongly required |
+|---|---|---|
+| 1 | I23 — *every Candidate becomes exactly one Shot* | That a device which correctly detected a ball-into-screen transient mint a second Shot for the same swing |
+| 2 | I32 — *after the deadline the peer MAY mint* | That a device mint a Shot for every Candidate a host had declined, including ones its own detector never believed |
+
+Both read as constraints and were in fact instructions to decide. The corrected forms — *no window is applied and each Shot carries exactly one Candidate*, and *mint only what the peer's own promotion policy would have promoted* — constrain the result and leave the judgement where I14 already puts every other threshold. **A new MUST should be read against 11.1a before its test is written**, because a test written from a choice-shaped invariant certifies the defect rather than catching it.
 
 | # | Invariant | Profile |
 |---|---|---|
@@ -1053,7 +1119,7 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 | **I14** | No frame-rate, resolution, quality or confidence threshold appears in the model. | Core |
 | **I15** | Wall-clock values are never used to compute an interval. | Offline |
 | **I16** | `Session.timebase_ref` is immutable. An improved estimate is a new relation, never a rewrite. | Offline |
-| **I17** | Converting a sample to its canonical instant requires the profile's `timing.convention`, that frame's exposure duration from `achieved`, **and — where `convention == nominal_frame_start` — `timing.frame_start_to_exposure_offset_ns`**. No subset is sufficient. *(Amended: model draft 4 named two inputs, so an implementation could satisfy it and still be wrong on the default mobile path.)* | Capture |
+| **I17** | Converting a sample to its canonical instant requires the profile's `timing.convention`, that frame's exposure duration from `achieved_frames`, **and — where `convention == nominal_frame_start` — `timing.frame_start_to_exposure_offset_ns`**. No subset is sufficient. *(Amended: model draft 4 named two inputs, so an implementation could satisfy it and still be wrong on the default mobile path.)* | Capture |
 | **I18** | `TimebaseRelation` is never composed. A needed relation is measured and declared directly. | Core |
 | **I19** | Every Source declares `timing`, `geometry` and `intrinsics` regardless of which peer owns it. No convention is implied by peer role, product or platform. | Core |
 | **I20** | A Session has at most one peer with `role: host`. Arbitrate is available only to that peer. | Arbitrate |
@@ -1066,9 +1132,12 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 | **I27** | Every Capture anchors to exactly one of a Shot or a Candidate. | Capture |
 | **I28** | `MeasuredCapability`, where present, declares `method` and `duration_ns`; its absence means not measured and MUST NOT be inferred or synthesised. | Capture |
 | **I29** | `Candidate.tof_correction`, where present, carries both `value_ns` and `sigma_ns`. No applied estimate travels without its dispersion. | Detect |
-| **I30** | `capture_announce` carries summary capability only. Per-frame series travel with the payload they describe and never on the control channel. | Capture |
+| **I30** | `capture_announce` carries summary capability only. Per-frame series travel with the payload they describe, with one exception: `capture_update` MAY carry `AchievedFrames` for a Capture whose payload will not transfer, because the series would otherwise be lost with the payload. *(Amended: Draft 2 forbade the control channel outright, contradicting the exception `PPCP-MSG` already permitted.)* | Capture |
 | **I31** | A timing quantity the peer cannot guarantee from the platform declares its provenance: `frame_start_to_exposure_offset_ns`, `rolling_shutter.readout_ns` and `AchievedFrames.exposure_ns`. A peer never claims a stronger provenance than it has. | Capture |
-| **I32** | A nominating peer does not mint a Shot for a Candidate it sent to a host until `issue_hold_ns` plus one heartbeat interval has elapsed with no `shot`. | Mint |
+| **I32** | A nominating peer does not mint a Shot for a Candidate it sent to a host until `issue_hold_ns` plus one heartbeat interval has elapsed with no `shot`, **and then only for a Candidate its own promotion policy would have promoted hostless**. *(Amended: as written in Draft 2 this required a peer to mint for every Candidate a host had declined — see [§11.1](#111-the-rule-for-writing-an-invariant).)* | Mint |
+| **I33** | `Candidate.at` is the canonical instant, converted by the nominating peer. A consumer never applies the canonical-instant conversion to a Candidate a second time. | Detect |
+| **I34** | Capture identity is `Capture.id`, scoped by `Session.id` and the owning `Peer.id`. `Capture.digest` is a content check where present, never the identifier. | Offline |
+| **I35** | A host that has received a device-minted Shot referencing a Candidate it holds attaches to that Shot rather than issuing a competing one. Where both were issued, they are linked, never withdrawn or merged. | Arbitrate |
 
 ---
 
@@ -1114,18 +1183,17 @@ Step 5 before step 9 is the ordering most likely to be reversed by instinct. Res
 
 ### A.2 Where conformance will silently fail
 
-Eight places an implementation will appear to work while being wrong. Each needs an explicit test, because normal use will not surface it. [`PPCP-CONF` §4](ppcp-conformance.md#4-the-silent-failure-tests) specifies them.
+Seven places an implementation will appear to work while being wrong. Each needs an explicit test, because normal use will not surface it. [`PPCP-CONF` §4](ppcp-conformance.md#4-the-silent-failure-tests) specifies them.
 
 | Site | Why it survives normal use |
 |---|---|
 | **The canonical-instant conversion (I17, I22)** | Spans two entities and now three inputs, so two implementers can each apply part of the correction and both believe themselves compliant. The error is exposure-dependent and looks exactly like clock bias. |
 | **`nominal_frame_start`'s offset (I22)** | It is the default path on the entire mobile side, and a missing offset is a small constant error that a bias estimator will absorb and mis-attribute. |
 | **Host-side declaration (I19)** | A single-vendor implementation satisfies it *by accident*, because its host conventions are correct in hardcoded form. Test against a synthetic host declaring a different convention. |
-| **The zero-host path (I20, I23)** | Never exercised in a studio. Test a hostless session end to end, including that no coincidence window is applied. |
+| **The zero-host path, and promotion (I20, I23, I32)** | Never exercised in a studio. A device that reuses its arbitration code path collapses candidates it should keep separate; one that promotes everything mints two Shots for a swing whose screen strike it correctly detected; one that mints on host silence does the same in a live session. All three look fine until someone counts the shots. |
 | **Relation composition (I18)** | An implementer will compose relations silently because it is convenient and appears to work. |
 | **Comprehension versus origination (I24)** | An implementation that only ever talks to itself never sees a message from a profile it lacks. |
 | **Provenance of unmeasured timing constants (I31)** | An unmeasured offset declared as `0` behaves correctly in every test written against the same implementation, and biases every cross-source comparison against anyone else's. |
-| **Promotion versus arbitration (I23)** | A hostless device that reuses its arbitration code path collapses candidates it should have kept separate; one that promotes everything mints two Shots for a swing whose screen strike it correctly detected. Both look fine until someone counts the shots. |
 
 ### A.3 One implementation, both ends
 
@@ -1152,8 +1220,8 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 | **B5** | **Per-timebase sync obligation stated in the model** ([§5.4.1](#541-the-replacement-obligation)) rather than left to the message layer. Arguably a protocol behaviour rather than a structural fact. | Settled; recorded so it is not re-litigated silently. |
 | ~~**B6**~~ | ~~Support window needs a number.~~ | **Closed in Draft 2.** Two MINOR versions back or twelve months, whichever is longer, stated in `hello_accept.min_version`, with the supported range carried in `unsupported_version` ([§10.1](#101-version-negotiation)). Both implementation teams proposed compatible answers. |
 | **B7** | **Candidate audio retention has no protocol-level bound**, by design (I14). The consequence for a user-visible retention statement is an application obligation, and the two teams should confirm they are content with that division. | Open — needs confirmation, not a protocol change. |
-| **B8** | **Neither timing default is measured.** `coincidence_window_ns` (50 ms) and `issue_hold_ns` (200 ms) are proposals. The window needs **two** measurements, not one: the intra-bay spread between a device microphone and a host microphone sets its **floor**, and the separation to an adjacent bay sets its **ceiling** — a shot 4 m away arrives ~12 ms later, so a window that is too wide merges two real shots into one, which is a worse failure than missing a merge. | Open — settle both from rig data, measuring floor and ceiling separately. |
-| **B9** | **`ShotLink` with `basis: arrival_pairing` is asserted without confirmation** ([§8.5f](#85-reconciliation)). Correct for a live observation, but it is the one link basis a user never sees before it is treated as true, and the underlying arm-a-slot mechanism can mis-pair if a reading arrives after a second swing has displaced the slot. | Open — confirm the confidence semantics against a real mis-pair. |
+| **B8** | **Neither timing default is measured, and the window may not admit a single value.** `coincidence_window_ns` (50 ms) and `issue_hold_ns` (200 ms) are proposals. The window needs its **floor** and its **ceiling** measured separately, and the floor **per nominator class**: (i) acoustic-to-acoustic agreement between a device microphone and a host microphone on the same shot after time-of-flight correction — the tightest case and the one the protocol most cares about; (ii) agreement between an acoustic nomination and a live external nominator with a coarser clock, which may be an order of magnitude wider; (iii) the separation to an adjacent bay, which sets the ceiling — a shot 4 m away arrives ~12 ms later, so a window that is too wide merges two real shots into one, a worse failure than missing a merge. **If (ii) exceeds (iii) there is no single conformant value**, and the resolution is a per-`basis` override. That is an additive change: only an arbitrating host consumes the window, so an optional per-basis map can be added in a MINOR version without breaking a device. It is therefore not added speculatively — but the measurement must be designed to answer the question, which means measuring the classes separately rather than pooling them. | Open — rig data, measured per nominator class. |
+| ~~**B9**~~ | ~~`arrival_pairing` is asserted without confirmation.~~ | **Closed in Draft 3.** `ShotLink.confirmed_by` separates an observer's live assertion from a human decision ([§5.16e](#516-shotlink)), so a consumer can tell which it has before a mis-pair rather than after. |
 | **B10** | **`exposure_provenance: sampled`** ([§5.8](#58-capability)) is conformant but its accuracy under an unlocked exposure is unquantified. Whether a consumer should accept it is policy (I14), but nobody has measured how wrong it gets. | Open — measure on the rig alongside B8. |
 
 ---

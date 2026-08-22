@@ -6,11 +6,11 @@
 |---|---|
 | Status | Record of decisions. Non-normative. |
 | Date | 22 August 2026 |
-| Rounds covered | **Round 1** — the reviews of the protocol overview and the companion requirements, which produced Draft 1. **Round 2** — the two implementation-team reviews of Draft 1, held in [`reviews/`](reviews/), which produced Draft 2. |
+| Rounds covered | **Round 1** — the reviews of the protocol overview and the companion requirements, which produced Draft 1. **Round 2** — the two implementation-team reviews of Draft 1, which produced Draft 2. **Round 3** — the two reviews of Draft 2, which produced Draft 3. All four team reviews are in [`reviews/`](reviews/). |
 
 Every point is dispositioned. Points **not** actioned are listed with reasons, because a review that gets a silent partial response is a review that gets repeated.
 
-**Round 2 is in [§5](#5-round-2--pinpointstudio-host-review-of-draft-1) and [§6](#6-round-2--pinpointcapture-mobile-review-of-draft-1).** Sections 1–4 record round 1 and are unchanged except where a later round reopened something.
+**Round 2 is in [§5](#5-round-2--pinpointstudio-host-review-of-draft-1) and [§6](#6-round-2--pinpointcapture-mobile-review-of-draft-1); round 3 is in [§10](#10-round-3--the-draft-2-reviews).** Sections 1–4 record round 1 and are unchanged except where a later round reopened something.
 
 ---
 
@@ -352,3 +352,128 @@ As with [§4](#4-decisions-taken-that-a-reviewer-may-wish-to-reverse), these are
 | **D10** | **`arrival_pairing` links do not require confirmation** | Require confirmation as every other basis does. Rejected because there is no later moment at which the evidence improves — but the mis-pair case is real and is now Annex B9 | [`CORE` §8.5f](ppcp-core.md#85-reconciliation) |
 | **D11** | **Both of the announce-size fixes taken**, split *and* scalar form | Either alone. The scalar form handles the locked case that ships; the split handles the unlocked case the specification forbids assuming away | [§6.3](#63-ppc-21--capture_announce-was-called-small-and-was-not) |
 | **D12** | **Promotion policy left entirely to the peer** | Give the protocol a promotion hint, or a minimum inter-shot interval. Rejected as exactly the threshold I14 keeps out — but it does mean two conformant devices given identical audio may report different shot counts, which is a consequence worth being sure about | [`CORE` §8.3c](ppcp-core.md#83-the-zero-host-regime) |
+
+
+---
+
+# Round 3 — the Draft 2 reviews
+
+Both teams reviewed again and both returned **approve to implement** again. The host review states that Draft 3 carrying its four findings and five consistency items leaves it with no further findings and that PinPointStudio will build against it as it stands.
+
+## 10. Round 3 — the Draft 2 reviews
+
+### 10.1 The finding both teams made independently
+
+**Accepted in full, from both angles, and it is the most important thing in this round.**
+
+The two reviews approach it differently and the fixes are complementary rather than alternative, which is why both were taken.
+
+**The host's R1 — the fix reintroduced the defect it was fixing.** Draft 2 closed the host's own F2 with `issue_hold_ns` and I32: after the deadline, with no `shot`, a nominating peer MAY mint. But **nothing obliges a host to answer a Candidate it declines.** A host that correctly rejects a dropped club, a club-on-mat or a shot in the next bay issues nothing at all, so the branch that fires on the device is the silent one — and it fired for *every* candidate the host had declined, including ones the device's own detector never believed. That is precisely the defect Draft 2 had just removed from the hostless regime, reappearing in the live one through the clause that fixed its sibling. `CT-I32` asserted it as a pass.
+
+**The mobile team's 1.1 — the deadline narrows a race rather than closing it.** A host that issues at the deadline over a link that then stalls produces a `shot` arriving after the device has minted: two Shots for one swing, both immutable under I7, both unmergeable under I9, and deliberately no `withdraw` or `supersede` message to reach for. Two rows in the session library for one swing, and the same clip transferred twice.
+
+The combined resolution, none of which needs a new message:
+
+| Change | Source | Where |
+|---|---|---|
+| The post-deadline mint is conditioned on the peer's **own promotion policy**. Host silence does not promote a Candidate the peer did not believe. | Host R1(a) | [`CORE` §8.2i](ppcp-core.md#82-arbitration) |
+| The host's issue window is **bounded at both ends**, so it cannot overlap the mint window | Host R1(b), adapted | [`CORE` §8.2h](ppcp-core.md#82-arbitration) |
+| A minting peer sends `shot` immediately | Mobile 1.1 | [`CORE` §8.2j](ppcp-core.md#82-arbitration) |
+| A host that receives a device-minted `shot` for a Candidate it holds **attaches to it** rather than issuing its own | Mobile 1.1 | [`CORE` §8.2k](ppcp-core.md#82-arbitration), **I35** |
+| Where both fire anyway, they are **linked** by `basis: shared_candidate`, never withdrawn | New | [`CORE` §8.2l](ppcp-core.md#82-arbitration) |
+| §7.1 gains the third row so the state is described rather than merely permitted | Host R1(c) | [`CORE` §7.1](ppcp-core.md#71-roles) |
+| `CT-I32` gains the negative half; `CT-S4` gains a live-regime assertion | Host R1(d) | [`CONF` §3](ppcp-conformance.md#3-the-invariant-test-matrix), [§4.4](ppcp-conformance.md#44-ct-s4--the-zero-host-path) |
+
+**One departure, stated because the host wrote the clause.** R1(b) proposed the host issue *"no earlier than `issue_hold_ns` … and no later."* Taken literally that makes a host non-conformant for a few milliseconds of scheduling jitter. The bound taken is *no later than the mint deadline* — `issue_hold_ns` plus one heartbeat interval — which is what makes the two windows non-overlapping, is the property R1(b) was reaching for, and leaves a second of slack for a real system.
+
+**Why the direction of 8.2k is forced rather than chosen.** The device's Shot may already anchor an extracted Capture. Making the host win would require withdrawing a Shot that Captures reference, which the model has no room for and should not grow. The accepted cost is that in this rare case `t0` is the device's rather than the host's arbitrated value — the worse estimate — and it arises only when a host has already exceeded 8.2h. One slightly worse `t0` is a much smaller harm than two Shots for one swing.
+
+### 10.2 Host R3 — `Candidate.at` had no stated convention
+
+**Accepted.** Present since Draft 1 and missed by everyone, including two prior reviews.
+
+§8.2a told the host to convert every Candidate using the relation **and** the canonical-instant conversion. That conversion needs `d`, the exposure of *that frame*, and **a Candidate carries no frame reference and no exposure**: `evidence_ref` points at a Capture, and for an acoustic candidate that Capture is the audio window.
+
+For acoustic it was harmless by accident — a microphone profile has no `format`, so §6.1d fixes `convention: mid`. For a `motion` candidate from a camera Source declaring `nominal_frame_start` it was not, and the error is about 1 ms: comfortably inside any plausible coincidence window, so **arbitration still succeeds and nothing looks broken**, while `t0` carries a systematic error that moves with exposure. That is the exact signature §6.1 spends a page warning about, in the one place the conversion was not being applied consistently.
+
+The nominator converts, because it is the only party holding the frame and its exposure. `Candidate.at` is the canonical instant ([`CORE` §5.12e](ppcp-core.md#512-candidate)), §8.2a drops the clause, the sequence note is corrected, and **I33** and `CT-I33` make it testable.
+
+**Slightly beyond what was asked:** `canonical_correction_ns` was added so the correction is recoverable, on the reviewer's own reasoning that this is *"the same division as acoustic time of flight: the observer corrects, and the correction is visible."* `tof_correction` is visible; this now is too.
+
+### 10.3 Host R2 — a contradiction between two normative documents
+
+**Accepted.** `CORE` I30 and 5.8g forbade `AchievedFrames` on the control channel; `MSG` 8.2b permitted it on `capture_update`, citing the invariant it violated as its authority. An implementer coding to one would refuse what the other requires, and `CT-I30` tested only `capture_announce`, so neither was caught.
+
+The reviewer's diagnosis is right: **the exception is correct and the invariant needed narrowing.** A `complete` + `failed` capture is a range session whose link died; the frames are never coming, and the timeline is what tells a consumer what it lost. I30's real intent was that the *immediate correlation message* stays small, not that control never carries a series. I30 and 5.8g now say so, and `CT-I30` asserts the exception applies only where `transfer` is `failed`.
+
+### 10.4 Host R4 — the scalar form was ambiguous for `intrinsics`
+
+**Accepted, wording adopted.** The major-type rule works for `exposure_ns` and `iso` and fails for `intrinsics`, whose element type is itself a CBOR array — so `[f64 × 9]` and `[[f64 × 9], …]` are both major type 4. That is the field most likely to *be* constant, because focus is locked for a session, and therefore the field the scalar form was most worth having for. [`ENC` 4.1d](ppcp-encoding.md#41-composite-types) now disambiguates by the type of the first element, and `CT-I30` exercises it specifically.
+
+### 10.5 Mobile 1.2 — `Capture.digest` identity had a hole
+
+**Accepted.** 8.5c named the digest as Capture identity, and two ordinary cases never have one: `completeness: absent` has no payload to hash, and a `complete` + `pending` Capture may reach a bundle before hashing — a case Draft 2's own 8.1e deliberately permits, at this reviewer's request, so the announce need not wait for the clip.
+
+Absent captures are the most important content of a partial session — they are what I10 exists to make assertable — and identifying them by a hash they cannot have would have duplicated them on exactly the second import the rule exists to make safe. Identity is now `Capture.id` scoped by `Session.id` and the owning `Peer.id`; the digest is a **content** check where present. **I34** and `CT-I34`.
+
+### 10.6 Mobile 1.3 — arbitration parameters mandatory in sessions that never arbitrate
+
+**Accepted.** `coincidence_window_ns` and `issue_hold_ns` were `Card. 1` while `heartbeat_interval_ms` in the same table was correctly conditional. Both are now present **if and only if** the Session has a host ([`CORE` §5.10e](ppcp-core.md#510-session)) — which is I23 expressed structurally rather than in prose, and which stops every range bundle carrying two numbers nothing consults. The reviewer's second reason is the decisive one: a mandatory field cannot be made optional after 1.0.
+
+### 10.7 Mobile §2 — the coincidence window may not admit a single value
+
+**The measurement design is accepted; the field change is not made, and the reason is that it is not needed.**
+
+The contribution is a good one: if a live external nominator disagrees with an acoustic one by more than the adjacent-bay separation, no single window is both wide enough to pair them and narrow enough to avoid merging two golfers. The reviewer was careful to mark the 41 ms figure as illustrative design copy rather than a measurement, which is the right way to raise it.
+
+The proposed insurance was to let the field carry a scalar **or** a per-basis map now, on the grounds that scalar → map is a breaking change. **It is not.** Only an *arbitrating host* consumes the window; a device never reads it. So an optional per-`basis` override can be added in a MINOR version, ignored by peers that do not implement it, with no divergence — because there is only ever one implementation applying it. Adding a variant type today for a change that is additive tomorrow buys nothing and costs a decoder branch.
+
+What **is** accepted, and is the actionable half, is that **the measurement design differs**: pooling the nominator classes would produce a number that answers neither question. [`CORE` Annex B8](ppcp-core.md#annex-b--open-issues) now asks for the floor per class — acoustic-to-acoustic between a device mic and a host mic after time-of-flight correction, which the reviewer specifically requested and which is the tightest and most important case; acoustic against a live external nominator; and the adjacent-bay ceiling — and records that if the second exceeds the third, the resolution is a per-basis override.
+
+### 10.8 Host §3 — `ShotLink.confirmed` carried two epistemic states
+
+**Accepted.** Before `arrival_pairing`, `confirmed` meant *a human agreed*. After it, it also meant *a machine asserted this live and no human will ever be asked*. One boolean was doing what `claimed`/`measured`/`achieved`, `cold_sample`/`sustained` and `assumed`/`vendor`/`measured` each do with an enumeration — and this document refuses that conflation everywhere else.
+
+`ShotLink.confirmed_by` — `observer` \| `user` — accompanies `confirmed: true`, and a retrospective basis may only be `user` ([`CORE` §5.16e–f](ppcp-core.md#516-shotlink)). **Annex B9 closes**: the mis-pair the reviewer describes is now visible to a consumer before it happens rather than indistinguishable after.
+
+### 10.9 Mobile §3 — 5.8d was unsatisfiable for an absent capture
+
+**Accepted.** 5.8d required per-frame exposure on any camera Capture; a Capture of `completeness: absent` has no frames and, since `AchievedFrames` travels with the payload, no `AchievedFrames` at all — so a conformance test for 5.8d or I17 would have failed on correctly-formed data. Now conditioned on the Capture having frames.
+
+### 10.10 Host §2 — five consistency items
+
+All accepted.
+
+| | Item | Fix |
+|---|---|---|
+| 1 | Silent-failure count disagreed in three places, and I31 — the site called most dangerous — had a matrix test but no silent-failure test | **`CT-S7` written.** Seven sites, seven tests, four of which pass by accident when self-tested. Counts corrected in `CONF` and `README` |
+| 2 | `CT-S1` still named `achieved.exposure_ns`, and tested only the varying-exposure path while the product ships with exposure locked | Field name corrected; a sixth assertion added that the scalar form and an equivalent constant array give identical canonical instants |
+| 3 | §6.1's preamble and I17 still named `Capture.achieved` | Both corrected to `achieved_frames` |
+| 4 | 10.1e stated the support window as a fixed MUST, making a more generous host non-conformant | Now **at least** two MINOR back or twelve months |
+| 5 | 10.1e said "a peer states its window in `hello_accept`", but an initiator sends `hello` | Now "a responder", with the initiator's `versions` list named as its window |
+
+### 10.11 Host §6 — the same failure mode twice
+
+**Accepted and promoted, and this is the most valuable observation in the round.**
+
+Twice now an invariant has constrained a *choice* rather than a *shape*, with a conformance test written to match, so the suite certified the defect instead of catching it: I23 in Draft 1, and I32 in Draft 2 — in the clause that fixed I23's sibling.
+
+The tell is the same both times: a MUST that names what an implementation should **decide** rather than what its output should **look like**. [`CORE` §11.1](ppcp-core.md#111-the-rule-for-writing-an-invariant) now states this as a rule for writing invariants in this document, with both defects tabulated as the evidence, and requires a new MUST to be read against it before its test is written. `CONF` §6 keeps the row and points at it.
+
+### 10.12 Confirmed, no change needed
+
+- **D8** — time of flight on the Candidate. Both teams now endorse it; the mobile reviewer withdrew the stated preference and noted that option 2 also makes the sigma meaningful, which option 1 would have prevented.
+- **D12** — promotion policy left to the peer. Both content. The host notes that two devices with different detectors already report different *candidates*, and that a protocol-level promotion hint would be a threshold that someone would eventually tune the product with.
+- **D10 / arrival pairing without confirmation** — the call stands; `confirmed_by` addresses the reviewer's actual concern without reversing it.
+- **`exposure_provenance`** — the mobile team states its position: `sampled` for any unlocked source, `locked_constant` under the exposure lock, and `per_frame` not claimed until the platform is verified. That is exactly what the field was added to make expressible.
+
+---
+
+## 11. Round 3 decisions a reviewer may wish to reverse
+
+| # | Decision | Alternative | Where |
+|---|---|---|---|
+| **D13** | **The host's issue window is bounded at the mint deadline**, not at `issue_hold_ns` exactly | The host reviewer's literal wording, "no later". Rejected because a few milliseconds of scheduling jitter would make a correct host non-conformant, and the non-overlap property is what the clause was for | [`CORE` §8.2h](ppcp-core.md#82-arbitration) |
+| **D14** | **The device's Shot wins the residual race**; the host attaches to it | The host's Shot wins, which would need a withdraw or supersede message | [`CORE` §8.2k](ppcp-core.md#82-arbitration) |
+| **D15** | **No per-`basis` coincidence window added now** | Add the variant type as insurance. Rejected because only an arbitrating host consumes the field, so the change is additive rather than breaking — but the measurement design was changed, which is the part that could not wait | [`CORE` Annex B8](ppcp-core.md#annex-b--open-issues) |
+| **D16** | **`canonical_correction_ns` added** beyond the one clause requested | State the rule and leave the correction invisible. Rejected on the reviewer's own symmetry argument with `tof_correction` | [`CORE` §5.12f](ppcp-core.md#512-candidate) |

@@ -1,13 +1,13 @@
-# PPCP specification — Draft 2
+# PPCP specification — Draft 3
 
 **PinPoint Capture Protocol. An open protocol for time-synchronised capture devices.**
 
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **Draft 2 — approved to implement by both first-party teams** |
+| Status | **Draft 3 — approved to implement by both first-party teams, twice** |
 | Date | 22 August 2026 |
-| Reviews | [`reviews/`](reviews/) — PinPointCapture (mobile) and PinPointStudio (host) |
+| Reviews | [`reviews/`](reviews/) — two rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
 
 ---
@@ -18,25 +18,41 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 **This folder is the single authority on PPCP.** Earlier drafts and working documents are not carried here; any copy still in circulation is superseded by what follows.
 
-**Both implementation teams have reviewed Draft 1 and returned *approve to implement*,** each with changes requested. Those changes are in Draft 2. Implementation may proceed; `ppcp/1.0` is declared stable when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated.
+**Both implementation teams have now reviewed twice and returned *approve to implement* each time**, with changes requested. Draft 3 carries the second round. The host reviewer states that Draft 3 carrying its four findings and five consistency items leaves it with no further findings and that PinPointStudio will build against it as it stands. Implementation may proceed; `ppcp/1.0` is declared stable when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated.
 
 ## The documents
 
 | Read | Document | Authority | What it settles |
 |---|---|---|---|
-| 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-two invariants |
+| 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-five invariants |
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
-| 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the six places it will silently fail |
+| 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
 | — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 1, unreviewed** — service type, pairing code, key derivation, TLS profile, security model, test vectors |
 | — | [**Review disposition**](review-disposition-2026-08-22.md) | Record | Every review comment across all three rounds, what was done with it, and the calls a reviewer may want to reverse |
-| — | [**reviews/**](reviews/) | Input | The two Draft 1 reviews as submitted |
+| — | [**reviews/**](reviews/) | Input | All four reviews as submitted |
 
 If you have an hour, read `PPCP-CORE` §2 (profiles), §5 (the model) and §6.1 (the canonical instant), then `PPCP-MSG` Annex A. If you have twenty minutes, read the review disposition and `PPCP-CORE` §6.1.
 
+## What changed in Draft 3
+
+Both teams reviewed again, both approved again, and both independently found the same defect in the fix that closed the first round's most serious one. Thirty-five invariants; every earlier number is unchanged.
+
+| | Change | Raised by |
+|---|---|---|
+| **1** | **The issue-hold fix had reintroduced "every Candidate becomes a Shot" in the live regime**, and `CT-I32` certified it. Nothing obliges a host to answer a Candidate it declines, so after the deadline a peer minted a Shot for every nomination the host had rejected. The mint is now conditioned on the peer's own promotion policy. | Both |
+| **2** | **The mint/issue race is closed rather than narrowed.** The host's issue window is bounded so it cannot overlap the mint window; a host receiving a device-minted Shot attaches to it instead of competing; where both fire, they link by `shared_candidate`. I35 added. | Both |
+| **3** | **`Candidate.at` is the canonical instant, converted by the nominator.** §8.2a had told the host to convert using that frame's exposure — which a Candidate does not carry. Harmless for acoustic by accident, ~1 ms of silent systematic error for a `motion` candidate. I33 added. | Studio |
+| **4** | **I30 narrowed** to admit the one `capture_update` exception it was contradicting in `PPCP-MSG`. | Studio |
+| **5** | **The scalar form disambiguated for `intrinsics`**, whose element type is itself an array — the one field the scalar form was most worth having for. | Studio |
+| **6** | **Capture identity is `Capture.id`, not the digest.** An absent capture has no payload to hash, and those are the most important content of a partial session. I34 added. | Capture |
+| **7** | **The two arbitration parameters are present only when there is a host** — I23 expressed structurally rather than in prose. | Capture |
+| **8** | **`ShotLink.confirmed_by`** separates an observer's live assertion from a human decision. One boolean had come to do what three enumerations do elsewhere. Closes Annex B9. | Studio |
+| **9** | **A rule for writing invariants** ([§11.1](ppcp-core.md#111-the-rule-for-writing-an-invariant)): an invariant constrains the shape of an output, never a choice. The same defect had now been found twice, in Draft 1 and in Draft 2's fix for it. | Studio |
+
 ## What changed in Draft 2
 
-Both teams approved and both asked for changes. These are them. Thirty-two invariants now; I1–I28 keep their numbers.
+Thirty-two invariants at that point; I1–I28 kept their numbers.
 
 | | Change | Raised by |
 |---|---|---|
@@ -51,6 +67,8 @@ Both teams approved and both asked for changes. These are them. Thirty-two invar
 
 Draft 1's own changes — the `nominal_frame_start` offset, the `Mint` profile, origination-not-comprehension, `SessionLink`, `Capture.anchor` — are in [`PPCP-CORE` §0.1](ppcp-core.md#01-what-changed-in-draft-1).
 
+The full disposition of all three rounds, including what was **not** actioned and why, is in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md).
+
 ## The seven questions Draft 1 asked
 
 All answered, and both teams agreed on every one. Four are now closed.
@@ -60,7 +78,7 @@ All answered, and both teams agreed on every one. Four are now closed.
 | **Q1** | CBOR with text keys | **Closed — keep.** Agreed without reservation. Field diagnosis happens on a phone at a driving range and in a user-attached bundle; a wire readable in a hex dump is worth more than 40% of a message class totalling ~4 KB per burst. |
 | **Q2** | `SessionLink` defined now | **Closed — keep, provisional.** The original objection was withdrawn. The host would trade it if effort were scarce, preferring the issue-timing hole — which Draft 2 fixes anyway. |
 | **Q3** | `t + offset + d/2` | **Closed — confirmed** by both teams independently. |
-| **Q4** | 50 ms coincidence default | **Open, but sharpened.** The field is now split from `issue_hold_ns`, so a measurement will know which quantity it is estimating. Two measurements are needed: intra-bay spread sets the floor, adjacent-bay separation the ceiling. [Annex B8](ppcp-core.md#annex-b--open-issues) |
+| **Q4** | 50 ms coincidence default | **Open, and sharpened again.** The floor must be measured **per nominator class** — acoustic-to-acoustic is tight, a live external nominator with a coarse clock may be an order of magnitude wider — because if the second exceeds the adjacent-bay ceiling there is no single conformant value. A per-`basis` override is additive rather than breaking, so it is not added speculatively; the measurement design is what had to change. [Annex B8](ppcp-core.md#annex-b--open-issues) |
 | **Q5** | Version support window | **Closed.** Two MINOR back or twelve months, whichever is longer. |
 | **Q6** | Unbounded candidate audio retention | **Closed — confirmed** by both. The application owns the bound; the protocol owns expressibility and assertable absence. |
 | **Q7** | `PPCP-RV` does not exist | **Open — now drafted, not agreed.** [Draft 1](ppcp-rv.md) was written while the Draft 2 reviews were out. The deadline moved earlier: `_ppcp._tcp` has already shipped in an application bundle, and the pairing code is gated by the first store submission rather than by `ppcp/1.0`. |
@@ -70,15 +88,15 @@ All answered, and both teams agreed on every one. Four are now closed.
 [`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) has the full list. The ones needing someone to act:
 
 - **`PPCP-RV`** — [Draft 1](ppcp-rv.md) is written and needs both teams' review. §4, the pairing code, is the part that cannot be changed after the first code is printed, and should get the hardest reading. Before the first store submission, not before v1.0.
-- **Two timing defaults**, neither measured: the coincidence window and the issue hold. Rig work.
+- **Two timing defaults**, neither measured: the coincidence window and the issue hold. The window's floor must be measured per nominator class, not pooled — see [Annex B8](ppcp-core.md#annex-b--open-issues). Rig work.
 - **The rig itself.** `frame_start_to_exposure_offset_ns` and `readout_ns` are `assumed` on every device until it exists; provenance now makes that visible rather than silent.
-- **The synthetic peer simulator.** Four of the eight silent-failure tests are untestable without a peer that declares something the reference implementation would not.
+- **The synthetic peer simulator.** Four of the seven silent-failure tests are untestable without a peer that declares something the reference implementation would not.
 
 ## Two things that are easy to miss
 
 **The transport must supply two independently flow-controlled channels.** Not one connection with interleaving — two. A 25 MB capture in flight on a single stream head-of-line blocks the next shot's event. This is expensive to retrofit and invisible in every sequence diagram, because both channels are drawn as one lifeline. [`CORE` §3.1](ppcp-core.md#31-why-two-channels-is-not-negotiable)
 
-**Four of the eight silent-failure tests pass by accident when an implementation is tested only against itself.** Host-side declaration, the zero-host path, comprehension-versus-origination and timing-constant provenance all require a synthetic peer that declares something the reference implementation would not. Building that simulator early is what makes them testable at all. [`CONF` §2c](ppcp-conformance.md#2-required-test-infrastructure)
+**Four of the seven silent-failure tests pass by accident when an implementation is tested only against itself.** Host-side declaration, the zero-host path, comprehension-versus-origination and timing-constant provenance all require a synthetic peer that declares something the reference implementation would not. Building that simulator early is what makes them testable at all. [`CONF` §2c](ppcp-conformance.md#2-required-test-infrastructure)
 
 ## Changing this specification
 
