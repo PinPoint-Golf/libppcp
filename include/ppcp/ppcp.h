@@ -21,10 +21,11 @@
  *   ppcp/rv.h        L12 — the pairing code, key derivation, identities, resolver
  *   ppcp/model.h     L4 — the entity vocabulary of CORE §5, with validation
  *   ppcp/message.h   L5 — the forty-five messages of MSG §11 and the §10 codes
+ *   ppcp/peer.h      L6 — the sans-I/O peer engine and the ENC §2.1 link binder
  *
  * WHAT IS DECLARED BUT NOT YET BUILT:
  *
- *   ppcp/planned.h   the peer engine (L6), captures and transfer (L7), the
+ *   ppcp/planned.h   captures and transfer (L7), the
  *                    bundle reader and writer (L8), the sync estimator (L9),
  *                    detect/mint/arbitrate (L10) and annotation supersession
  *                    (L11).
@@ -49,6 +50,7 @@
 #include "ppcp/rv.h"
 #include "ppcp/model.h"
 #include "ppcp/message.h"
+#include "ppcp/peer.h"
 #include "ppcp/planned.h"
 
 #endif /* PPCP_PPCP_H */

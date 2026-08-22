@@ -24,98 +24,12 @@
 #ifndef PPCP_PLANNED_H
 #define PPCP_PLANNED_H
 
-#include "ppcp/model.h"
-#include "ppcp/message.h"
+#include "ppcp/peer.h"
 #include "ppcp/rv.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ======================================================================
- * L6 — the peer engine (CORE §2.2.2, §7, §10; MSG §3–5)
- * ====================================================================== */
-
-typedef struct ppcp_peer ppcp_peer;   /* L6 — the sans-I/O state machine */
-
-/* L6 — not yet implemented.  Everything the engine wants from the embedding,
- * supplied as callbacks so that no threshold and no I/O lives in the library.
- *
- * ⚠ `ingest_policy` is a callback and not a number.  I14 forbids a frame-rate,
- * resolution, quality or confidence threshold anywhere in the model, and
- * PinPointStudio's 120 fps floor lives in PinPointStudio (plan H2, CT-I14). */
-typedef struct ppcp_peer_config {
-    ppcp_role   role;
-    ppcp_clock  clock;
-    const char *peer_id;
-    const char *const *profiles;   /* declared profiles; MUST include "core" */
-    size_t      profile_count;
-
-    /* L6 — the embedding's acceptance decision for a counterpart's declaration. */
-    bool (*ingest_policy)(void *ctx, const ppcp_peer_desc *counterpart);
-    /* L9 — thermal, storage and battery for `heartbeat`. */
-    ppcp_result (*health)(void *ctx, ppcp_readiness *out);
-    void       *ctx;
-} ppcp_peer_config;
-
-/* L6 — not yet implemented.  The engine is constructed into caller-owned
- * storage; ppcp_peer_sizeof() is how much.  Nothing in this library
- * allocates. */
-PPCP_API size_t      ppcp_peer_sizeof(void);
-PPCP_API ppcp_result ppcp_peer_new(void *storage, size_t storage_len,
-                                   const ppcp_peer_config *cfg, ppcp_peer **out);
-PPCP_API void        ppcp_peer_free(ppcp_peer *p);
-
-/* L6 — not yet implemented.  Bytes in, on the channel they arrived on; ENC 2c
- * makes the header-matches-stream check this function's job. */
-PPCP_API ppcp_result ppcp_peer_feed(ppcp_peer *p, uint8_t channel,
-                                    const uint8_t *bytes, size_t len);
-/* L6 — not yet implemented.  Bytes out, per channel.  The embedding writes
- * them to whatever it has; the library never holds a socket. */
-PPCP_API ppcp_result ppcp_peer_drain(ppcp_peer *p, uint8_t channel,
-                                     uint8_t *out, size_t cap, size_t *out_len);
-
-typedef enum ppcp_event_kind {
-    PPCP_EVENT_NONE = 0,
-    PPCP_EVENT_HELLO,            /* L6 */
-    PPCP_EVENT_DECLARE,          /* L6 */
-    PPCP_EVENT_SESSION_STATE,    /* L6 */
-    PPCP_EVENT_STREAM_OPEN,      /* L6 */
-    PPCP_EVENT_STREAM_CLOSE,     /* L6 */
-    PPCP_EVENT_READINESS,        /* L6 */
-    PPCP_EVENT_CANDIDATE,        /* L10 */
-    PPCP_EVENT_SHOT,             /* L10 */
-    PPCP_EVENT_CAPTURE,          /* L7 */
-    PPCP_EVENT_PAYLOAD,          /* L7 */
-    PPCP_EVENT_RELATION_UPDATE,  /* L9 */
-    PPCP_EVENT_ANNOTATION,       /* L11 */
-    PPCP_EVENT_ERROR             /* L5 */
-} ppcp_event_kind;
-
-typedef struct ppcp_event {
-    ppcp_event_kind kind;
-    const void     *data;      /* the entity for this kind; borrowed, not owned */
-    ppcp_result     status;
-} ppcp_event;
-
-/* L6 — not yet implemented.  Drains one event; PPCP_ERR_NOT_FOUND when the
- * queue is empty. */
-PPCP_API ppcp_result ppcp_peer_next_event(ppcp_peer *p, ppcp_event *out);
-
-/* L6 — not yet implemented.  MSG §3: `declare` is a complete snapshot by
- * generation, never a delta. */
-PPCP_API ppcp_result ppcp_peer_declare(ppcp_peer *p, const ppcp_peer_desc *self);
-/* L6 — not yet implemented.  CORE §7.2 session lifecycle. */
-PPCP_API ppcp_result ppcp_peer_session_open(ppcp_peer *p, const ppcp_session *s);
-PPCP_API ppcp_result ppcp_peer_session_close(ppcp_peer *p);
-/* L6 — not yet implemented.  CORE §7.3; either peer may open or close a Stream. */
-PPCP_API ppcp_result ppcp_peer_stream_open(ppcp_peer *p, const ppcp_stream *s);
-PPCP_API ppcp_result ppcp_peer_stream_close(ppcp_peer *p, const char *stream_id);
-/* L6 — not yet implemented.  CORE §7.3 arm/disarm and readiness.  A hostless
- * peer records neither (CORE 7.3b). */
-PPCP_API ppcp_result ppcp_peer_arm(ppcp_peer *p);
-PPCP_API ppcp_result ppcp_peer_disarm(ppcp_peer *p);
-PPCP_API ppcp_result ppcp_peer_readiness(ppcp_peer *p, const ppcp_readiness *r);
 
 /* ======================================================================
  * L7 — captures and bulk transfer (CORE §5.11.1–2, §5.14; MSG §8; ENC §6)
