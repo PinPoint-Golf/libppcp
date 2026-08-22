@@ -83,6 +83,8 @@ For discovery the constraint is the opposite. Making the host the browser means 
 
 The cost is that a peer supporting both paths implements both a listener and a connector. That is accepted, and it is why only the code path is required.
 
+- **(2d)** Two things follow the dialling direction rather than the peer's role, and both differ between the paths: which peer is the TLS client ([§5.2g](#52-tls-profile)), and which peer sends `hello` rather than `hello_accept`. On the code path the device dials, so the device is the initiator and the **host** states its support window in `hello_accept.min_version` — which is the right way round for the old-application/new-host case. On the discovery path it is reversed. Neither `PPCP-CORE` §10.1 nor this document assumes a direction; both are written in terms of initiator and responder for that reason.
+
 ---
 
 ## 3. RV-1 — Service discovery
@@ -252,7 +254,8 @@ The TLS client sends an identity so the server can select the right key.
 0x01 || sid          version byte, then the 16-byte session id
 ```
 
-- **(5.3b) MUST** A server that does not hold a pairing for the offered identity aborts the handshake. It MUST NOT reveal, by timing or by a distinct alert, whether the identity was known.
+- **(5.3b) MUST** A server that does not hold a pairing for the offered identity aborts the handshake, with the **same alert** it would send for a known identity and a wrong key. Failing uniformly costs nothing and is required.
+- **(5.3b1) SHOULD** The two cases are also indistinguishable in **timing**. This is harder — a wrong key normally fails later, at Finished verification, than an unknown identity — and the usual technique is to proceed with a dummy key so both paths run to the same point. It is a SHOULD rather than a MUST because `sid` is 128 bits of randomness from a pairing code, so an attacker cannot produce an identity to probe with, and the oracle has almost nothing to reveal.
 - **(5.3c) MUST** A client offering a persisted pairing ([§7.4](#74-persistent-pairings)) uses the `sid` of the session that pairing was established for.
 
 The identity is deliberately not a peer identifier. It is visible in the clear in the `ClientHello`, so putting a stable peer identity there would undo [§3.4](#34-resolvable-identifiers) at the first connection.
@@ -383,23 +386,27 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 - **(9c) MUST** It reproduces the test vectors of [§10](#10-test-vectors) exactly.
 - **(9d)** Service discovery ([§3](#3-rv-1--service-discovery)) and network join ([§6](#6-rv-4--network-join)) are independently optional, and an implementation states which it provides.
 
-Required tests, to be folded into [`PPCP-CONF`](ppcp-conformance.md) once this document is agreed:
+Required tests, to be folded into [`PPCP-CONF`](ppcp-conformance.md) once this document is agreed. **Method** uses the vocabulary of [`PPCP-CONF` §1](ppcp-conformance.md#1-claiming-conformance), with one addition: **review** means the requirement is not observable from outside the implementation and is verified by reading the code.
 
-| Test | Asserts |
-|---|---|
-| **RT-1** | The derivation vectors of [§10.1](#101-key-derivation) reproduce byte-for-byte. |
-| **RT-2** | The pairing code of [§10.3](#103-pairing-code) encodes and decodes byte-for-byte, and `v` is the first key. |
-| **RT-3** | A `v` the implementation does not know produces a *version* report, not a generic failure (4.2b). |
-| **RT-4** | A handshake negotiating `psk_ke`, TLS 1.2, or no encryption is refused (5.2a, 5.2b, 5.2f). |
-| **RT-5** | A second handshake with a `mu: 1` code is refused (7.3a). |
-| **RT-6** | An expired code is reported as expired, with no connection attempted (4.4a). |
-| **RT-7** | A TXT record contains no `Peer.id`, no device name and no session count; the instance name carries no persistent value (3.3b, 3.2b). |
-| **RT-8** | `rid` changes across re-registration and resolves under the correct `K_id` only (3.4a, 3.4b). |
-| **RT-9** | A diagnostic export produced immediately after a pairing contains no secret and no payload (7.2b). |
-| **RT-10** | `session_resume` is refused on a connection that did not complete the handshake (7.5b). |
-| **RT-11** | Rejection of an unknown identity and of a wrong key are indistinguishable in content and timing (7.7c). |
+| Test | Method | Asserts |
+|---|---|---|
+| **RT-1** | static | The derivation vectors of [§10.1](#101-key-derivation) reproduce byte-for-byte. |
+| **RT-2** | static | The pairing code of [§10.3](#103-pairing-code) encodes and decodes byte-for-byte, and `v` is the first key. |
+| **RT-3** | injected | A `v` the implementation does not know produces a *version* report, not a generic failure (4.2b). |
+| **RT-4** | injected | A handshake negotiating `psk_ke`, TLS 1.2, or no encryption is refused (5.2a, 5.2b, 5.2f). |
+| **RT-5** | paired | A second handshake with a `mu: 1` code is refused (7.3a). |
+| **RT-6** | injected | An expired code is reported as expired, with no connection attempted (4.4a). |
+| **RT-7** | paired | A TXT record contains no `Peer.id`, no device name and no session count; the instance name carries no persistent value (3.3b, 3.2b). |
+| **RT-8** | paired | `rid` changes across re-registration and resolves under the correct `K_id` only (3.4a, 3.4b). |
+| **RT-9** | paired | A diagnostic export produced immediately after a pairing contains no secret and no payload (7.2b, 4.4c). |
+| **RT-10** | injected | `session_resume` is refused on a connection that did not complete the handshake (7.5b). |
+| **RT-11** | injected | Rejection of an unknown identity and of a wrong key are indistinguishable in content, and in timing where [5.3b1](#53-psk-identity) is met (7.7c). |
+| **RT-12** | **review** | Secrets come from a platform CSPRNG at full width, are held in protected storage where one exists, and are erased on revocation or session close (7.2a, 7.2c, 7.2d). |
+| **RT-13** | **review** | A network join obtains the user's consent for the specific network and does not leave the device attached to a network the user did not choose to keep (6a, 6b). |
 
-RT-9 and RT-11 are the two most likely to be skipped and the two least likely to be caught in use.
+**Two of these cannot be tested from outside**, and that is worth stating rather than leaving to be discovered. Entropy quality and storage protection produce no observable difference on the wire — a peer using a predictable secret completes exactly the same handshake as one using a good secret — so **RT-12 is the requirement on which the whole model rests and the one no test can catch.** It has to be read in the code, and it should be read again whenever the key-generation path is touched.
+
+RT-9 and RT-11 are the two most likely to be skipped among those that *can* be tested, and the two least likely to surface in use.
 
 ---
 
