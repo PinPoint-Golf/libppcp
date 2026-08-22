@@ -464,3 +464,20 @@ The consequence is stated rather than softened. **Every session on a plain-PSK l
 `PPCP-RV` is **Draft 7 with no open findings.** Both teams approve; §4, §6 and §7 without reservation; the mechanism in §5 rests on a measurement taken on the target hardware.
 
 What remains is not drafting: **B13**, whether the absence of forward secrecy should be user-visible, which is the implementation teams' product question and which 5.4k makes answerable either way; and **B2**, per-peer re-keying for multi-use codes, which both publishers avoid by emitting `mu: 1` only.
+
+
+---
+
+# Fifth pass — Draft 6, and the close
+
+**Approved, no blocking findings.** One clarification, E1, asked how a peer determines that a network is one it does not control — a question that existed only to scope 5.4j. The owner's decision deleted that clause, so **E1 is overtaken rather than answered**: no clause now turns on the distinction.
+
+The reviewer's own framing of what they wanted is worth keeping, because it is the standard the whole cycle was held to:
+
+> What Draft 6 has done correctly is make either answer cheap. The clause is a SHOULD with an explicit escape, its removal is described, and §5.4.3 no longer names an exception that nothing acts on. **That was the outcome I actually wanted, rather than a particular answer.**
+
+## Close
+
+**`PPCP-RV` 1.0 is approved as a specification and approved for implementation**, at revision 8. Five review passes, every vector independently recomputed five times, and §4 — the part that cannot be corrected after a code is printed — unchanged since Draft 3.
+
+Two items remain and neither is drafting: **B13**, whether the absence of forward secrecy should be user-visible, which 5.4k makes answerable either way; and **B2**, per-peer re-keying for multi-use codes, which both publishers avoid by emitting `mu: 1` only.

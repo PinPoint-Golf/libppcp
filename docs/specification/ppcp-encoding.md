@@ -208,6 +208,7 @@ A decoder MUST enforce these before allocating.
 | Text string | 64 KiB | `malformed` |
 | Byte string | equal to the frame limit | `malformed` |
 | Thumbnail bytes | 64 KiB | `malformed` |
+| `Annotation.body` | 8 KiB | `malformed` |
 | CBOR nesting depth | 16 | `malformed` |
 | Array or map elements | 2²⁰ | `malformed` |
 

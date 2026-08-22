@@ -5,13 +5,14 @@
 | | |
 |---|---|
 | Document | `PPCP-RV` |
-| Version | **1.0, Draft 7** |
+| Version | **1.0** |
 | Payload version | `ppcp1` |
-| Status | **Draft — no open findings.** The on-device measurement is in and unfavourable ([§5.4.1](#541-what-was-measured)); [§5.2](#52-tls-profile) stands as written, forward secrecy is best-effort, and the sensitivity judgement covers candidate audio ([§5.4.3](#543-the-decision)). |
+| Status | **APPROVED for implementation**, 22 August 2026. Both teams approve; no open findings. |
 | Date | 22 August 2026 |
 | Versioned | Independently of PPCP. Same repository. |
 | Relates to | [`PPCP-CORE`](ppcp-core.md) §3 (transport contract), §5.2.1 (peer identity), §12 (security considerations) |
 | Reviews | [`reviews/`](reviews/) — first-pass reviews from PinPointCapture and PinPointStudio, dispositioned in [`rv-review-disposition-2026-08-22.md`](rv-review-disposition-2026-08-22.md) |
+| Revision | 8 — final |
 | Conformance | **Implementing `PPCP-RV` is OPTIONAL.** Implementing PPCP is not. |
 
 ---
@@ -736,3 +737,9 @@ The last open item, and it was a decision rather than a finding.
 **5.4k stays.** It was asked for on its own merits — a per-connection outcome that nothing reported left [5.4i](#543-the-decision) unable to apply a policy and a peer unable to tell a user the whole truth — and [B13](#annex-b--open-issues) still needs it.
 
 `PPCP-RV` has no open findings. What remains is [B13](#annex-b--open-issues), a product question, and [B2](#annex-b--open-issues), per-peer re-keying, which both publishers avoid by emitting `mu: 1` only.
+
+## Revision 8 — final
+
+**Approved by both teams.** The fifth-pass review raised one clarification, E1, asking how a peer determines that a network is one it does not control. That question existed only to scope 5.4j, which [Draft 7](#draft-7) deleted, so **E1 is overtaken rather than answered** — there is no longer a clause whose behaviour turns on the distinction.
+
+The document has no open findings. Two items remain and neither is drafting: [B13](#annex-b--open-issues), whether the absence of forward secrecy should be user-visible, which is the implementation teams' product question and which [5.4k](#543-the-decision) makes answerable either way; and [B2](#annex-b--open-issues), per-peer re-keying for multi-use codes, which both publishers avoid by emitting `mu: 1` only.

@@ -637,3 +637,25 @@ The host review's closing observation: **C1 is the fourth time a new MUST added 
 **Accepted as a required check.** [`PPCP-CONF` §5b2](ppcp-conformance.md#5-interoperability) makes an adjacent-MUST sweep mandatory before `ppcp/1.0` freezes.
 
 **Running it immediately found a fifth instance**, which no reviewer had raised: **I8** said a Candidate's evidence is never discarded, while [5.12.1c](ppcp-core.md#5121-candidate-evidence) contemplates an *evicted* window and [5.12.1b](ppcp-core.md#5121-candidate-evidence) makes retention peer policy. I8 and 5.12c now separate the evidence **record**, which is never discarded, from the evidence **payload**, which may be shed with its absence asserted. That is the check earning its place on the first run.
+
+
+---
+
+# Round 6 — revision 8, and the close
+
+The host team approved revision 8 with five findings. **Two of them were edits from the previous round that never reached the file** — `PPCP-CONF` §5b2, and the rewrites of `CT-I37` and `CT-I38` — which a chained shell command had swallowed. They are written now, and the lesson is the obvious one: an edit is not made until it has been read back.
+
+| | Finding | Disposition |
+|---|---|---|
+| **D1** | **The fix for C1 over-corrected.** Exit 4 read *"the protocol **or the peer's own declared retention policy** permits the owner to shed it"* — against a requirement reading *nothing unconfirmed is evicted, **regardless of retention policy***. A device could declare a policy, shed shot payload a host had not received, and be conformant. **The hole G2 closed was open again, one revision later, through the clause that closed it.** | **Accepted.** Licence deleted, enumeration kept, [5.14g1](ppcp-core.md#514-capture) added. |
+| **D2** | The adjacent-MUST sweep was accepted and the clause was never written. | **Written** — [`PPCP-CONF` §5b2](ppcp-conformance.md#5-interoperability). |
+| **D3** | `CT-I38` exercised one of four exits, so the contradiction that produced C1 would still have passed; `CT-I37` still tested the *lower*-revision rule when the **equal**-revision case was the whole of C2. | **Both rewritten.** |
+| **D4** | The `body` cap said 8 KiB in three places and **64 KiB in the field table**, which is what a validator is built from. | **Fixed**, and added to [`PPCP-ENC` §8](ppcp-encoding.md#8-limits). |
+| **D5** | `stream_id`'s presence rule turned on whether `body` was "interpreted in image coordinates" — and `body` is opaque, so no peer or test could tell. [§11.1](ppcp-core.md#111-the-rule-for-writing-an-invariant)'s own pattern, in a clause added the round before. | **Accepted.** [5.18j](ppcp-core.md#518-annotation) derives presence from `kind`. |
+| §2 | A bundle's `capture_committed` may arrive against a **closed** Session. | **Accepted.** [5.14h1](ppcp-core.md#514-capture) — releasing storage stays legitimate after a Session closes. |
+
+## Close
+
+**`PPCP` 1.0 is approved as a specification and approved for implementation**, at revision 9. Seven review rounds, both first-party teams, every finding dispositioned in this document.
+
+Approved is still not the same as **stable**: `ppcp/1.0` freezes when [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings are demonstrated, and two required checks run before it — the [profile-boundary audit](ppcp-conformance.md#5-interoperability) and the [adjacent-MUST sweep](ppcp-conformance.md#5-interoperability). [Annex B](ppcp-core.md#annex-b--open-issues) lists what may still move; none of it blocks implementation.

@@ -8,7 +8,7 @@
 | Version | **1.0** |
 | Wire version | `ppcp/1.0` |
 | Status | **APPROVED for implementation**, 22 August 2026 |
-| Revision | 8 — revision 7 reviewed by both teams |
+| Revision | 9 — final |
 | Date | 22 August 2026 |
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
@@ -30,10 +30,12 @@
 | 4 | Draft 3 | 3 host + 2 consistency, 2 mobile | **Approved** |
 | 5 | Revision 5 | 6 host, 5 mobile | Revision 6 |
 | — | Requirements traceability audit | 6 findings | Revision 7 |
+| 6 | Revision 7 | 3 host + 2 mobile | Revision 8 |
+| 7 | Revision 8 | 5 host | **Revision 9 — final** |
 
 **Approved is not the same as stable.** Implementation proceeds against this text. `ppcp/1.0` is declared **stable** — and this document frozen against anything but errata — when the conformance suite of [`PPCP-CONF`](ppcp-conformance.md) passes on both implementations and the interoperability pairings of [`PPCP-CONF` §5](ppcp-conformance.md#5-interoperability) are demonstrated. [Annex B](#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
 
-[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval. It is at Draft 5 with its own review cycle, and its §5 is still open.
+[`PPCP-RV`](ppcp-rv.md) is versioned and approved separately. It is now **approved for implementation** with no open findings.
 
 **Where this document and any earlier draft disagree, this document wins.** `docs/specification/` is the single authority on PPCP, and the specification is self-contained: the rationale motivating each decision is restated here rather than referenced out.
 
@@ -737,9 +739,11 @@ The **realisation** of a Shot or a Candidate on one Stream.
   | 1 | `transfer` is `confirmed` | The receiver asserted it holds the payload durably |
   | 2 | `completeness` is `absent` | There is no payload to evict, and no digest for `capture_committed` to name |
   | 3 | The receiver answered `payload_abort` / `already_present` ([`PPCP-MSG` §8.3c](ppcp-messages.md#83-the-payload_-family)) | It demonstrably holds the payload durably; that answer is equivalent to a commit for this purpose |
-  | 4 | The protocol or the peer's own declared retention policy permits the owner to shed it — [5.11j](#5112-preview-streams) for preview, [5.12.1b](#5121-candidate-evidence) for candidate evidence, or a payload the owner chose to withhold | It was never going to be sent, so no receiver will ever confirm it. Candidate evidence matters most here: its count is not bounded by anything the user does ([§13c](#13-privacy-considerations)), so a rule forbidding its eviction would retain the material the privacy section is about, indefinitely |
+  | 4 | **The protocol** permits the owner to shed it — [5.11j](#5112-preview-streams) for a preview segment, [5.12.1b](#5121-candidate-evidence) for candidate evidence, or payload withheld under a rule in this specification set that permits withholding | It was never going to be sent, so no receiver will ever confirm it. Candidate evidence matters most here: its count is not bounded by anything the user does ([§13c](#13-privacy-considerations)), so a rule forbidding its eviction would retain indefinitely the material the privacy section is about |
 
+- **(5.14g1) MUST NOT** A peer's own retention policy extend that list. **Shot-anchored payload is never sheddable by policy** while it holds payload no receiver has confirmed. Every exit above is a case where *the protocol itself* says no receiver will ever confirm it; a policy exit would be the licence the requirement this invariant serves explicitly forbids — *nothing unconfirmed is evicted, **regardless of retention policy***. A peer under storage pressure refuses to arm ([§9](#9-offline-sessions-and-bundles)) rather than dropping swings a consumer has not received.
 - **(5.14h) MUST** A receiver that durably commits a Capture obtained **from a bundle** sends `capture_committed` for it on its next connection with the owning peer. Identity is sufficient without anything new: I34 makes it `Capture.id` scoped by `Session.id` and the owning `Peer.id`, which is exactly what lets a consumer name a Capture from a session it received as a file.
+- **(5.14h1) MUST** A `capture_committed` naming a Session whose `state` is `closed` is **accepted**, not answered `unknown_session`. It may arrive days after the bundle was imported, and releasing storage is the one operation that stays legitimate after a Session closes.
 - **(5.14i)** In a session with **no receiver at all** — hostless, and nothing exported yet — no Capture can be `confirmed` and I38 therefore constrains nothing. Retention there is the peer's own policy, and a peer MUST NOT read I38 as protection it does not have in that case.
 
 5.14f and 5.14g close a hole that made a stated obligation unsatisfiable. A capture peer is required to keep an independent store with per-shot sync state — *local, sent, confirmed* — and to evict nothing unconfirmed. But `payload_ack` acknowledges a **chunk arriving**, `payload_end` travels from sender to receiver, and until revision 7 nothing came back at all. The third state was unreachable, so "evict nothing unconfirmed" was satisfiable only by evicting nothing ever: safe, and unbounded across a season of sessions.
@@ -830,13 +834,13 @@ A **user artefact**: something a person drew, wrote or marked, or a coarse navig
 | `id` | `Id` | 1 | Minted by the authoring peer, unique within the Session. |
 | `session_id` | `Id` | 1 | |
 | `shot_id` | `Id` | 1 | The Shot this annotation is about. |
-| `stream_id` | `Id` | 0..1 | The Stream whose frame it is drawn on. **Present for any annotation whose `body` is interpreted in image coordinates.** |
+| `stream_id` | `Id` | 0..1 | The Stream whose frame it is drawn on. Presence is determined by `kind` — see 5.18j. |
 | `at` | `Instant` | 1 | The frame instant it anchors to. Timebase per 5.18g. |
 | `author_peer_id` | `Id` | 1 | Who authored it. |
 | `provenance` | `user` \| `device_advisory` | 1 | See 5.18b. |
 | `kind` | `Kind` | 1 | Open registry — `line`, `plane`, `text`, `nav_anchor`, … |
 | `format` | `Kind` | 1 | How to interpret `body`. |
-| `body` | bytes | 1 | Opaque to the protocol, **at most 64 KiB**. |
+| `body` | bytes | 1 | Opaque to the protocol, **at most 8 KiB** (5.18f). |
 | `created_at` | `Instant` | 1 | |
 | `revision` | uint | 1 | Increments on edit. A higher revision for the same `id` supersedes. |
 | `deleted` | `bool` | 0..1 | A revision may retract rather than replace. |
@@ -848,6 +852,9 @@ A **user artefact**: something a person drew, wrote or marked, or a coarse navig
 - **(5.18e) MUST** Supersession is by `id`, then `revision`, then `author_peer_id`. A peer holding a revision and receiving a **higher** one replaces; receiving a **lower** one ignores it; receiving an **equal** one replaces **if and only if** the incoming `author_peer_id` sorts higher bytewise. The comparison is total and identical at both ends, so two peers editing concurrently converge on the same annotation without merging and without either needing to know who acted first (I9).
 - **(5.18g) MUST** Where `stream_id` is present, `at` is expressed in **that Stream's timebase** and names a frame that Stream contains. Where it is absent the annotation is not view-specific — a text note, a `nav_anchor` — and `at` is in `Session.timebase_ref`.
 - **(5.18h) MUST NOT** A consumer render a view-specific annotation on any Stream other than the one it names.
+- **(5.18j) MUST** The `kind` registry marks each value **view-specific** or not. `line` and `plane` are view-specific; `text` and `nav_anchor` are not. **An annotation of a view-specific kind carries `stream_id`; one of a non-view-specific kind does not.** A consumer that does not recognise a `kind` treats it as view-specific **if `stream_id` is present** — the conservative default, since it then renders it only on the Stream named, or not at all.
+
+5.18j replaces a presence rule that could not be checked. It first read *"present for any annotation whose `body` is interpreted in image coordinates"* — but `body` is opaque and `format` is an open registry, so no peer and no test could determine whether a given annotation was view-specific, and 5.18h had nothing to bind to. That is exactly the pattern [§11.1](#111-the-rule-for-writing-an-invariant) names: a rule constraining a **judgement** rather than the **shape** of an output. Deriving presence from `kind`, which is on the wire, makes it statically checkable and gives an unrecognised vendor kind a defined and conservative behaviour.
 - **(5.18f) MUST NOT** `body` exceed **8 KiB**. A finger-drawn plane is a few hundred bytes and a text note less; anything approaching the cap is a different feature, and `annotation` travels on the **control** channel, where I30 already keeps far smaller things off.
 - **(5.18i) SHOULD** A peer **coalesces** rapid revisions and sends the latest rather than every intermediate. Dragging a line produces a continuous stream of edits, and each revision resends the whole `body`; the channel it lands on is the one carrying shot events.
 
@@ -1476,3 +1483,16 @@ Both teams reviewed revision 7. One finding was a direct contradiction between t
 | PPS §2.2 | `viewpoint.confidence` had no meaning under `method: declared`. | **Accepted.** Present if and only if `classified`. |
 | PPS §6 | **C1 is the fourth instance of a new MUST contradicting one in an adjacent section.** | **Accepted as a process change** — [`PPCP-CONF` §5b2](ppcp-conformance.md#5-interoperability) makes the adjacent-MUST sweep a required check before `ppcp/1.0` freezes. |
 | — | **Found by running that sweep immediately: a fifth instance.** I8 said a Candidate's evidence is never discarded; [5.12.1c](#5121-candidate-evidence) contemplates an *evicted* window and [5.12.1b](#5121-candidate-evidence) makes retention peer policy. | **Fixed.** I8 and [5.12c](#512-candidate) now separate the evidence **record**, which is never discarded, from the evidence **payload**, which may be shed with its absence asserted. |
+
+## What changed in revision 9
+
+The final round. Five findings, all seams rather than shapes, and two of them were edits from the previous round that never reached the file.
+
+| # | Finding | Disposition |
+|---|---|---|
+| PPS-D1 | **Exit 4 reintroduced the phrase the requirement forbids.** Revision 8's fix for C1 read *"the protocol **or the peer's own declared retention policy** permits the owner to shed it"* — a general licence, against a requirement that says *nothing unconfirmed is evicted, **regardless of retention policy***. A device under storage pressure could declare a policy, shed shot payload, and be conformant. The hole G2 closed was open again, one revision later, through the clause that closed it. | **Accepted.** The licence is deleted and the enumeration kept; [5.14g1](#514-capture) forbids a policy extending it. Every remaining exit is a case where *the protocol itself* says no receiver will ever confirm the payload. |
+| PPS-D2 | The adjacent-MUST sweep was accepted as a process change and **the clause was never written** — the changelog cross-referenced a `PPCP-CONF` §5b2 that did not exist. | **Written.** [`PPCP-CONF` §5b2](ppcp-conformance.md#5-interoperability). |
+| PPS-D3 | **`CT-I37` and `CT-I38` were not updated for the fixes they test.** CT-I38 exercised only the first of four exits, so the contradiction that produced C1 would still have passed; CT-I37 still tested the *lower*-revision rule when the **equal**-revision case was the whole of C2. | **Both rewritten.** Two more instances of the failure this round accepted a check against — inside the round that accepted it. |
+| PPS-D4 | The `body` cap contradicted itself: three places said 8 KiB and **the field table still said 64 KiB**, which is what an implementer builds a validator from. | **Fixed**, and the limit added to [`PPCP-ENC` §8](ppcp-encoding.md#8-limits), where a decoder enforces it before allocating. |
+| PPS-D5 | **`stream_id`'s presence rule could not be checked.** It turned on whether `body` was "interpreted in image coordinates", and `body` is opaque — so no peer and no test could tell, and 5.18h had nothing to bind to. [§11.1](#111-the-rule-for-writing-an-invariant)'s own pattern, in a clause added the round before. | **Accepted.** [5.18j](#518-annotation) derives presence from `kind`, which is on the wire, and gives an unrecognised kind a conservative default. |
+| PPS §2 | A `capture_committed` for a bundle may arrive against a **closed** Session and be refused, achieving nothing. | **Accepted.** [5.14h1](#514-capture): it is accepted, because releasing storage is the one operation that stays legitimate after a Session closes. |
