@@ -1,0 +1,244 @@
+/* SPDX-License-Identifier: MIT
+ * Copyright (C) 2026 Mark Liversedge
+ *
+ * rv.h — PPCP-RV: the pairing-code payload, the key derivation, the resolvable
+ * identifiers and the PSK identity.
+ *
+ * What is here (plan L12): RV §3.4, §4, §5.1, §5.3 and the vectors of §10.
+ * What is deliberately NOT here, and never will be (plan A7, A8):
+ *
+ *   - TLS.  The library produces K_tls and the PSK identity; the applications
+ *     hold the socket and the TLS stack.  RV 5.2i says compliance on the device
+ *     is demonstrated by observed handshake, not by an API assertion.
+ *   - Discovery.  The library computes rn/rid and resolves them; the app
+ *     registers and browses `_ppcp._tcp`.
+ *   - Storage, and a random number generator.  Every random value below is a
+ *     PARAMETER.  RV 7.2a requires secrets to come from a platform CSPRNG at
+ *     full width, and a library that called rand() would be the single point at
+ *     which the whole model fails silently (RT-12 is a review method for
+ *     exactly this reason).
+ */
+#ifndef PPCP_RV_H
+#define PPCP_RV_H
+
+#include "ppcp/hash.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ---------------------------------------------------------- base64url (4.1a) */
+
+/* Unpadded, per RV 4.1a. */
+PPCP_API ppcp_result ppcp_base64url_encode(const uint8_t *in, size_t in_len,
+                                           char *out, size_t cap, size_t *out_len);
+PPCP_API ppcp_result ppcp_base64url_decode(const char *in, size_t in_len,
+                                           uint8_t *out, size_t cap, size_t *out_len);
+
+/* -------------------------------------------------------- key derivation (5.1) */
+
+#define PPCP_RV_KEY_BYTES 32
+#define PPCP_RV_SID_BYTES 16
+#define PPCP_RV_PSK_MIN   16
+#define PPCP_RV_PSK_MAX   32
+
+typedef struct ppcp_rv_keys {
+    uint8_t prk[PPCP_RV_KEY_BYTES];    /* 5.1c: this is what a peer persists */
+    uint8_t k_tls[PPCP_RV_KEY_BYTES];  /* 5.1a: the TLS external PSK, and nothing else */
+    uint8_t k_id[PPCP_RV_KEY_BYTES];   /* 5.1b: the identifiers, and nothing else */
+} ppcp_rv_keys;
+
+/* PRK = HKDF-Extract(salt = sid, IKM = psk); K_tls and K_id expand from it.
+ * The pairing secret is never used directly as a protocol key (RV §5.1) —
+ * domain separation is what lets an identifier be published in the clear on a
+ * multicast network without revealing anything about the handshake key. */
+PPCP_API ppcp_result ppcp_rv_derive(const uint8_t *sid, size_t sid_len,
+                                    const uint8_t *psk, size_t psk_len,
+                                    ppcp_rv_keys *out);
+
+/* 5.1c — a peer that persists a pairing persists PRK and derives from it,
+ * never the original psk.  7.4f additionally forbids persisting a PRK derived
+ * from a code whose `mu` exceeded 1; that is the embedding's decision and
+ * ppcp_rv_may_persist() below is the predicate for it. */
+PPCP_API ppcp_result ppcp_rv_derive_from_prk(const uint8_t prk[PPCP_RV_KEY_BYTES],
+                                             ppcp_rv_keys *out);
+
+/* --------------------------------------------- resolvable identifiers (3.4, 5.3) */
+
+#define PPCP_RV_RN_BYTES           8
+#define PPCP_RV_RID_BYTES          8
+#define PPCP_RV_PSK_IDENTITY_BYTES 17
+#define PPCP_RV_INSTANCE_NAME_MAX  14   /* "PPCP-" + 8 hex + NUL */
+
+/* 3.4a — regenerated on every service registration and at least every 15
+ * minutes thereafter. */
+#define PPCP_RV_RN_MAX_AGE_NS (900LL * 1000000000LL)
+
+/* rid = HMAC-SHA256(K_id, "ppcp1 rid" || rn)[0..7].
+ * `rn` is 8 bytes the CALLER obtained from a CSPRNG. */
+PPCP_API ppcp_result ppcp_rv_rid(const uint8_t k_id[PPCP_RV_KEY_BYTES],
+                                 const uint8_t rn[PPCP_RV_RN_BYTES],
+                                 uint8_t rid[PPCP_RV_RID_BYTES]);
+
+/* 3.2a — "PPCP-" followed by the first four bytes of rid in uppercase hex. */
+PPCP_API ppcp_result ppcp_rv_instance_name(const uint8_t rid[PPCP_RV_RID_BYTES],
+                                           char out[PPCP_RV_INSTANCE_NAME_MAX]);
+
+/* 5.3a — the 17 octets 0x01 || rn2 || HMAC-SHA256(K_id, "ppcp1 psk-id" || rn2)[0..7].
+ * `rn2` is 8 CSPRNG bytes the caller supplies, fresh per connection (5.3a), and
+ * nothing stable across connections appears in the result (5.3e).
+ *
+ * The identity is binary and need not be valid UTF-8 (5.3f): a peer MUST NOT
+ * transcode, validate as text, or truncate it. */
+PPCP_API ppcp_result ppcp_rv_psk_identity(const uint8_t k_id[PPCP_RV_KEY_BYTES],
+                                          const uint8_t rn2[PPCP_RV_RN_BYTES],
+                                          uint8_t identity[PPCP_RV_PSK_IDENTITY_BYTES]);
+
+PPCP_API ppcp_result ppcp_rv_psk_identity_parse(const uint8_t *identity, size_t len,
+                                                uint8_t rn2[PPCP_RV_RN_BYTES],
+                                                uint8_t tag[PPCP_RV_RID_BYTES]);
+
+/* ------------------------------------------------------------- the resolver */
+
+/* One held pairing: outstanding codes and persisted pairings alike (5.3b).
+ * `user` is whatever the embedding needs to find the pairing again — an index,
+ * a pointer, a row id.  The library stores nothing. */
+typedef struct ppcp_rv_pairing {
+    const uint8_t *k_id;   /* PPCP_RV_KEY_BYTES */
+    void          *user;
+} ppcp_rv_pairing;
+
+/* 3.4b — resolve a discovered advertisement.  Returns PPCP_ERR_NOT_FOUND when
+ * no held pairing matches, which 3.4c makes a refusal to connect. */
+PPCP_API ppcp_result ppcp_rv_resolve_rid(const ppcp_rv_pairing *pairings, size_t count,
+                                         const uint8_t rn[PPCP_RV_RN_BYTES],
+                                         const uint8_t rid[PPCP_RV_RID_BYTES],
+                                         size_t *out_index);
+
+/* 5.3b — resolve an offered PSK identity by recomputing the tag with each held
+ * K_id.  Every pairing is tried, with no early exit and a constant-time
+ * comparison, because 5.3c requires an unresolvable identity and a wrong key to
+ * fail uniformly and 5.3d asks for them to be indistinguishable in timing. */
+PPCP_API ppcp_result ppcp_rv_resolve_psk_identity(const ppcp_rv_pairing *pairings,
+                                                  size_t count,
+                                                  const uint8_t *identity, size_t len,
+                                                  size_t *out_index);
+
+/* -------------------------------------------------------- the payload (4.3) */
+
+#define PPCP_RV_MAX_ENDPOINTS 8
+#define PPCP_RV_DN_MAX        64    /* 4.3: at most 64 bytes; 4.4d: untrusted */
+#define PPCP_RV_MAX_PAYLOAD   1024  /* 4.5a guides under 400; this is the hard cap */
+#define PPCP_RV_MAX_URI       (5 + ((PPCP_RV_MAX_PAYLOAD + 2) / 3) * 4 + 1)
+
+typedef struct ppcp_rv_endpoint {
+    const char *h;      /* literal address or hostname; points into the payload buffer */
+    size_t      h_len;
+    uint16_t    p;      /* TCP port */
+} ppcp_rv_endpoint;
+
+/* RV §6.  `s` is the network name, `k` the passphrase (absent means open),
+ * `h` whether the network is hidden (default false). */
+typedef struct ppcp_rv_wifi {
+    const char *s;      size_t s_len;
+    bool        has_k;
+    const char *k;      size_t k_len;
+    bool        has_h;
+    bool        h;
+} ppcp_rv_wifi;
+
+typedef struct ppcp_rv_payload {
+    uint64_t         v;                 /* 4.2a: the first key, always */
+    bool             has_dn;
+    const char      *dn;   size_t dn_len;
+    ppcp_rv_endpoint ep[PPCP_RV_MAX_ENDPOINTS];
+    size_t           ep_count;          /* 1..n, most preferred first */
+    bool             has_mu;
+    uint64_t         mu;                /* default 1 */
+    bool             has_exp;
+    uint64_t         exp;               /* seconds since the Unix epoch */
+    uint8_t          psk[PPCP_RV_PSK_MAX];
+    size_t           psk_len;           /* 16 or 32 */
+    uint8_t          sid[PPCP_RV_SID_BYTES];
+    bool             has_wifi;
+    ppcp_rv_wifi     wifi;
+} ppcp_rv_payload;
+
+PPCP_API void ppcp_rv_payload_init(ppcp_rv_payload *p);
+PPCP_API ppcp_result ppcp_rv_payload_add_endpoint(ppcp_rv_payload *p, const char *host,
+                                                  size_t host_len, uint16_t port);
+PPCP_API ppcp_result ppcp_rv_payload_set_secret(ppcp_rv_payload *p,
+                                                const uint8_t *psk, size_t psk_len,
+                                                const uint8_t sid[PPCP_RV_SID_BYTES]);
+PPCP_API ppcp_result ppcp_rv_payload_validate(const ppcp_rv_payload *p);
+
+/* Deterministic CBOR, always (4.3a): a given pairing reproduces a byte-identical
+ * code.  `v` comes out first by construction, because every other top-level key
+ * is at least two characters (4.3b) and RFC 8949 §4.2.1 sorts by encoded
+ * length first. */
+PPCP_API ppcp_result ppcp_rv_payload_encode(const ppcp_rv_payload *p, uint8_t *out,
+                                            size_t cap, size_t *out_len);
+
+/* Strings in `out` point into `in`, which must outlive it.
+ *
+ * A `v` this library does not implement returns PPCP_ERR_VERSION_NEWER and
+ * fills in nothing else — 4.2b requires the user to be told the code needs a
+ * newer application rather than being shown a generic failure, and 4.2d forbids
+ * acting on any other field of such a payload. */
+PPCP_API ppcp_result ppcp_rv_payload_decode(const uint8_t *in, size_t in_len,
+                                            ppcp_rv_payload *out);
+
+/* `ppcp:<base64url(payload)>`, unpadded (4.1a).  The scheme does not change
+ * between payload versions (4.1b) and is never http(s) (4.1c). */
+PPCP_API ppcp_result ppcp_rv_uri_encode(const ppcp_rv_payload *p, char *out, size_t cap,
+                                        size_t *out_len);
+
+/* `scratch` receives the decoded CBOR and must outlive `out`. */
+PPCP_API ppcp_result ppcp_rv_uri_decode(const char *uri, size_t uri_len,
+                                        uint8_t *scratch, size_t scratch_cap,
+                                        ppcp_rv_payload *out);
+
+/* 4.3e — `sid` is the 16 raw bytes of a UUID and `Session.id` is its canonical
+ * lowercase text form.  Peers MUST NOT use any other textual encoding: two
+ * implementations choosing differently would duplicate every Capture in a
+ * re-imported session (CORE 8.5c). */
+#define PPCP_RV_SESSION_ID_CHARS 37   /* 36 + NUL */
+PPCP_API ppcp_result ppcp_rv_sid_to_session_id(const uint8_t sid[PPCP_RV_SID_BYTES],
+                                               char out[PPCP_RV_SESSION_ID_CHARS]);
+PPCP_API ppcp_result ppcp_rv_session_id_to_sid(const char *text, size_t len,
+                                               uint8_t sid[PPCP_RV_SID_BYTES]);
+
+/* ---------------------------------------------------------------- expiry */
+
+typedef enum ppcp_rv_clock_trust {
+    /* 4.4a — a peer whose wall clock it has reason to trust. */
+    PPCP_RV_CLOCK_TRUSTED = 0,
+    /* 4.4a1 — positive reason to distrust: never synchronised since boot, or
+     * reading earlier than the software's own build date. */
+    PPCP_RV_CLOCK_UNTRUSTED
+} ppcp_rv_clock_trust;
+
+typedef enum ppcp_rv_expiry {
+    PPCP_RV_EXPIRY_OK = 0,
+    PPCP_RV_EXPIRY_EXPIRED,           /* 4.4a: refuse, and report as expired */
+    PPCP_RV_EXPIRY_POSSIBLY_EXPIRED   /* 4.4a1: attempt anyway, report as possibly */
+} ppcp_rv_expiry;
+
+/* The decision, not the policy: the caller says what it thinks of its own
+ * clock, and this returns which of the three 4.4a/4.4a1 outcomes applies.
+ * The publisher holds the authoritative clock and enforces `exp` itself
+ * (7.3e), which is what lets a device with a wrong clock at a range attempt
+ * the pairing rather than be locked out. */
+PPCP_API ppcp_result ppcp_rv_check_expiry(const ppcp_rv_payload *p, uint64_t now_unix_s,
+                                          ppcp_rv_clock_trust trust,
+                                          ppcp_rv_expiry *out);
+
+/* 7.4f — a pairing established from a code whose `mu` exceeded 1 is
+ * session-scoped and its PRK is never persisted, because every peer that
+ * scanned that code holds identical key material. */
+PPCP_API bool ppcp_rv_may_persist(const ppcp_rv_payload *p);
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* PPCP_RV_H */
