@@ -1,0 +1,37 @@
+{
+  "peer_id": "sim:host",
+  "role": "host",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "detect", "arbitrate", "live", "offline", "markup"],
+  "product": { "vendor": "ppcp-sim", "model": "reference-host", "version": "1" },
+  "timebases": [
+    { "id": "tb:host", "kind": "monotonic", "epoch_stable": true, "resolution_ns": 1000 }
+  ],
+  "sync_timebase": "tb:host",
+  "sources": [
+    {
+      "id": "src:host-cam", "kind": "camera", "timebase": "tb:host", "physical": true,
+      "optics": "machine-vision", "label": "FLIR-like global shutter",
+      "viewpoint": { "label": "dtl", "method": "declared" },
+      "profiles": [
+        {
+          "id": "cp:host-1080p240",
+          "timing": { "convention": "start" },
+          "geometry": { "kind": "global" },
+          "intrinsics": "fixed",
+          "format": { "codec": "raw", "width": 1920, "height": 1080, "pixel_format": "mono8" },
+          "rate": { "nominal_mhz": 240000, "min_mhz": 30000, "max_mhz": 240000 },
+          "optical": { "exposure_min_ns": 20000, "exposure_max_ns": 4000000,
+                       "iso_min": 100, "iso_max": 1600 }
+        }
+      ]
+    }
+  ],
+  "session": {
+    "id": "ses:sim",
+    "timebase_ref": "tb:host",
+    "coincidence_window_ns": 50000000,
+    "issue_hold_ns": 200000000,
+    "heartbeat_interval_ms": 1000
+  }
+}

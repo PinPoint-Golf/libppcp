@@ -1,0 +1,24 @@
+{
+  "peer_id": "sim:unrelated",
+  "role": "capture",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "detect", "mint", "live", "offline"],
+  "product": { "vendor": "ppcp-sim", "model": "unrelated-clock", "version": "1" },
+  "timebases": [
+    { "id": "tb:island", "kind": "monotonic", "epoch_stable": false,
+      "resolution_ns": 1000, "offset_ns": 55000000000 }
+  ],
+  "sync_timebase": "tb:island",
+  "relations": [
+    { "from": "tb:island", "to": "tb:host", "class": "unrelated", "method": "declared",
+      "observed_at": { "tb": "tb:island", "ns": 0 } }
+  ],
+  "sources": [
+    {
+      "id": "src:island-mic", "kind": "microphone", "timebase": "tb:island",
+      "physical": true,
+      "profiles": [ { "id": "cp:island-mic", "timing": { "convention": "mid" } } ]
+    }
+  ],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:island" }
+}

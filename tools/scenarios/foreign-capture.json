@@ -1,0 +1,36 @@
+{
+  "peer_id": "sim:foreign",
+  "role": "capture",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "detect", "mint", "live", "offline"],
+  "product": { "vendor": "another-vendor", "model": "not-ours", "version": "3" },
+  "timebases": [
+    { "id": "tb:foreign", "kind": "continuous", "epoch_stable": false,
+      "resolution_ns": 100, "offset_ns": -4200000000, "skew_ppm": 17.0 }
+  ],
+  "sync_timebase": "tb:foreign",
+  "sources": [
+    {
+      "id": "src:foreign-cam", "kind": "camera", "timebase": "tb:foreign", "physical": true,
+      "optics": "prime", "label": "a camera that is not an iPhone",
+      "profiles": [
+        {
+          "id": "cp:foreign",
+          "timing": { "convention": "start" },
+          "geometry": { "kind": "global" },
+          "intrinsics": "fixed",
+          "format": { "codec": "raw", "width": 1280, "height": 1024, "pixel_format": "mono10" },
+          "rate": { "nominal_mhz": 500000, "min_mhz": 100000, "max_mhz": 1000000 },
+          "optical": { "exposure_min_ns": 5000, "exposure_max_ns": 2000000,
+                       "iso_min": 100, "iso_max": 800 }
+        }
+      ]
+    },
+    {
+      "id": "src:foreign-mic", "kind": "microphone", "timebase": "tb:foreign",
+      "physical": true,
+      "profiles": [ { "id": "cp:foreign-mic", "timing": { "convention": "mid" } } ]
+    }
+  ],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:foreign" }
+}

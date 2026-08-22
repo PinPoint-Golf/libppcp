@@ -1,0 +1,25 @@
+{
+  "peer_id": "sim:acoustic-host",
+  "role": "host",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "detect", "arbitrate", "live", "offline"],
+  "product": { "vendor": "ppcp-sim", "model": "acoustic-host", "version": "1" },
+  "timebases": [
+    { "id": "tb:host", "kind": "monotonic", "epoch_stable": true, "resolution_ns": 1000 }
+  ],
+  "sync_timebase": "tb:host",
+  "sources": [
+    {
+      "id": "src:host-mic", "kind": "microphone", "timebase": "tb:host", "physical": true,
+      "label": "the host's own acoustic Source",
+      "profiles": [ { "id": "cp:host-mic", "timing": { "convention": "mid" } } ]
+    }
+  ],
+  "session": {
+    "id": "ses:sim",
+    "timebase_ref": "tb:host",
+    "coincidence_window_ns": 50000000,
+    "issue_hold_ns": 200000000,
+    "heartbeat_interval_ms": 1000
+  }
+}

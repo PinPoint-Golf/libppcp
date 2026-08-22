@@ -1,0 +1,13 @@
+{
+  "peer_id": "sim:observer",
+  "role": "observer",
+  "protocol_version": "1.0",
+  "profiles": ["core", "live"],
+  "product": { "vendor": "ppcp-sim", "model": "observer", "version": "1" },
+  "timebases": [
+    { "id": "tb:obs", "kind": "monotonic", "epoch_stable": true, "resolution_ns": 1000 }
+  ],
+  "sync_timebase": "tb:obs",
+  "sources": [],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:obs" }
+}

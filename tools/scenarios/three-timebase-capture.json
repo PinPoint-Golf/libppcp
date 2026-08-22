@@ -1,0 +1,43 @@
+{
+  "peer_id": "sim:three-clocks",
+  "role": "capture",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "detect", "mint", "live", "offline"],
+  "product": { "vendor": "ppcp-sim", "model": "three-clocks", "version": "1" },
+  "timebases": [
+    { "id": "tb:camera", "kind": "monotonic", "epoch_stable": true,
+      "resolution_ns": 1000, "offset_ns": 300000000000, "skew_ppm": 4.0 },
+    { "id": "tb:audio", "kind": "monotonic", "epoch_stable": true,
+      "resolution_ns": 20833, "offset_ns": 700000000000, "skew_ppm": -11.0 },
+    { "id": "tb:net", "kind": "continuous", "epoch_stable": true,
+      "resolution_ns": 1000, "offset_ns": 100000000000, "skew_ppm": 2.0 }
+  ],
+  "sync_timebase": "tb:net",
+  "sources": [
+    {
+      "id": "src:cam", "kind": "camera", "timebase": "tb:camera", "physical": true,
+      "optics": "wide",
+      "profiles": [
+        {
+          "id": "cp:cam",
+          "timing": { "convention": "nominal_frame_start",
+                      "frame_start_to_exposure_offset_ns": 0,
+                      "offset_provenance": "assumed" },
+          "geometry": { "kind": "rolling_shutter", "readout_ns": 8000000,
+                        "readout_provenance": "assumed",
+                        "direction": "top_to_bottom", "rows": 1080 },
+          "intrinsics": "per_frame",
+          "format": { "codec": "hevc", "width": 1920, "height": 1080, "pixel_format": "nv12" },
+          "rate": { "nominal_mhz": 240000, "min_mhz": 30000, "max_mhz": 240000 },
+          "optical": { "exposure_min_ns": 100000, "exposure_max_ns": 20000000,
+                       "iso_min": 34, "iso_max": 3072 }
+        }
+      ]
+    },
+    {
+      "id": "src:mic", "kind": "microphone", "timebase": "tb:audio", "physical": true,
+      "profiles": [ { "id": "cp:mic", "timing": { "convention": "mid" } } ]
+    }
+  ],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:net" }
+}

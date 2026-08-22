@@ -1,0 +1,41 @@
+{
+  "peer_id": "sim:measured",
+  "role": "capture",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "detect", "mint", "live", "offline"],
+  "product": { "vendor": "ppcp-sim", "model": "rig-measured", "version": "1" },
+  "timebases": [
+    { "id": "tb:measured", "kind": "monotonic", "epoch_stable": true,
+      "resolution_ns": 1000, "offset_ns": 900000000000 }
+  ],
+  "sync_timebase": "tb:measured",
+  "sources": [
+    {
+      "id": "src:measured-cam", "kind": "camera", "timebase": "tb:measured",
+      "physical": true, "optics": "wide",
+      "profiles": [
+        {
+          "id": "cp:measured",
+          "timing": { "convention": "nominal_frame_start",
+                      "frame_start_to_exposure_offset_ns": 120000,
+                      "offset_provenance": "measured",
+                      "frame_start_to_exposure_offset_sigma_ns": 900.0 },
+          "geometry": { "kind": "rolling_shutter", "readout_ns": 8300000,
+                        "readout_provenance": "measured", "readout_sigma_ns": 40000.0,
+                        "direction": "top_to_bottom", "rows": 1080 },
+          "intrinsics": "per_frame",
+          "format": { "codec": "hevc", "width": 1920, "height": 1080, "pixel_format": "nv12" },
+          "rate": { "nominal_mhz": 240000, "min_mhz": 30000, "max_mhz": 240000 },
+          "optical": { "exposure_min_ns": 100000, "exposure_max_ns": 20000000,
+                       "iso_min": 34, "iso_max": 3072 }
+        }
+      ]
+    },
+    {
+      "id": "src:measured-mic", "kind": "microphone", "timebase": "tb:measured",
+      "physical": true,
+      "profiles": [ { "id": "cp:measured-mic", "timing": { "convention": "mid" } } ]
+    }
+  ],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:measured" }
+}

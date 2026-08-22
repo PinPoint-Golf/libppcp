@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2026 Mark Liversedge
 #
-# No tools yet: ppcp-sim (L13) and ppcp-conform (L14) land in sessions S3 and
-# S4.  The directory exists now because plan L0 says the scaffold does, and
-# because a tool that holds a socket must have somewhere to live that is not
-# src/ — which tests/purity.cmake gates.
+# The tools that demonstrate compliance.  They hold sockets and files, which is
+# why they are here and not in src/ — tests/purity.cmake gates src/ and
+# include/ and this directory is deliberately outside it.
+#
+#   ppcp-sim      L13 — the synthetic peer CONF 2c requires.
+#   ppcp-conform  L14 — lands in S4.
+
+add_subdirectory(ppcp-sim)

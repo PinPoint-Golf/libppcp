@@ -1,0 +1,19 @@
+{
+  "peer_id": "sim:arbiter",
+  "role": "host",
+  "protocol_version": "1.0",
+  "profiles": ["core", "arbitrate", "live", "offline"],
+  "product": { "vendor": "ppcp-sim", "model": "arbiter-no-detect", "version": "1" },
+  "timebases": [
+    { "id": "tb:host", "kind": "monotonic", "epoch_stable": true, "resolution_ns": 1000 }
+  ],
+  "sync_timebase": "tb:host",
+  "sources": [],
+  "session": {
+    "id": "ses:sim",
+    "timebase_ref": "tb:host",
+    "coincidence_window_ns": 50000000,
+    "issue_hold_ns": 200000000,
+    "heartbeat_interval_ms": 1000
+  }
+}
