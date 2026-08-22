@@ -5,25 +5,26 @@
 | | |
 |---|---|
 | Document | `PPCP-RV` |
-| Version | **1.0, Draft 1** |
+| Version | **1.0, Draft 2** |
 | Payload version | `ppcp1` |
-| Status | **Draft — for review by the implementation teams. Nothing here has been agreed.** |
+| Status | **Draft — first-pass reviews returned and carried. §5.2 is provisional pending a platform check ([Annex B8](#annex-b--open-issues)).** |
 | Date | 22 August 2026 |
 | Versioned | Independently of PPCP. Same repository. |
 | Relates to | [`PPCP-CORE`](ppcp-core.md) §3 (transport contract), §5.2.1 (peer identity), §12 (security considerations) |
+| Reviews | [`reviews/`](reviews/) — first-pass reviews from PinPointCapture and PinPointStudio, dispositioned in [`rv-review-disposition-2026-08-22.md`](rv-review-disposition-2026-08-22.md) |
 | Conformance | **Implementing `PPCP-RV` is OPTIONAL.** Implementing PPCP is not. |
 
 ---
 
 ## 0. Status
 
-This is the first draft of the companion specification that [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations) delegates its security model to. Until it is agreed, **PPCP's security model is not delegated — it is absent**, and no cross-implementation pairing is testable.
+This is the companion specification that [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations) delegates its security model to. Until it is agreed, **PPCP's security model is not delegated — it is absent**, and no cross-implementation pairing is testable.
 
-It is written to be argued with. Every substantive choice is recorded with its alternative in [Annex A](#annex-a--decisions-and-alternatives), because most of them are cheap to change now and expensive after the first pairing code is printed.
+**Draft 2** carries the first-pass findings from both implementation teams. Draft 1 asked for [§4](#4-rv-2--the-pairing-code) to get the hardest reading and the least benefit of the doubt, and it needed it: the host reviewer recomputed the deterministic key ordering that §4.3 relies on and found that **`v` was not in fact the first key whenever a display name was present** — a defect invisible in the only worked example, in the one part of the document that cannot be corrected after a code is printed. That is [§4.3b](#43-payload), and it is the argument for putting test vectors in a specification and for exercising them with every optional field rather than none.
 
-**One item cannot be changed later at all.** A QR code carries an opaque fixed payload that both sides must parse with no chance to negotiate first, and printed codes outlive releases. If [§4](#4-rv-2--the-pairing-code) is wrong, it is wrong permanently. It should get the most review attention and the least benefit of the doubt.
+**One requirement is provisional.** [§5.2a](#52-tls-profile) mandates TLS 1.3 with an external pre-shared key. Whether that is reachable through the mobile platform's interface is unverified, and a one-day check is scheduled ([Annex B8](#annex-b--open-issues)). Nothing else in this document depends on the answer, and [§5.2h](#52-tls-profile) states the property that any resolution must preserve.
 
-**One item has already been decided by shipping.** The mobile application declares `_ppcp._tcp` in its bundle, chosen before this document existed. [§3.1](#31-service-type) ratifies it rather than picking a different name; see [Annex A1](#annex-a--decisions-and-alternatives).
+**One item was already decided by shipping.** The mobile application declares `_ppcp._tcp` in its bundle, chosen before this document existed. [§3.1](#31-service-type) ratifies it rather than picking a different name; see [Annex A1](#annex-a--decisions-and-alternatives). Both reviewers endorsed that.
 
 ---
 
@@ -67,19 +68,21 @@ Three paths reach the same place. **They differ in which peer dials**, and getti
 
 | Path | Publishes the endpoint | Dials | Listens | Status |
 |---|---|---|---|---|
-| **Pairing code** ([§4](#4-rv-2--the-pairing-code)) | host, in the code | **device** | host | **Primary.** REQUIRED of any RV implementation |
-| **Service discovery** ([§3](#3-rv-1--service-discovery)) | device, via mDNS | **host** | device | OPTIONAL. Reconnection convenience only |
-| **Direct** | out of band — a USB tunnel, a cached endpoint, a socket handed in by an embedding application | either | either | OPTIONAL |
+| **Pairing code** ([§4](#4-rv-2--the-pairing-code)) | the peer that **displays** the code, in the code | the peer that **scans** it | the displayer | **Primary.** REQUIRED of any RV implementation |
+| **Service discovery** ([§3](#3-rv-1--service-discovery)) | the peer that **advertises**, via mDNS | the peer that **browses** | the advertiser | OPTIONAL. Reconnection convenience only |
+| **Direct** | out of band — a tunnel, a cached endpoint, a socket handed in by an embedding application | either | either | OPTIONAL |
 
 - **(2a) MUST** An RV implementation supports the pairing-code path.
 - **(2b) MAY** An implementation support the discovery path, the direct path, both or neither in addition.
 - **(2c) MUST** Whichever path is used, the resulting connection completes the handshake of [§5](#5-rv-3--key-derivation-and-tls) before any PPCP message crosses it. There is no unauthenticated path.
 
+- **(2e) MUST** The table is written in terms of **what a peer does**, not what role it holds. Nothing here requires a host at either end. Two capture peers pairing directly — the multi-device case — is one displaying a code and the other scanning it, with no host involved.
+
 **Why the two paths dial in opposite directions**, since it looks like an inconsistency:
 
-The host has the screen, so it shows the code; the device has the camera, so it scans. A code can only carry the endpoint of the peer that displayed it, so on that path the device dials.
+A code can only carry the endpoint of the peer that displayed it, so on that path the scanner dials. In the ordinary deployment the host has the screen and the capture peer has the camera, which is why it usually reads as host-displays/device-dials — but that is the deployment, not the rule.
 
-For discovery the constraint is the opposite. Making the host the browser means it needs only the multicast querier role — it can send from an ephemeral port with the unicast-response bit set and never bind the multicast DNS port, which avoids conflicting with the responder that already owns that port on most desktop platforms and does not exist at all on some. Advertising also fits the topology: capture requires the foreground, so the capture peer is the one reliably present. A peer that advertises is a peer that can be dialled.
+For discovery the constraint runs the other way. Whoever **browses** needs only the multicast querier role: it can send from an ephemeral port with the unicast-response bit set and never bind the multicast DNS port, which avoids conflicting with the responder that already owns that port on most desktop platforms and does not exist at all on some. Whoever **advertises** needs a responder. That is why [§3.5b](#35-who-advertises-and-who-browses) recommends the capture peer advertise and the host browse — a mobile platform supplies a responder, several desktop platforms make it awkward, and capture requires the foreground so the capture peer is the one reliably present.
 
 The cost is that a peer supporting both paths implements both a listener and a connector. That is accepted, and it is why only the code path is required.
 
@@ -138,10 +141,16 @@ The construction is the same idea as a resolvable private address: unlinkable to
 
 - **(3.4e)** **Residual exposure, stated rather than hidden.** Anyone on the link can see that a PPCP-capable peer is present, and anyone holding a pairing can test whether a given advertisement is that peer. Neither is fixable while the peer advertises at all, and both are why advertising is confined to the reconnection case.
 
-### 3.5 Multicast is not to be relied on
+### 3.5 Who advertises and who browses
 
-- **(3.5a) MUST NOT** An implementation treat discovery failure as an error state. Multicast is rate-limited or dropped by many consumer access points, blocked by client isolation on guest networks, and does not cross VLAN boundaries. **It will not work at a range.**
-- **(3.5b) MUST** Failure to discover falls back to the pairing code or a cached endpoint, without user-visible failure.
+- **(3.5a) MAY** Any peer advertise; any peer browse. `role` in the TXT record ([§3.3](#33-txt-record)) therefore legitimately carries any of its values, and a peer that discovers a counterpart dials it ([§2](#2-rendezvous-paths)).
+- **(3.5b) SHOULD** A **capture peer advertises** and a **host browses**. Browsing needs only the querier role; advertising needs a responder, which a mobile platform supplies and several desktop platforms do not. Capture also requires the foreground, so the capture peer is the one reliably present to be found.
+- **(3.5c)** A deployment that reverses this — a host advertising so a capture peer can browse and dial on reconnection — is conformant, and is the shape a "reconnect to a discovered host" interaction needs. The cost is that the host supplies its own responder, which is a platform question rather than a protocol one.
+
+### 3.6 Multicast is not to be relied on
+
+- **(3.6a) MUST NOT** An implementation treat discovery failure as an error state. Multicast is rate-limited or dropped by many consumer access points, blocked by client isolation on guest networks, and does not cross VLAN boundaries. **It will not work at a range.**
+- **(3.6b) MUST** Failure to discover falls back to the pairing code or a cached endpoint, without user-visible failure.
 
 ---
 
@@ -167,7 +176,7 @@ with no padding, where `payload` is the CBOR map of [§4.3](#43-payload).
 
 ### 4.2 Version handling
 
-- **(4.2a) MUST** The payload's first key is `v`, an unsigned integer. This draft defines `v = 1`.
+- **(4.2a) MUST** The payload's first key is `v`, an unsigned integer. This draft defines `v = 1`. [§4.3b](#43-payload) is what makes this true by construction.
 - **(4.2b) MUST** A peer that decodes a `v` it does not implement reports to its user that **the code requires a newer version of the application**, and does not report a generic failure.
 - **(4.2c) MUST** A peer ignores payload keys it does not recognise, at every nesting level, and does not treat them as an error.
 - **(4.2d) MUST NOT** A peer act on any other field of a payload whose `v` it does not implement.
@@ -178,7 +187,12 @@ with no padding, where `payload` is the CBOR map of [§4.3](#43-payload).
 
 CBOR, as [`PPCP-ENC` §4](ppcp-encoding.md#4-primitive-types) — so an implementation needs no parser it does not already have.
 
-- **(4.3a) MUST** The payload uses deterministic encoding (RFC 8949 §4.2.1). This makes a given pairing reproduce byte-identical codes, and it places `v` first without a special rule, since `v` sorts before every other key defined here.
+- **(4.3a) MUST** The payload uses deterministic encoding (RFC 8949 §4.2.1). This makes a given pairing reproduce byte-identical codes.
+- **(4.3b) MUST** Every payload key other than `v` is **at least two characters**. RFC 8949 §4.2.1 orders keys by the bytewise lexicographic order of their *encoded* forms, so a one-character key — encoded `0x61 XX` — sorts before every two-character key, encoded `0x62 XX YY`. Making `v` the only one-character key is what makes [4.2a](#42-version-handling) true **by construction**, and it holds for keys added in later payload versions.
+
+4.3b exists because Draft 1 claimed `v` sorted first and it did not. The optional display name was `n`, which encodes `61 6e`, and `v` encodes `61 76` — so `0x6e < 0x76` and **any code carrying a display name put `n` first**, contradicting 4.2a and failing RT-2. The worked example omitted the field, so the arithmetic looked right. The field is now `dn`.
+
+This is worth more than the one-key fix. 4.2a is the clause the whole version story rests on: a peer that has not implemented a later `v` is expected to decode far enough to find it and tell the user the code is newer than the application ([4.2b](#42-version-handling)). A parser written to read the first key and stop — which 4.2a invites — would have read a display name instead.
 
 | Key | Type | Card. | Meaning |
 |---|---|---|---|
@@ -189,18 +203,23 @@ CBOR, as [`PPCP-ENC` §4](ppcp-encoding.md#4-primitive-types) — so an implemen
 | `sid` | bstr, 16 bytes | 1 | Session identifier, as `Session.id` in [`PPCP-CORE` §5.10](ppcp-core.md#510-session). |
 | `exp` | uint | 0..1 | Expiry, seconds since the Unix epoch. |
 | `wifi` | map | 0..1 | Network join — [§6](#6-rv-4--network-join). |
-| `n` | tstr | 0..1 | Display name for the publisher. **Untrusted** — see 4.4d. |
+| `dn` | tstr | 0..1 | Display name for the publisher, **at most 64 bytes**. **Untrusted** — see 4.4d. |
 
 - **(4.3b) MUST** `psk` is at least 16 bytes from a cryptographically secure random number generator ([§7.2](#72-handling-the-pairing-secret)).
 - **(4.3c) MUST** A scanning peer tries `ep` entries in order and stops at the first that completes the handshake.
 - **(4.3d) SHOULD** A publisher list every address it is reachable at — wired, wireless, and its hotspot address where it provides one. This is what makes the code work when discovery does not.
+- **(4.3e) MUST** `sid` is the 16 raw bytes of a UUID. The `Session.id` used in PPCP ([`PPCP-CORE` §5.10](ppcp-core.md#510-session)) is its **canonical lowercase text form** — eight, four, four, four and twelve hexadecimal digits separated by hyphens. Peers MUST NOT use any other textual encoding of `sid`.
+- **(4.3f) MUST** Where `wifi` is present and the peer is not already associated with that network, it joins ([§6](#6-rv-4--network-join)) **before** walking `ep`; where it is already associated, it walks `ep` directly. On total failure of every endpoint it MAY join and walk again.
+
+4.3e closes an interoperability gap between two documents. `sid` is sixteen raw bytes here; `Id` in [`PPCP-CORE` §5.1](ppcp-core.md#51-notation-and-primitive-types) is an opaque UTF-8 **string**, encoded as a CBOR text string. Hexadecimal, canonical UUID text and base64url are all plausible conversions and all wrong if the other end chose differently — and [`PPCP-CORE` §8.5c](ppcp-core.md#85-reconciliation) keys idempotent re-import on `Session.id`. Two implementations choosing different textual forms would duplicate every Capture in a re-imported session, which is exactly the failure that rule exists to prevent, arriving through the rendezvous layer where nobody would look for it.
 
 ### 4.4 Handling a scanned code
 
-- **(4.4a) MUST** A peer refuses a code whose `exp` has passed, and reports it as expired rather than as a failure to connect.
+- **(4.4a) MUST** A peer whose wall clock it has reason to trust refuses a code whose `exp` has passed, and reports it as expired rather than as a failure to connect.
+- **(4.4a1) SHOULD** A peer with positive reason to distrust its wall clock — never synchronised since boot, or reading earlier than the software's own build date — **attempts the pairing anyway** and reports the code as *possibly* expired. The publisher holds the authoritative clock and enforces `exp` itself ([§7.3e](#73-single-use-and-expiry)); a device with a wrong clock at a range has no network to correct it and refusing a valid code leaves the user with no path at all.
 - **(4.4b) MUST** A peer that cannot decode the payload reports an invalid code. It does not attempt any connection.
 - **(4.4c) MUST NOT** A peer log a payload, include one in a diagnostic export, or retain one after the pairing it establishes has ended ([§7.2](#72-handling-the-pairing-secret)).
-- **(4.4d) MUST** `n` is treated as untrusted display text: it is shown before anything has been authenticated, so it is whatever was printed on the code. It is escaped for display, length-limited, and **MUST NOT** be used as an identifier, a trust signal, or a storage key.
+- **(4.4d) MUST** `dn` is treated as untrusted display text: it is shown before anything has been authenticated, so it is whatever was printed on the code. It is escaped for display, truncated to at most 64 bytes, and **MUST NOT** be used as an identifier, a trust signal, or a storage key.
 
 ### 4.5 Size
 
@@ -225,7 +244,7 @@ K_id  = HKDF-Expand(PRK, "ppcp1 rendezvous-id",  32)
 where `sid` and `psk` are the raw bytes of those payload fields, and the info strings are their ASCII bytes with no terminator.
 
 - **(5.1a) MUST** `K_tls` is the TLS external pre-shared key, and is used for nothing else.
-- **(5.1b) MUST** `K_id` keys the resolvable identifier of [§3.4](#34-resolvable-identifiers), and is used for nothing else.
+- **(5.1b) MUST** `K_id` keys the resolvable identifiers of [§3.4](#34-resolvable-identifiers) and [§5.3](#53-psk-identity), and is used for nothing else.
 - **(5.1c) MUST** A peer that persists a pairing ([§7.4](#74-persistent-pairings)) persists `PRK` and derives from it, never the original `psk`.
 
 Derivation rather than direct use is what keeps the two purposes independent: an identifier published in the clear on a multicast network is computed from a key that cannot be used to complete a handshake, and observing millions of `rid` values reveals nothing about `K_tls`.
@@ -239,6 +258,8 @@ Derivation rather than direct use is what keeps the two purposes independent: an
 - **(5.2e) MUST NOT** Certificates, a public-key infrastructure, or a certificate authority be required. A peer MUST NOT reject a counterpart for presenting no certificate.
 - **(5.2f) MUST NOT** An implementation fall back to an unencrypted connection under any circumstances, including a handshake failure, a timeout, or a user instruction. A failed handshake is a failed connection.
 - **(5.2g) MUST** The peer that dialled is the TLS client; the peer that listened is the TLS server. This follows the dialling direction of [§2](#2-rendezvous-paths) and differs between the two paths.
+- **(5.2h)** **The properties this profile exists to deliver are: mutual authentication from a secret that only reaches the counterpart by being scanned, and forward secrecy of captured traffic against later disclosure of that secret.** TLS 1.3 with `psk_dhe_ke` is the mechanism, not the requirement. Any future relaxation of 5.2a — see [Annex B8](#annex-b--open-issues) — is evaluated against these two properties, and one that preserves both is a different mechanism rather than a weakening. One that drops forward secrecy is not available.
+- **(5.2i)** A peer whose platform does not expose the key-exchange mode cannot assert 5.2b by construction. It demonstrates conformance by **observed handshake** — a capture of the `ClientHello`'s `psk_key_exchange_modes` extension, or a counterpart instrumented to refuse `psk_ke` — which is why RT-4's method is `injected` rather than `static`.
 
 5.2b is the requirement most likely to be dropped for simplicity, and it is the one that matters most in a year's time. Plain `psk_ke` has **no forward secrecy**: anyone who captures a session and later obtains the pairing secret can decrypt everything retrospectively. With `psk_dhe_ke` an ephemeral Diffie-Hellman exchange runs alongside the PSK, and a later compromise of the secret does not retroactively expose captured traffic. Both major TLS implementations in use here support it; it costs one round trip of elliptic-curve arithmetic.
 
@@ -251,14 +272,20 @@ The TLS client sends an identity so the server can select the right key.
 - **(5.3a) MUST** The identity is the 17 octets:
 
 ```
-0x01 || sid          version byte, then the 16-byte session id
+0x01 || rn2 || tag
+
+  rn2 = 8 random bytes from a CSPRNG, fresh per connection
+  tag = HMAC-SHA256(K_id, "ppcp1 psk-id" || rn2)  truncated to the first 8 bytes
 ```
 
-- **(5.3b) MUST** A server that does not hold a pairing for the offered identity aborts the handshake, with the **same alert** it would send for a known identity and a wrong key. Failing uniformly costs nothing and is required.
-- **(5.3b1) SHOULD** The two cases are also indistinguishable in **timing**. This is harder — a wrong key normally fails later, at Finished verification, than an unknown identity — and the usual technique is to proceed with a dummy key so both paths run to the same point. It is a SHOULD rather than a MUST because `sid` is 128 bits of randomness from a pairing code, so an attacker cannot produce an identity to probe with, and the oracle has almost nothing to reveal.
-- **(5.3c) MUST** A client offering a persisted pairing ([§7.4](#74-persistent-pairings)) uses the `sid` of the session that pairing was established for.
+- **(5.3b) MUST** A server resolves an offered identity by recomputing `tag` with the `K_id` of each pairing it holds — outstanding codes and persisted pairings alike — and selecting the match.
+- **(5.3c) MUST** A server that resolves no pairing aborts the handshake, with the **same alert** it would send for a resolved identity and a wrong key. Failing uniformly costs nothing and is required.
+- **(5.3d) SHOULD** The two cases are also indistinguishable in **timing**. This is harder — a wrong key normally fails later, at Finished verification, than an unresolvable identity — and the usual technique is to proceed with a dummy key so both paths run to the same point.
+- **(5.3e) MUST NOT** `sid`, `Peer.id`, or any other value stable across connections appear in the identity.
 
-The identity is deliberately not a peer identifier. It is visible in the clear in the `ClientHello`, so putting a stable peer identity there would undo [§3.4](#34-resolvable-identifiers) at the first connection.
+**The identity rotates for the same reason the advertisement does.** It is sent in the clear in the `ClientHello`, so anything stable in it is a tracking beacon — and Draft 1 put `sid` there, then had a persisted pairing reuse that `sid` on every reconnection for the life of the pairing. A passive observer at two venues would have linked them by a fixed sixteen bytes. That is precisely what [§3.4](#34-resolvable-identifiers) and A7 were built to prevent, reintroduced one layer down and one connection earlier, so the cost of the rotating advertisement was being paid for nothing.
+
+The construction is the one already in the document, keyed the same way and the same 17 octets. It also restores 5.3d's justification: an attacker cannot produce a resolvable identity without `K_id`, so there is no identity to probe the oracle with. Resolving costs one HMAC per held pairing, which A10 already accepted as cheap at this scale.
 
 ---
 
@@ -275,7 +302,8 @@ A publisher that provides its own network may carry the credentials in the pairi
 | `h` | bool | 0..1 | Hidden network. Default false. |
 
 - **(6a) MUST** A peer joins only through a platform interface that obtains the user's consent for the specific network. It MUST NOT reconfigure networking silently.
-- **(6b) MUST** A peer that joins for a pairing restores the prior network configuration when the session ends, or leaves the join in the user's control. It MUST NOT leave the device attached to a network the user did not choose to keep.
+- **(6b) MUST** A peer that joins for a pairing restores the prior network configuration when the session ends, **or** leaves the join in the user's control. It MUST NOT leave the device attached to a network the user did not choose to keep. On platforms where an application may remove its own network configuration but cannot reassociate a previously-used network — reassociation being the system's decision — only the second branch is available, and that is conformant. The disjunction is there for exactly that reason and the first branch is not the expected behaviour.
+- **(6e) MUST** Where a code carries `wifi`, the join is attempted **before** the endpoint walk unless the peer is already associated with that network ([§4.3f](#43-payload)).
 - **(6c) MUST** A code carrying `wifi` is treated as a network credential in every respect — the handling rules of [§4.4c](#44-handling-a-scanned-code) and [§7.2](#72-handling-the-pairing-secret) apply to the whole payload, not only to `psk`.
 - **(6d) SHOULD** A publisher prefer a 5 GHz network on a channel it controls. Shared infrastructure at a public venue is heavy-tailed in latency, which directly degrades clock synchronisation ([`PPCP-CORE` §3.2](ppcp-core.md#32-transport-guidance)).
 
@@ -307,7 +335,8 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 | Someone who can see the code at the moment it is displayed | It is a shared secret shown on a screen. This is the model. Physical control of the display is the control. |
 | A compromised peer at either end | Out of scope for any rendezvous protocol. |
 | Traffic analysis | Payload sizes and timing reveal that capture is happening and roughly when. Not addressed. |
-| Denial of service | An attacker on the link can disrupt multicast or the transport. The fallbacks in [§3.5](#35-multicast-is-not-to-be-relied-on) reduce the impact; nothing prevents it. |
+| Denial of service | An attacker on the link can disrupt multicast or the transport. The fallbacks in [§3.5](#36-multicast-is-not-to-be-relied-on) reduce the impact; nothing prevents it. |
+| **Impersonation between peers that scanned the same multi-use code** | They hold **identical key material** by construction ([§7.4f](#74-persistent-pairings)). `mu: 1` is the pairwise case; `mu > 1` is a group credential and must be read as one. |
 | Anything after the byte stream exists | PPCP's problem, and PPCP assumes the stream is authenticated ([§1.3c](#13-where-it-stops)). |
 
 ### 7.2 Handling the pairing secret
@@ -325,6 +354,7 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 - **(7.3b) MUST** A publisher invalidates the code when the session it belongs to closes, whether or not it was used.
 - **(7.3c) SHOULD** A code carries `exp`, and a publisher chooses the shortest expiry the workflow tolerates.
 - **(7.3d) MUST** A publisher generates fresh `psk` and `sid` for every code. A code is never regenerated with the same secret.
+- **(7.3e) MUST** A publisher **refuses a handshake** for a code past its `exp`. Expiry is enforced by the party holding the authoritative clock, not by the party reading a printed number — which is what lets [4.4a1](#44-handling-a-scanned-code) permit a peer with an untrustworthy clock to attempt the pairing rather than be locked out.
 
 7.3a and 7.3b are clock-free and are the primary defence; `exp` depends on two wall clocks agreeing and is therefore secondary rather than relied upon. `mu` exists because pairing several devices from one displayed code is a real workflow, and the alternative — a code that is silently reusable forever — is worse than one that says how many times it may be used.
 
@@ -336,7 +366,14 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 - **(7.4d) MUST** Revocation on either side is honoured immediately by that side, and results in a failed handshake for the other.
 - **(7.4e) MUST** A new session established from a persisted pairing derives a fresh `sid` inside the authenticated channel, and does not reuse the original session's identifier for anything but the PSK identity ([§5.3c](#53-psk-identity)).
 
-**The exposure is real and should be weighed rather than assumed away**: a persisted pairing means possession of the device's storage is possession of continuing access. That is why 7.4b requires it to be visible and revocable, and why it is optional rather than automatic.
+- **(7.4f) MUST NOT** A peer persist `PRK` derived from a pairing code whose `mu` exceeded 1. **A pairing established from a multi-use code is session-scoped**, because its key material is held by every peer that scanned that code.
+- **(7.4g)** Where a persistent pairing from a multi-use code is wanted, the peers derive a fresh **per-peer** secret inside the authenticated channel and persist that. Specifying that exchange is deferred; until it exists, multi-device pairing is per-session.
+
+**Why `mu > 1` is a group credential and not three pairings.** Every peer that scans one code derives the same `PRK`, therefore the same `K_tls` and the same `K_id`, from the same `psk` and `sid`. With `mu: 3` the three devices hold **identical key material**: any one can complete a handshake indistinguishable from another's, and can present a different `Peer.id` in `hello` while doing it. 7.4c's scoping to a counterpart peer identity is a *policy* statement, not a cryptographic one, and nothing enforces it.
+
+[§7.1](#71-threat-model) claims the model defends against an unpaired peer receiving capture payload, on the strength of a secret that only reaches the counterpart by being scanned. With `mu > 1` that secret reached three counterparts, so *paired* names a group and mutual authentication proves group membership rather than identity. 7.4f bounds the consequence to the session that created it; `mu` survives because displaying three codes is worse ergonomics for no gain over proper per-peer re-keying.
+
+**The exposure of a persisted pairing is real and should be weighed rather than assumed away**: possession of the device's storage is possession of continuing access. That is why 7.4b requires it to be visible and revocable, and why it is optional rather than automatic.
 
 ### 7.5 Reconnecting within a session
 
@@ -375,6 +412,8 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 
 **Power saving injects latency.** Wireless power-save can add tens of milliseconds, which lands directly in the clock-synchronisation estimator as a heavier left tail.
 
+**The pre-shared-key interfaces in common toolkits are a trap, and both ends hit it.** Several widely-used TLS wrappers expose PSKs through a TLS 1.2-era interface — identity *hints*, RFC 4279 ciphersuite selection — which does not reach TLS 1.3 external PSKs at all. A desktop toolkit's socket-level PSK callback is one example; a mobile framework's PSK entry point sitting beside hint-based APIs is another ([Annex B8](#annex-b--open-issues)). An implementation generally has to use the underlying library's **external-PSK session callbacks** directly, installing the key as a synthetic session with the correct cipher and the hash of [5.2c](#52-tls-profile) bound to it. **Getting the hash wrong produces a handshake failure with no useful diagnostic**, indistinguishable from a key mismatch, so check it first when a handshake fails for no apparent reason.
+
 **A wired tunnel is the best available option** where the peers are co-located: the latency floor is tighter and far more stable, which is what makes minimum-round-trip filtering converge quickly. It needs no rendezvous at all — it is the direct path of [§2](#2-rendezvous-paths).
 
 ---
@@ -391,18 +430,21 @@ Required tests, to be folded into [`PPCP-CONF`](ppcp-conformance.md) once this d
 | Test | Method | Asserts |
 |---|---|---|
 | **RT-1** | static | The derivation vectors of [§10.1](#101-key-derivation) reproduce byte-for-byte. |
-| **RT-2** | static | The pairing code of [§10.3](#103-pairing-code) encodes and decodes byte-for-byte, and `v` is the first key. |
+| **RT-2** | static | Both pairing codes of [§10.3](#103-pairing-code) encode and decode byte-for-byte. **The all-fields payload — carrying `dn`, `mu`, `exp` and `wifi` — still encodes `v` as its first key**, which the minimal one cannot demonstrate. `Session.id` derives from `sid` as canonical lowercase UUID text ([4.3e](#43-payload)). |
 | **RT-3** | injected | A `v` the implementation does not know produces a *version* report, not a generic failure (4.2b). |
-| **RT-4** | injected | A handshake negotiating `psk_ke`, TLS 1.2, or no encryption is refused (5.2a, 5.2b, 5.2f). |
+| **RT-4** | injected | A handshake negotiating `psk_ke`, TLS 1.2, or no encryption is refused (5.2a, 5.2b, 5.2f). **Demonstrated against an instrumented counterpart or a wire capture of `psk_key_exchange_modes`, not by an API assertion** — at least one platform does not expose the mode ([5.2i](#52-tls-profile)). |
 | **RT-5** | paired | A second handshake with a `mu: 1` code is refused (7.3a). |
 | **RT-6** | injected | An expired code is reported as expired, with no connection attempted (4.4a). |
 | **RT-7** | paired | A TXT record contains no `Peer.id`, no device name and no session count; the instance name carries no persistent value (3.3b, 3.2b). |
 | **RT-8** | paired | `rid` changes across re-registration and resolves under the correct `K_id` only (3.4a, 3.4b). |
 | **RT-9** | paired | A diagnostic export produced immediately after a pairing contains no secret and no payload (7.2b, 4.4c). |
 | **RT-10** | injected | `session_resume` is refused on a connection that did not complete the handshake (7.5b). |
-| **RT-11** | injected | Rejection of an unknown identity and of a wrong key are indistinguishable in content, and in timing where [5.3b1](#53-psk-identity) is met (7.7c). |
+| **RT-11** | injected | Rejection of an unresolvable identity and of a wrong key are indistinguishable in content, and in timing where [5.3d](#53-psk-identity) is met (7.7c). |
 | **RT-12** | **review** | Secrets come from a platform CSPRNG at full width, are held in protected storage where one exists, and are erased on revocation or session close (7.2a, 7.2c, 7.2d). |
 | **RT-13** | **review** | A network join obtains the user's consent for the specific network and does not leave the device attached to a network the user did not choose to keep (6a, 6b). |
+| **RT-14** | static | The PSK identity of [§10.2](#102-resolvable-identifiers) reproduces byte-for-byte, **differs across connections**, resolves under the correct `K_id` only, and contains no `sid` (5.3a, 5.3e). |
+| **RT-15** | paired | A publisher refuses a handshake for a code past its `exp` (7.3e), and a peer that cannot trust its clock attempts rather than refuses (4.4a1). |
+| **RT-16** | **review** | No `PRK` derived from a code with `mu > 1` is persisted (7.4f). |
 
 **Two of these cannot be tested from outside**, and that is worth stating rather than leaving to be discovered. Entropy quality and storage protection produce no observable difference on the wire — a peer using a predictable secret completes exactly the same handshake as one using a good secret — so **RT-12 is the requirement on which the whole model rests and the one no test can catch.** It has to be read in the code, and it should be read again whenever the key-generation path is touched.
 
@@ -418,6 +460,7 @@ All values hexadecimal unless stated. Info strings are ASCII with no terminator.
 
 ```
 sid    3f2504e04f8941d39a0c0305e82c3301
+       as PPCP Session.id:  3f2504e0-4f89-41d3-9a0c-0305e82c3301   (4.3e)
 psk    000102030405060708090a0b0c0d0e0f
 
 PRK    = HKDF-Extract(salt = sid, IKM = psk)
@@ -429,21 +472,30 @@ K_tls  = HKDF-Expand(PRK, "ppcp1 tls-psk", 32)
 K_id   = HKDF-Expand(PRK, "ppcp1 rendezvous-id", 32)
        fd2d8fcfb1be76f83ca1d551e8d5ab34a2fbe3a76f048acb09c64c1d20646117
 
-psk_identity = 0x01 || sid
-       013f2504e04f8941d39a0c0305e82c3301                    (17 octets)
 ```
 
-### 10.2 Resolvable identifier
+### 10.2 Resolvable identifiers
+
+Both are keyed by `K_id` and both rotate. Neither carries `sid`.
 
 ```
-rn     a1b2c3d4e5f60718
-rid    = HMAC-SHA256(K_id, "ppcp1 rid" || rn)[0..7]
-       9b1d2df94b2cfa84
+advertisement (§3.4)
+  rn     a1b2c3d4e5f60718
+  rid    = HMAC-SHA256(K_id, "ppcp1 rid" || rn)[0..7]
+         9b1d2df94b2cfa84
 
-TXT    txtvers=1  pv=1.0  role=capture
-       rn=a1b2c3d4e5f60718  rid=9b1d2df94b2cfa84
+  TXT    txtvers=1  pv=1.0  role=capture
+         rn=a1b2c3d4e5f60718  rid=9b1d2df94b2cfa84
 
-instance name   PPCP-9B1D2DF9
+  instance name   PPCP-9B1D2DF9
+
+PSK identity (§5.3), fresh per connection
+  rn2    0f1e2d3c4b5a6978
+  tag    = HMAC-SHA256(K_id, "ppcp1 psk-id" || rn2)[0..7]
+         b355ada60b4b5aa8
+
+  identity = 0x01 || rn2 || tag
+         010f1e2d3c4b5a6978b355ada60b4b5aa8              (17 octets)
 ```
 
 ### 10.3 Pairing code
@@ -477,7 +529,40 @@ URI, 105 characters:
 ppcp:pWF2AWJlcIGiYWhsMTkyLjE2OC4xLjIwYXAZHmxibXUBY3Bza1AAAQIDBAUGBwgJCgsMDQ4PY3NpZFA_JQTgT4lB05oMAwXoLDMB
 ```
 
-Note that deterministic encoding orders the keys `v`, `ep`, `mu`, `psk`, `sid` — so `v` arrives first without a rule requiring it.
+Deterministic encoding orders these keys `v`, `ep`, `mu`, `psk`, `sid`.
+
+#### Every optional field
+
+The vector that matters for [4.3b](#43-payload), because the minimal one cannot demonstrate it. `dn = "Bay 3"`, `exp = 1787832000`, and a `wifi` block.
+
+```
+CBOR, deterministic encoding, 133 octets:
+
+a8                                      map(8)
+  61 76  01                             "v"    1
+  62 64 6e  65 42 61 79 20 33           "dn"   "Bay 3"
+  62 65 70  81 a2                       "ep"   [ {
+    61 68 6c 31 39 32 2e 31 36 38 2e 31 2e 32 30    "h" "192.168.1.20"
+    61 70 19 1e 6c                                  "p" 7788
+                                              } ]
+  62 6d 75  01                          "mu"   1
+  63 65 78 70  1a 6a 90 26 c0           "exp"  1787832000
+  63 70 73 6b  50 <16 bytes psk>        "psk"
+  63 73 69 64  50 <16 bytes sid>        "sid"
+  64 77 69 66 69  a3                    "wifi" {
+    61 68 f4                                        "h" false
+    61 6b 6c 63 6f 72 72 65 63 74 68 6f 72 73 65    "k" "correcthorse"
+    61 73 6d 50 69 6e 50 6f 69 6e 74 2d 42 61 79 33 "s" "PinPoint-Bay3"
+                                              }
+```
+
+URI, 183 characters:
+
+```
+ppcp:qGF2AWJkbmVCYXkgM2JlcIGiYWhsMTkyLjE2OC4xLjIwYXAZHmxibXUBY2V4cBpqkCbAY3Bza1AAAQIDBAUGBwgJCgsMDQ4PY3NpZFA_JQTgT4lB05oMAwXoLDMBZHdpZmmjYWj0YWtsY29ycmVjdGhvcnNlYXNtUGluUG9pbnQtQmF5Mw
+```
+
+The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in place of `dn` they would have been `a8 61 6e …`**, and a parser reading the first key to find the version would have read a display name. Note also that this payload is 133 octets against the 400-byte guidance of [4.5a](#45-size), so a code carrying network credentials stays comfortably scannable.
 
 ---
 
@@ -497,6 +582,9 @@ Note that deterministic encoding orders the keys `v`, `ep`, `mu`, `psk`, `sid` �
 | **A8** | **Single use by default, with an explicit `mu`** | Codes reusable until the session ends | A code that is silently reusable forever is the failure a photograph exploits. `mu` keeps the multi-device workflow without making reuse the unstated default. |
 | **A9** | **The device dials on the code path, the host dials on the discovery path** | Force one direction, so only one peer needs a listener | A code can only carry the endpoint of the peer displaying it, and discovery must put the querier role on the host to avoid binding a port that platform responders already own. The asymmetry is inherent; only the code path is required, so a minimal implementation still needs one direction. |
 | **A10** | **`Peer.id` disclosed only inside TLS** | Include it in the PSK identity, so a server can select a key without trying each | The identity is sent in the clear in the first flight. A stable identity there would undo the rotating identifier at the first connection. Trying each held pairing is cheap at the scale involved. |
+| **A11** | **One PSK identity form, always resolvable** ([§5.3](#53-psk-identity)) | Keep `0x01 \|\| sid` for a first pairing and use the resolvable form only for a persisted one, which is marginally simpler on the first handshake | Two forms of the same length starting with the same byte need a discriminator, and the saving is one HMAC. One form is simpler than two plus a type rule. The leading `0x01` remains a format version byte for a future third form. |
+| **A12** | **Every payload key but `v` is at least two characters** ([4.3b](#43-payload)) | Special-case `v` to be emitted first regardless of deterministic ordering | A special case is a rule an implementer can forget; a length constraint is one the encoder enforces for free, and it keeps working for keys added in later payload versions. |
+| **A13** | **`mu > 1` is session-scoped and never persisted** ([7.4f](#74-persistent-pairings)) | Remove `mu` entirely, so every pairing is pairwise | Multi-device pairing is a real workflow and displaying three codes is worse ergonomics for no gain. Bounding the shared credential to one session keeps the workflow and removes the permanent exposure. |
 
 ---
 
@@ -504,10 +592,12 @@ Note that deterministic encoding orders the keys `v`, `ep`, `mu`, `psk`, `sid` �
 
 | # | Issue | Status |
 |---|---|---|
-| **B1** | **Nothing here is agreed.** This is a first draft written for the two implementation teams to argue with, and [§4](#4-rv-2--the-pairing-code) should get the hardest reading because it cannot be changed after the first code is printed. | Open — awaiting review. |
-| **B2** | **`mu` greater than one has no revocation story.** A code pairing three devices is valid until all three have used it or the session closes; a publisher cannot withdraw it from the second and third after the first pairs. | Open. |
+| **B1** | **Draft 2 carries both first-pass reviews.** Neither team has re-reviewed it. [§4](#4-rv-2--the-pairing-code) still deserves the hardest reading: the first pass found a defect there that was invisible in the worked example. | Open — awaiting a second pass. |
+| **B2** | **`mu` greater than one has no revocation story**, and the peers that scanned it share key material. The sharing is now bounded — [7.4f](#74-persistent-pairings) forbids persisting such a pairing and [§7.1](#71-threat-model) names the impersonation exposure — but a publisher still cannot withdraw a live multi-use code from the second and third holder. **Per-peer re-keying inside the channel ([7.4g](#74-persistent-pairings)) is the fix and is unspecified.** | Open. Both publishers intend to emit `mu: 1` only until it exists. |
 | **B3** | **A peer holding several persisted pairings advertises only one** ([§3.4d](#34-resolvable-identifiers)). Advertising several — as repeated keys, or as several service instances — leaks the count. Rotating through them delays reconnection. Neither is specified. | Open. |
-| **B4** | **Expiry depends on two wall clocks.** [§7.3c](#73-single-use-and-expiry) makes `exp` a SHOULD and leans on single use instead, but a peer with a badly wrong clock will reject valid codes and there is no stated remedy. | Open. |
+| ~~**B4**~~ | ~~Expiry depends on two wall clocks.~~ | **Closed in Draft 2.** The publisher enforces `exp` ([7.3e](#73-single-use-and-expiry)) because it holds the authoritative clock, and a peer that cannot trust its own attempts rather than refuses ([4.4a1](#44-handling-a-scanned-code)). |
 | **B5** | **No pairing-time transport negotiation.** The code carries endpoints and a port, so a publisher offering both a tunnel and a network connection must display a code per transport or list both as endpoints. Whether that is sufficient is untested. | Open. |
-| **B6** | **The identity is `sid`-bound, so a persisted pairing carries its original session identifier forward** ([§5.3c](#53-psk-identity)) even though a new session gets a fresh one. It works, and it is slightly odd. A pairing identifier independent of any session may be cleaner. | Open. |
+| ~~**B6**~~ | ~~The identity is `sid`-bound.~~ | **Closed in Draft 2**, and it was not an aesthetic issue: a persisted pairing broadcast a fixed sixteen bytes in the clear on every reconnection, undoing [§3.4](#34-resolvable-identifiers). The identity is now resolvable and rotates ([§5.3a](#53-psk-identity)). |
+| **B8** | **TLS 1.3 external PSK may not be reachable through the mobile platform's interface.** Its PSK entry point sits beside identity-hint and RFC 4279 APIs, which are TLS 1.2-only concepts; the headers state no version constraint either way. **The host side uses a library that has supported it for years, so every test in [§9](#9-conformance) and any host-to-host pairing passes with this risk entirely invisible.** A one-day check settles it: two loopback endpoints, PSK on both, minimum version pinned to 1.3, then read back the negotiated version and ciphersuite. If it fails, the options are TLS 1.2 with an ECDHE_PSK suite — which preserves [5.2h](#52-tls-profile)'s two properties, since the requirement is forward secrecy rather than a version number — or embedding a TLS library, which costs binary size, an export-compliance answer at store submission, and a patching obligation. | **Open, and gating [§5.2a](#52-tls-profile).** Check scheduled; the mobile team has volunteered it. |
+| **B9** | **`role` in a TXT record is unverified before pairing.** A peer advertising `role: host` is taken at its word by a browser deciding whether to dial. It costs only a wasted connection — the handshake authenticates — but a browser should not treat it as more than a filter hint. | Open. |
 | **B7** | **Interoperability is untestable until a second implementation exists.** Every test in [§9](#9-conformance) can pass against a single implementation's own assumptions, which is exactly the failure mode [`PPCP-CONF` §5c](ppcp-conformance.md#5-interoperability) records for PPCP itself. | Open — structural. |
