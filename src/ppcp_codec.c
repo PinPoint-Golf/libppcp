@@ -176,6 +176,75 @@ ppcp_result ppcp_rec_write(ppcp_cbor_writer *w, ppcp_wfield *f, size_t n)
     return ppcp_cbor_writer_status(w);
 }
 
+static void rec_sort(ppcp_wfield *f, size_t n)
+{
+    size_t i, j;
+    for (i = 1; i < n; i++) {
+        ppcp_wfield key = f[i];
+        j = i;
+        while (j > 0 &&
+               ppcp_cbor_key_cmp(f[j - 1].key, strlen(f[j - 1].key),
+                                 key.key, strlen(key.key)) > 0) {
+            f[j] = f[j - 1];
+            j--;
+        }
+        f[j] = key;
+    }
+}
+
+static ppcp_result rec_write_value(ppcp_cbor_writer *w, const ppcp_wfield *f)
+{
+    switch (f->kind) {
+    case PPCP_F_ID:
+    case PPCP_F_TEXT:
+    case PPCP_F_ENUM:
+        if (f->text == NULL)
+            return PPCP_ERR_INVALID;
+        return ppcp_cbor_write_text(w, f->text, f->text_len);
+    case PPCP_F_INT:    return ppcp_cbor_write_int(w, f->i);
+    case PPCP_F_UINT:   return ppcp_cbor_write_uint(w, f->u);
+    case PPCP_F_BOOL:   return ppcp_cbor_write_bool(w, f->b);
+    case PPCP_F_DOUBLE: return ppcp_cbor_write_double(w, f->f);
+    case PPCP_F_BYTES:  return ppcp_cbor_write_bytes(w, f->bytes, f->bytes_len);
+    case PPCP_F_SUB:
+        if (f->sub == NULL)
+            return PPCP_ERR_INVALID;
+        return f->sub(w, f->ctx);
+    default:
+        return PPCP_ERR_INVALID;
+    }
+}
+
+ppcp_result ppcp_rec_write_body(ppcp_cbor_writer *w, ppcp_envelope_writer *ew,
+                                ppcp_wfield *f, size_t n)
+{
+    size_t i;
+    if (w == NULL || ew == NULL || (n > 0 && f == NULL))
+        return PPCP_ERR_INVALID;
+    rec_sort(f, n);
+    for (i = 1; i < n; i++) {
+        if (ppcp_cbor_key_cmp(f[i - 1].key, strlen(f[i - 1].key),
+                              f[i].key, strlen(f[i].key)) == 0)
+            return PPCP_ERR_INVALID;
+    }
+    for (i = 0; i < n; i++) {
+        ppcp_result rc;
+        /* ENC 5a: a body field may not be named type, msg_id, reply_to or
+         * session_id, and ppcp_envelope_before refuses one — so a collision is
+         * a failed encode rather than a message that decodes into the wrong
+         * fields. */
+        rc = ppcp_envelope_before(w, ew, f[i].key, strlen(f[i].key));
+        if (rc != PPCP_OK)
+            return rc;
+        if (ppcp_cbor_write_text_z(w, f[i].key) != PPCP_OK)
+            return ppcp_cbor_writer_status(w);
+        rc = rec_write_value(w, &f[i]);
+        if (rc != PPCP_OK)
+            return rc;
+    }
+    return ppcp_envelope_close(w, ew);
+}
+
 /* ---------------------------------------------------------------- reader */
 
 ppcp_rfield ppcp_rf(const char *key, ppcp_f_kind kind, void *dst, bool *seen)

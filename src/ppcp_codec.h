@@ -25,9 +25,11 @@
 
 #include "ppcp/cbor.h"
 #include "ppcp/frame.h"
+#include "ppcp/envelope.h"
 #include "ppcp/time.h"
 
 struct ppcp_peer_desc;
+struct ppcp_capture;
 
 /* Zero-copy views into the decoder's input buffer. */
 typedef struct ppcp_text_ref {
@@ -70,6 +72,26 @@ ppcp_result ppcp_session_epoch_read(ppcp_cbor_reader *r, void *dst, void *ctx);
 ppcp_result ppcp_peer_head_encode(ppcp_cbor_writer *w, const struct ppcp_peer_desc *p);
 ppcp_result ppcp_peer_head_decode(ppcp_cbor_reader *r, ppcp_arena *a,
                                   struct ppcp_peer_desc *out);
+/* CORE 5.2 `product` — informational, and never used to infer behaviour
+ * (5.2c, I19).  Shared by the Peer entity, `hello` and `hello_accept`. */
+ppcp_result ppcp_product_write(ppcp_cbor_writer *w, const void *ctx);
+ppcp_result ppcp_product_read(ppcp_cbor_reader *r, void *dst, void *ctx);
+
+ppcp_result ppcp_peer_timebases_read(ppcp_cbor_reader *r, ppcp_arena *a,
+                                     struct ppcp_peer_desc *out);
+ppcp_result ppcp_peer_relations_read(ppcp_cbor_reader *r, ppcp_arena *a,
+                                     struct ppcp_peer_desc *out);
+ppcp_result ppcp_peer_sources_read(ppcp_cbor_reader *r, ppcp_arena *a,
+                                   struct ppcp_peer_desc *out);
+
+/* A Capture whose AchievedSummary carries a thermal timeline needs somewhere
+ * to put it; ppcp_capture_decode passes NULL and rejects one. */
+ppcp_result ppcp_capture_decode_arena(ppcp_cbor_reader *r, ppcp_arena *a,
+                                      struct ppcp_capture *out);
+/* The one path to `transfer: confirmed` (5.14f, 8.4b): receipt of a
+ * `capture_committed` from the receiver, and nothing else. */
+ppcp_result ppcp_capture_mark_confirmed(struct ppcp_capture *c);
+
 ppcp_result ppcp_peer_timebases_write(ppcp_cbor_writer *w, const void *ctx);
 ppcp_result ppcp_peer_relations_write(ppcp_cbor_writer *w, const void *ctx);
 ppcp_result ppcp_peer_sources_write(ppcp_cbor_writer *w, const void *ctx);
@@ -120,6 +142,15 @@ ppcp_wfield ppcp_wf_sub(const char *key, ppcp_sub_write fn, const void *ctx);
  * A duplicate key is PPCP_ERR_INVALID rather than a map the far end will
  * reject (ENC 4d). */
 ppcp_result ppcp_rec_write(ppcp_cbor_writer *w, ppcp_wfield *f, size_t n);
+
+/* The same, for a message BODY inside an envelope.  ENC §5 puts the reserved
+ * keys and the body keys in one map, so under deterministic ordering they sort
+ * into one sequence — `t1` really does come before `type`.  The envelope
+ * writer is told each key before it is written and flushes whichever reserved
+ * keys sort ahead of it; this sorts the body's own keys first so the merge is
+ * a single pass. */
+ppcp_result ppcp_rec_write_body(ppcp_cbor_writer *w, ppcp_envelope_writer *ew,
+                                ppcp_wfield *f, size_t n);
 
 /* ------------------------------------------------------------------ reader */
 

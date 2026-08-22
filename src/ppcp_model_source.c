@@ -1174,7 +1174,7 @@ static ppcp_result idlist_sub_write(ppcp_cbor_writer *w, const void *ctx)
     return id_list_write(w, r->v, r->n);
 }
 
-static ppcp_result product_write(ppcp_cbor_writer *w, const void *ctx)
+ppcp_result ppcp_product_write(ppcp_cbor_writer *w, const void *ctx)
 {
     const ppcp_product *p = (const ppcp_product *)ctx;
     ppcp_wfield f[3];
@@ -1184,7 +1184,7 @@ static ppcp_result product_write(ppcp_cbor_writer *w, const void *ctx)
     return ppcp_rec_write(w, f, 3);
 }
 
-static ppcp_result product_read(ppcp_cbor_reader *r, void *dst, void *ctx)
+ppcp_result ppcp_product_read(ppcp_cbor_reader *r, void *dst, void *ctx)
 {
     ppcp_product *p = (ppcp_product *)dst;
     ppcp_rfield   f[3];
@@ -1321,6 +1321,30 @@ static ppcp_result source_elem_write(ppcp_cbor_writer *w, const void *elem)
 }
 
 /* The three list writers `declare` also uses, declared in ppcp_codec.h. */
+ppcp_result ppcp_peer_timebases_read(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_peer_desc *out)
+{
+    peer_read_ctx ctx;
+    ctx.arena = a;
+    ctx.out   = out;
+    return peer_timebases_read(r, NULL, &ctx);
+}
+
+ppcp_result ppcp_peer_relations_read(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_peer_desc *out)
+{
+    peer_read_ctx ctx;
+    ctx.arena = a;
+    ctx.out   = out;
+    return peer_relations_read(r, NULL, &ctx);
+}
+
+ppcp_result ppcp_peer_sources_read(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_peer_desc *out)
+{
+    peer_read_ctx ctx;
+    ctx.arena = a;
+    ctx.out   = out;
+    return peer_sources_read(r, NULL, &ctx);
+}
+
 ppcp_result ppcp_peer_timebases_write(ppcp_cbor_writer *w, const void *ctx)
 {
     const ppcp_peer_desc *p = (const ppcp_peer_desc *)ctx;
@@ -1362,7 +1386,7 @@ ppcp_result ppcp_peer_head_encode(ppcp_cbor_writer *w, const ppcp_peer_desc *p)
     peer_common_fields(f, p, &n);
     f[n++] = ppcp_wf_sub("profiles", idlist_sub_write, &prof);
     if (p->product.present)
-        f[n++] = ppcp_wf_sub("product", product_write, &p->product);
+        f[n++] = ppcp_wf_sub("product", ppcp_product_write, &p->product);
     return ppcp_rec_write(w, f, n);
 }
 
@@ -1383,7 +1407,7 @@ ppcp_result ppcp_peer_desc_encode(ppcp_cbor_writer *w, const ppcp_peer_desc *p)
         f[n++] = ppcp_wf_sub("relations", ppcp_peer_relations_write, p);
     f[n++] = ppcp_wf_sub("sources", ppcp_peer_sources_write, p);
     if (p->product.present)
-        f[n++] = ppcp_wf_sub("product", product_write, &p->product);
+        f[n++] = ppcp_wf_sub("product", ppcp_product_write, &p->product);
     return ppcp_rec_write(w, f, n);
 }
 
@@ -1405,7 +1429,7 @@ static ppcp_result peer_decode_common(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_p
     f[n++] = ppcp_rf_enum("role", role_map, &role, &s_role);
     f[n++] = ppcp_rf_sub("protocol", protocol_read, NULL, &ctx, &s_proto);
     f[n++] = ppcp_rf_sub("profiles", peer_profiles_read, NULL, &ctx, &s_prof);
-    f[n++] = ppcp_rf_sub("product", product_read, &out->product, NULL, NULL);
+    f[n++] = ppcp_rf_sub("product", ppcp_product_read, &out->product, NULL, NULL);
     if (with_lists) {
         f[n++] = ppcp_rf_sub("timebases", peer_timebases_read, NULL, &ctx, NULL);
         f[n++] = ppcp_rf_sub("relations", peer_relations_read, NULL, &ctx, NULL);

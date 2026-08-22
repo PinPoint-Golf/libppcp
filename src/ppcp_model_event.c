@@ -631,7 +631,6 @@ ppcp_result ppcp_capture_set_transfer(ppcp_capture *c, ppcp_transfer_state t)
 
 /* Internal: the one path to `confirmed`, used by transfer.c on receipt of a
  * `capture_committed` from the receiver. */
-ppcp_result ppcp_capture_mark_confirmed(ppcp_capture *c);
 ppcp_result ppcp_capture_mark_confirmed(ppcp_capture *c)
 {
     if (c == NULL)
@@ -807,7 +806,6 @@ static ppcp_result summary_read_noarena(ppcp_cbor_reader *r, void *dst, void *ct
     return ppcp_achieved_summary_decode(r, (ppcp_arena *)ctx, (ppcp_achieved_summary *)dst);
 }
 
-ppcp_result ppcp_capture_decode_arena(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_capture *out);
 ppcp_result ppcp_capture_decode_arena(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_capture *out)
 {
     ppcp_rfield f[11];
