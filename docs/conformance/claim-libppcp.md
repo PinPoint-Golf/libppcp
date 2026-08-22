@@ -7,7 +7,7 @@
 | Implementation | `libppcp`, the MIT reference implementation |
 | Against | `PPCP-CORE` revision 9, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF` 1.0; `PPCP-RV` revision 8 |
 | Wire version | `ppcp/1.0` |
-| Session | S1 — L0, L1, L2, L3, L12 · **S2 — L4, L5, L6, L8** |
+| Session | S1 — L0, L1, L2, L3, L12 · **S2 — L4, L5, L6, L7, L8** |
 | Date | 2026-08-22 |
 | Matrix | [`matrix.md`](matrix.md) — this file is the human-readable form of the `libppcp` column |
 
@@ -15,7 +15,7 @@
 
 > *`libppcp` implements the **Core, Capture, Detect, Mint, Arbitrate, Live, Markup and Offline** profiles of PPCP 1.0 — all eight — and passes every test in `PPCP-CONF` §3 and §4 carrying those profiles.*
 
-**That claim is not yet true and is not yet made.** `CONF` 1a requires a claim to name its profiles, and 1b and 1c require every test carrying them to pass. At the end of session S2 the library implements the wire encoding, the timebase vocabulary, the canonical-instant conversion, the PPCP-RV payload and derivation, the `CORE` §5 type vocabulary, the forty-five-message catalogue, the peer engine and the bundle container. Not built: captures and bulk transfer (L7), clock synchronisation (L9), detect/mint/arbitrate (L10), markup (L11) and the synthetic peer (L13) — and without the synthetic peer the *paired* rows are demonstrated only against this library's own second engine, which `CONF` §2c is explicit is not the same thing. What follows is the evidence that exists so far.
+**That claim is not yet true and is not yet made.** `CONF` 1a requires a claim to name its profiles, and 1b and 1c require every test carrying them to pass. At the end of session S2 the library implements the wire encoding, the timebase vocabulary, the canonical-instant conversion, the PPCP-RV payload and derivation, the `CORE` §5 type vocabulary, the forty-five-message catalogue, the peer engine and the bundle container. Not built: clock synchronisation (L9), detect/mint/arbitrate (L10), markup (L11) and the synthetic peer (L13) — and without the synthetic peer the *paired* rows are demonstrated only against this library's own second engine, which `CONF` §2c is explicit is not the same thing. What follows is the evidence that exists so far.
 
 `libppcp` also claims `PPCP-RV` conformance **in part**: the pairing-code payload (`RV` §4), the key derivation (`RV` §5.1), the resolvable identifiers (§3.4) and the PSK identity (§5.3). It does **not** implement the TLS profile (§5.2), service discovery (§3) or network join (§6), and cannot: plan A7 and A8 put TLS and discovery in the applications, and `RV` 5.2i says compliance for those clauses is demonstrated by observed handshake rather than by an API. Those rows are `n/a` for this column by construction, as the matrix §5 preamble already records.
 
@@ -25,7 +25,7 @@
 cmake --preset dev && cmake --build --preset dev -j4 && ctest --preset dev
 ```
 
-Eighteen tests, all passing. The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer), `cov`, `rel` and `release`. `swift build` builds the same sources as the SwiftPM C target `CPPCP`.
+Nineteen tests, all passing. The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer), `cov`, `rel` and `release`. `swift build` builds the same sources as the SwiftPM C target `CPPCP`.
 
 Individual rows are reproduced by name, for example:
 
@@ -34,6 +34,7 @@ ctest --preset dev -R test_ct_s1     # CT-S1, CT-I17
 ctest --preset dev -R test_ct_s6     # CT-S6 assertion 4 — all forty-five messages
 ctest --preset dev -R test_ct_i24    # CT-S6 1-3, CT-I20, the peer engine, ENC 2.1
 ctest --preset dev -R test_ct_i12    # CT-I12, CT-I34, the bundle container
+ctest --preset dev -R test_ct_i38    # I38's four exits, I36's coverage, ENC §6
 ctest --preset dev -R CT-I14         # the threshold grep
 ctest --preset dev -R test_rv
 ```
@@ -61,8 +62,11 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 | CT-I24 | I24 | Core | injected | L6 → CT-S6 | impl | — | — |
 | CT-I29 | I29 | Detect | static | L4, D5 | impl | — | — |
 | CT-I31 | I31 | Capture | static | L4, D2 | impl | — | — |
+| CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | — |
 | CT-I34 | I34 | Offline | fixture | L8, H3, D3 | **pass** | — | — |
 | CT-I36 | I36 | Capture | fixture | L7, L8, D4 | impl | — | — |
+| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | — | — |
+| CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | — |
 
 ### `CONF` §4 — silent-failure tests
 
@@ -120,6 +124,12 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 
 **CT-I34** — `tests/test_ct_i12.c`. The bundle carries exactly the two Captures the row names: a `complete` one whose `transfer` is `pending` and which therefore has no `digest` yet, and an `absent` one that will never have one. Imported twice through one `ppcp_capture_index`, the count stays at two. The key is `Capture.id` scoped by session and owning peer — the same id from a different peer, or in a different Session, is a different Capture — and the digest is deliberately not in the key, which is what the two awkward Captures exist to prove.
 
+**CT-I38** — `tests/test_ct_i38.c` asserts each of 5.14g's four exits independently, which the row insists on because a test of the first alone would still pass the contradiction the other three were added to fix: a `confirmed` Capture, an `absent` one, one the receiver answered `already_present`, and a discarded preview segment. Then the refusals: `ppcp_transfer_set` refuses `confirmed` and `ppcp_capture_set_transfer` already did, so an owner cannot assert it; a `capture_committed` whose digest does not match confirms nothing; and `ppcp_transfer_mark_shed` — the call a retention policy under storage pressure would make — refuses a shot-anchored Capture while allowing candidate evidence (5.14g1, 5.12.1b).
+**`impl`, not `pass`:** the row's method is *paired*, and its last clause — import a bundle, then `capture_committed` on the next connection with the owning peer, accepted against a **closed** Session (5.14h, 5.14h1) — needs two live peers and a session that has ended.
+
+**CT-I36 / CT-I36a** — `tests/test_ct_i38.c` for the coverage rule's four cases and `tests/test_ct_i12.c` for (c) and (d) at the container level. A hole between announced segments is a defect in a `complete`, `partial` and `unknown` Session alike (5.11c1 — nothing truncates a bundle in the middle); an `absent` segment carrying its interval and reason satisfies coverage; an unaccounted tail is a defect only where the Session was asserted `complete`. Overlapping segments are refused (5.14e), and accounting is over announced Captures rather than arrived payload (5.11d). For CT-I36a: a preview Capture holding payload cannot be announced `transfer: pending`, and the bundle writer refuses a `capture_announce` on a Stream it saw opened with `kind: preview`.
+**`impl`, not `pass`:** both rows are stated over a replayed session from a real capture device under induced contention.
+
 **CT-S6** — `tests/test_ct_s6.c` carries assertion 4: all forty-five messages of `MSG` §11 are built, encoded on the channel their catalogue row names, and decoded back, through a decoder that takes no profile parameter. `tests/test_ct_i24.c` carries 2 and 3, and the first half of 1: a peer declaring `Core + Arbitrate + Live + Offline` parses a `candidate` with an unknown `basis` and its `tof_correction` completely, never originates one, and answers `error`/`profile_not_supported` to a `stream_open` whose behaviour it does not implement — with both ends still open afterwards.
 **`impl`, not `pass`:** assertion 1 also says "and arbitrates over the result", which is L10, and the row's method is *injected* against the synthetic peer of L13.
 
@@ -168,10 +178,14 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 
 *Effect here:* the reader reports `unknown`, and reports the assertion and the truncation separately so that `CT-I36` (c) and (d) — the same bytes, differing only in what was claimed — stay distinguishable. *Suggested erratum:* 7d names the third state.
 
-**7. `CORE` 5.3 does not say whether `Timebase.kind` is an open registry.** §10.3 lists eight open registries and `Timebase.kind` is not among them, so it reads as closed — which is what is implemented here (an unknown `kind` is malformed). Worth confirming, because I13 is phrased over "`kind` values" generally and a reader could take it to cover this one.
+**7. `MSG` 8.1i makes an `absent` preview segment unannounceable.** 8.1i forbids announcing a preview Capture with `transfer: pending`. `pending` is the default state of every Capture, and the discarded preview segment 5.11c3 *requires* a peer to announce is `completeness: absent` — it holds no payload, so there is no other transfer state it could honestly carry.
+
+*Effect here:* `absent` preview segments are exempt from the rule, because the rule is about queues and an absent Capture has nothing to queue. *Suggested erratum:* 8.1i reads "a preview Capture **holding payload**", or `Capture.transfer` gains a stated meaning for the payload-less case.
+
+**8. `CORE` 5.3 does not say whether `Timebase.kind` is an open registry.** §10.3 lists eight open registries and `Timebase.kind` is not among them, so it reads as closed — which is what is implemented here (an unknown `kind` is malformed). Worth confirming, because I13 is phrased over "`kind` values" generally and a reader could take it to cover this one.
 
 ## What is not claimed
 
-Not started, and named so nobody reads a silence as a claim: CT-I2, I6–I11, I15, I19, I21, I23, I25–I28, I30, I32, I33, I35, I37, I38, I36a; CT-S2 (`rig`), S3, S4, S5, S7; RT-4, 5, 7, 9–13, 15–17; every interoperability pairing. `impl` and not yet `pass`: CT-I5, I13, I16, I18, I22, I24, I29, I31, I36, CT-S6, RT-6, RT-8. The work packages that reach them are L7, L9–L11 and L13–L15 across sessions S3 and S4.
+Not started, and named so nobody reads a silence as a claim: CT-I2, I6–I11, I15, I19, I21, I23, I25–I28, I32, I33, I35, I37; CT-S2 (`rig`), S3, S4, S5, S7; RT-4, 5, 7, 9–13, 15–17; every interoperability pairing. `impl` and not yet `pass`: CT-I5, I13, I16, I18, I22, I24, I29, I30, I31, I36, I36a, I38, CT-S6, RT-6, RT-8. The work packages that reach them are L7, L9–L11 and L13–L15 across sessions S3 and S4.
 
 **One thing worth stating plainly about the *paired* rows.** CT-I12, CT-I20 and CT-I34 are demonstrated by running two `libppcp` engines against each other through a byte buffer. That is a real end-to-end run and it is not an interoperability demonstration: `CONF` §2c says an implementation tested only against itself passes I19, I22, I24 and I31 by accident. The synthetic peer of L13 is what turns these into evidence against a foreign declaration, and until it exists these rows rest on one implementation agreeing with itself.

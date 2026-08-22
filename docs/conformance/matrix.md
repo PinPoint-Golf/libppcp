@@ -46,16 +46,16 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I27 | I27 | Capture | static | L4, D4 | — | — | — |
 | CT-I28 | I28 | Capture | static | L4, D2 | — | — | — |
 | CT-I29 | I29 | Detect | static | L4, D5 | impl | — | — |
-| CT-I30 | I30 | Capture | paired | L7, D4 | — | — | — |
+| CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | — |
 | CT-I31 | I31 | Capture | static | L4, D2 | impl | — | — |
 | CT-I32 | I32 | Mint | injected | L10, D5 | — | — | — |
 | CT-I33 | I33 | Detect | injected | L10, D5 | — | — | — |
 | CT-I34 | I34 | Offline | fixture | L8, H3, D3 | pass | — | — |
 | CT-I35 | I35 | Arbitrate | injected | L10, H5 | — | — | — |
 | CT-I36 | I36 | Capture | fixture | L7, L8, D4 | impl | — | — |
-| CT-I36a | I36 | Capture | paired | L7, H4, D4 | — | — | — |
+| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | — | — |
 | CT-I37 | I37 | Markup | static | L11, H7, D8 | — | — | — |
-| CT-I38 | I38 | Capture | paired | L7, D6 | — | — | — |
+| CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | — |
 
 ## 2. Silent-failure tests — `CONF` §4
 
