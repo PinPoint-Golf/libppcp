@@ -7,7 +7,7 @@
 | Implementation | `libppcp`, the MIT reference implementation |
 | Against | `PPCP-CORE` revision 9, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF` 1.0; `PPCP-RV` revision 8 |
 | Wire version | `ppcp/1.0` |
-| Session | S1 — L0, L1, L2, L3, L12 · S2 — L4, L5, L6, L7, L8 · **S3 wave 1 — L9, L10, L11** |
+| Session | S1 — L0, L1, L2, L3, L12 · S2 — L4, L5, L6, L7, L8 · S3 wave 1 — L9, L10, L11 · **S3 wave 2 — L13** |
 | Date | 2026-08-22 |
 | Matrix | [`matrix.md`](matrix.md) — this file is the human-readable form of the `libppcp` column |
 
@@ -17,7 +17,7 @@
 
 **That claim is not yet true and is not yet made.** `CONF` 1a requires a claim to name its profiles, and 1b and 1c require every test carrying them to pass. At the end of session S3 wave 1 the library implements the wire encoding, the timebase vocabulary, the canonical-instant conversion, the PPCP-RV payload and derivation, the `CORE` §5 type vocabulary, the forty-five-message catalogue, the peer engine, the bundle container, clock synchronisation and liveness, Detect/Mint/Arbitrate, and Markup. `include/ppcp/planned.h` is now empty of declarations: every symbol the two applications were coding against has a definition in `libppcp.a`.
 
-Not built: the synthetic peer (L13), the conformance tool (L14), the reference run (L15) and the audits (L16) — and **without the synthetic peer the *paired* rows are demonstrated only against this library's own second engine, which `CONF` §2c is explicit is not the same thing.** What follows is the evidence that exists so far.
+Not built: the conformance tool (L14), the reference run (L15) and the audits (L16). **The synthetic peer (L13) now exists** — `tools/ppcp-sim`, with the declarations and scenarios of `tools/scenarios/` — and the eight *paired* rows that rested on this library's own second engine are now also run over two processes and two TCP connections against a declaration from a JSON file that no C test wrote. What follows is the evidence that exists so far.
 
 `libppcp` also claims `PPCP-RV` conformance **in part**: the pairing-code payload (`RV` §4), the key derivation (`RV` §5.1), the resolvable identifiers (§3.4) and the PSK identity (§5.3). It does **not** implement the TLS profile (§5.2), service discovery (§3) or network join (§6), and cannot: plan A7 and A8 put TLS and discovery in the applications, and `RV` 5.2i says compliance for those clauses is demonstrated by observed handshake rather than by an API. Those rows are `n/a` for this column by construction, as the matrix §5 preamble already records.
 
@@ -27,7 +27,7 @@ Not built: the synthetic peer (L13), the conformance tool (L14), the reference r
 cmake --preset dev && cmake --build --preset dev -j3 && ctest --preset dev
 ```
 
-Twenty-four tests, all passing. The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer), `cov`, `rel` and `release`. `swift build` builds the same sources as the SwiftPM C target `CPPCP`.
+Forty tests, all passing. The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer), `cov`, `rel` and `release`. `swift build` builds the same sources as the SwiftPM C target `CPPCP`.
 
 Individual rows are reproduced by name, for example:
 
@@ -45,6 +45,43 @@ ctest --preset dev -R test_ct_i37    # CT-I37
 ctest --preset dev -R CT-I14         # the threshold grep
 ctest --preset dev -R CT-I18-api-surface   # CT-I18 static, CT-I9, CT-I25, CT-I37 surface
 ctest --preset dev -R test_rv
+```
+
+### The socket rows — work package L13
+
+```
+ctest --preset dev -R sockets    # all fourteen; also green under --preset san
+```
+
+Each starts two `ppcp-sim` processes and runs them against each other over two
+TCP connections. `tools/scenarios/README.md` is the map from row to declaration
+and scenario; the tool's own contract is:
+
+```
+ppcp-sim --role capture|host|observer
+         --listen PORT | --connect HOST:PORT
+         --declaration tools/scenarios/<file>.json
+         --scenario <name>
+         [--expect NAME=VALUE]... [--run-ms MS]
+         [--port-file PATH] [--log-prefix NAME] [--quiet]
+         [--psk-ke-only --psk HEX --psk-identity TEXT]
+         [--list-scenarios] [--help]
+```
+
+```
+ctest --preset dev -R CT-I7-sockets            # I7 — t0 fixed, late Candidate attaches
+ctest --preset dev -R CT-I8-sockets            # I8 — two peers, one basis, one Shot
+ctest --preset dev -R CT-I12-sockets           # I12 / ENC 7a — a stored Session replayed
+ctest --preset dev -R CT-I18-sockets           # I18 — measured, never composed
+ctest --preset dev -R CT-I20-sockets           # I20 — both halves, refusal and wire
+ctest --preset dev -R CT-I21-sockets           # I21 — per timebase, on the host too
+ctest --preset dev -R CT-I34-sockets           # I34 — replayed twice, imported once
+ctest --preset dev -R CT-S5-sockets            # S5 — three clocks at each end
+ctest --preset dev -R CT-S6-sockets            # S6 1-3 — arbitrate-no-detect, observer
+ctest --preset dev -R CT-S4-sockets            # S4 (6) — the silent host, I32
+ctest --preset dev -R IOP-5-sockets-unrelated  # CONF §5 — the `unrelated` pairing
+ctest --preset dev -R IOP-9-sockets-preview    # CONF §5 — continuous + preview
+ctest --preset dev -R RT-4-psk-ke              # the psk_ke-only mode, both directions
 ```
 
 ## Rows moved this session
@@ -74,7 +111,7 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 | CT-I26 | I26 | Detect | static | L4, L10, D5 | **pass** | — | — |
 | CT-I20 | I20 | Arbitrate | paired | L6, H5 | **pass** | — | — |
 | CT-I22 | I22 | Capture | static | L4, D2 | impl | — | — |
-| CT-I24 | I24 | Core | injected | L6 → CT-S6 | impl | — | — |
+| CT-I24 | I24 | Core | injected | L6, L13 → CT-S6 | **pass** | — | — |
 | CT-I29 | I29 | Detect | static | L4, L10, D5 | **pass** | — | — |
 | CT-I32 | I32 | Mint | injected | L10, D5 | **pass** | — | — |
 | CT-I33 | I33 | Detect | injected | L10, D5 | **pass** | — | — |
@@ -94,7 +131,7 @@ In the row format of [`matrix.md`](matrix.md). Only the `libppcp` column is this
 | CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | — | — |
 | CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | **pass** | — | — |
 | CT-S5 | I18 | Core | paired | L9, H5, D6 | **pass** | — | — |
-| CT-S6 | I24 | Core | injected | L5, L6, L13 | impl | — | — |
+| CT-S6 | I24 | Core | injected | L5, L6, L13 | **pass** | — | — |
 
 ### `RV` §9 — rendezvous tests
 
@@ -265,8 +302,14 @@ A **host** with three clocks — `tb:hostA`, `tb:hostB`, `tb:hostC`, the last tw
 
 ## What is not claimed
 
-Not started, and named so nobody reads a silence as a claim: CT-I2, I10, I11, I15, I19, I25, I27, I28; CT-S2 (`rig`), S3, S7; RT-4, 5, 7, 9–13, 15–17; every interoperability pairing. `impl` and not yet `pass`: CT-I5, I13, I16, I22, I24, I30, I31, I36, I36a, I38, CT-S6, RT-6, RT-8. The work packages that reach them are L13–L15 across sessions S3 wave 2 and S4, and D4/D5 for the rows stated over a real capture device.
+Not started, and named so nobody reads a silence as a claim: CT-I2, I10, I11, I15, I19, I25, I27, I28; CT-S2 (`rig`), S3, S7; RT-4, 5, 7, 9–13, 15–17; every interoperability pairing. `impl` and not yet `pass`: CT-I5, I13, I16, I22, I30, I31, I36, I36a, I38, RT-6, RT-8. The work packages that reach them are L14 and L15 in S4, and D4/D5 for the rows stated over a real capture device.
 
-**CT-S6 assertion 1 is now half-owed rather than wholly owed.** "A peer declaring `Core + Arbitrate + Live + Offline` and not Detect parses `candidate` completely — **and arbitrates over the result**." The parse half passes in `tests/test_ct_i24.c` and the arbitration half now exists (`ppcp_arbiter` refuses nothing about a Candidate on the grounds of the receiver's profiles, because C1 gates comprehension nowhere). Wiring the two together is a `ppcp-sim` scenario and is left to L13 rather than asserted against this library's own engine.
+**CT-S3 and CT-S7 are still `—` for this library, and L13 did not change that.** Both are stated over an *implementation under test* meeting a synthetic peer: CT-S3 assertion 2 asks that converted instants change against a host declaring a different convention, and CT-S7 assertion 4 asks that they differ by exactly the offset a `measured` peer declared. What L13 delivered is the peer — `tools/scenarios/foreign-capture.json` declares `convention: start` with `geometry: global`, and `measured-capture.json` declares `provenance: measured` with a non-zero 120 000 ns offset and a measured `readout_ns`. The assertions themselves are conversions to be made and compared, which is a C test in L15, and for the two applications they are their own rows.
 
-**One thing worth stating plainly about the *paired* rows.** CT-I7, CT-I8, CT-I12, CT-I18, CT-I20, CT-I21, CT-I34 and CT-S5 are demonstrated by running two `libppcp` engines against each other through a byte buffer. That is a real end-to-end run and it is not an interoperability demonstration: `CONF` §2c says an implementation tested only against itself passes I19, I22, I24 and I31 by accident. The synthetic peer of L13 is what turns these into evidence against a foreign declaration, and until it exists these rows rest on one implementation agreeing with itself.
+**CT-S6 assertion 1 is now owed nothing.** "A peer declaring `Core + Arbitrate + Live + Offline` and not Detect parses `candidate` completely — **and arbitrates over the result**." That second clause could not be written before L13, because it needs a peer with no Detect to be sent a `candidate` by something. `ctest --preset dev -R CT-S6-sockets-arbitrate` runs `tools/scenarios/arbiter-no-detect.json` — four profiles, no Detect, no Sources — against a capture peer over two sockets, and asserts the arbiter observed the Candidate and issued a Shot while originating no `candidate` of its own. Assertions 2 and 3 are `CT-S6-sockets-observer`: a Core+Live observer originates neither `candidate` nor `shot`, answers `arm` with `error`/`profile_not_supported`, and the transport stays open — asserted by frames continuing to flow after it. Assertion 4 was already `tests/test_ct_s6.c`.
+
+**One thing worth stating plainly about the *paired* rows.** CT-I7, CT-I8, CT-I12, CT-I18, CT-I20, CT-I21, CT-I34 and CT-S5 were demonstrated by running two `libppcp` engines against each other through a byte buffer. That is a real end-to-end run and it is not an interoperability demonstration: `CONF` §2c says an implementation tested only against itself passes I19, I22, I24 and I31 by accident.
+
+Each of the eight now has a socket twin — `CT-I7-sockets`, `CT-I8-sockets`, `CT-I12-sockets`, `CT-I18-sockets`, `CT-I20-sockets`, `CT-I21-sockets`, `CT-I34-sockets`, `CT-S5-sockets`; `ctest --preset dev -R sockets` runs all fourteen socket rows, and `ctest --preset san` runs them under ASan and UBSan. Two processes, two TCP connections, a `link_bind` on each, and a counterpart whose declaration came out of a JSON file: a different `timing.convention`, a `global` geometry, three clocks with their own offsets and skews, `unrelated` relations, a profile set with no Detect. The simulator refuses the run on any violation it observes, and three of those checks exist only because there are two ends — a revised `t0` (I7), a message originated by a peer whose declared profiles do not confer it (I24), and `authority: host` from a peer that declared `role: capture` (I20).
+
+**What is still true of the warning.** Both ends are still `libppcp`. The foreignness is in the declaration, not in the implementation, so `CONF` 5c — a pairing by an implementation not written by the reference team — remains open, and so does the part of §2c about a shared bug being invisible. What has changed is that a hardcoded convention, an assumed-zero offset, a composed relation or a missing profile check now has something to disagree with, and several of them would now be caught.
