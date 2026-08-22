@@ -6,7 +6,7 @@
 |---|---|
 | Status | Record of decisions. Non-normative. |
 | Date | 22 August 2026 |
-| Round covered | First pass on `PPCP-RV` Draft 1, by both implementation teams. Both reviews are in [`reviews/`](reviews/). |
+| Rounds covered | **First pass** on Draft 1 (V1–V4, and the mobile team's platform concern), which produced Draft 2. **Second pass** on Draft 2 (W1–W3 and four consistency items, plus the executed platform check), which produced Draft 3. All four reviews are in [`reviews/`](reviews/). |
 | Separate from | [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md), which covers PPCP itself. `PPCP-RV` has its own review cycle and is not covered by the PPCP approval. |
 
 Both teams read the document hardest where it asked to be read hardest, and one of them found something there. Every finding is dispositioned; the ones **not** actioned are listed with reasons.
@@ -173,3 +173,90 @@ The host reviewer independently recomputed every §10 vector, including HKDF fro
 `PPCP-RV` is **Draft 2, unagreed**. Both first-pass reviews are carried; neither team has re-reviewed. It is not covered by the PPCP approval and has its own cycle.
 
 One item gates agreement: **[B8](ppcp-rv.md#annex-b--open-issues), whether TLS 1.3 external PSK is reachable on the mobile platform.** Nothing else in the document depends on the answer, and both teams agreed the check comes before the clause.
+
+
+---
+
+# Second pass — Draft 2
+
+Both teams recomputed every vector independently this time, and both found the same scope defect. One of them ran the platform check they had volunteered for, and it failed.
+
+## 6. The result that changes the shape of the document
+
+**B8 is resolved, and the answer is no.** The mobile team executed the check Draft 2 scheduled:
+
+| Attempt | Result |
+|---|---|
+| Minimum TLS 1.3 — what 5.2a requires | **Handshake failed** |
+| Minimum TLS 1.2 | `TLS_PSK_WITH_AES_128_GCM_SHA256` — plain PSK, **no forward secrecy** |
+| ECDHE_PSK requested, two different suites | Request **silently ignored** |
+
+The cause is structural: the platform's ciphersuite enumeration contains **no PSK suites at all**, so the suite it negotiates cannot be named — neither requested nor excluded.
+
+**The fallback the disposition was counting on is also gone.** RV-D4 kept §5.2a on the basis that TLS 1.2 with an ECDHE_PSK suite would preserve forward secrecy. It would have, and it is unreachable, so RV-D4 is **closed as overtaken rather than exercised**.
+
+### 6.1 What Draft 3 does about it
+
+It does not weaken the requirement, and it does not choose the mechanism.
+
+- **[§5.2a](ppcp-rv.md#52-tls-profile) is marked BLOCKED** and retained as written. Weakening a security clause to match a platform limitation, before anyone has decided what to do, is the failure mode this whole document set exists to avoid.
+- **[§5.4](ppcp-rv.md#54-open-how-the-properties-of-52h-are-obtained)** records the measurement, states what follows, and lays out four routes with their costs — embed a TLS library; a Noise handshake over the raw socket; an application-layer ephemeral key over plain PSK; or accept no forward secrecy. The last is named **so that it is visibly excluded rather than silently reached for under schedule pressure.**
+- **[5.2h](ppcp-rv.md#52-tls-profile) gained a third property** on the host reviewer's point, and it is what makes the decision tractable: the choice is between mechanisms measured against stated properties, not a negotiation about a version number. The host reviewer called 5.2h *"the most valuable thing in Draft 2, more than any of my findings"*, and this is why.
+- **[5.4d](ppcp-rv.md#542-what-follows) bounds the blast radius**: only §5 changes under any route. Discovery, the pairing code — including the irreversible part — network join and the security model are all independent of it, and the resolvable identity of §5.3 survives a mechanism change as a pre-handshake selector.
+
+**A recommendation is recorded, not a decision**: Route B, a Noise handshake over the raw socket, subject to two confirmations worth an afternoon between them — the check re-run on the device rather than the desktop variant, and the export-compliance position for an application using only platform-supplied primitives. Route A, embedding a TLS library, is the conservative answer and the document says plainly that nobody should be argued out of it cheaply.
+
+The mobile reviewer's framing is the right one and is worth preserving: *"§1 is not a defect in the specification — the specification asked the right question and stated the property that decides it. The platform simply answered badly, and it is better to know now than after either team has written rendezvous code."*
+
+## 7. Findings both teams made
+
+### 7.1 The scope of 4.3b — W2, and the mobile team's §2
+
+**Accepted, and both proposed the same one-word fix.** The V1 rule read *"every payload key other than `v` is at least two characters"*, unqualified. The `ep` entries use `h` and `p`; the `wifi` map uses `h`, `k` and `s`. All five are payload keys, so **a validator written literally from 4.3b rejects the specification's own normative vectors**, which RT-2 requires it to reproduce.
+
+[4.3b](ppcp-rv.md#43-payload) is now scoped to the **top-level** map, with [4.3b1](ppcp-rv.md#43-payload) saying explicitly that nested maps are unconstrained and naming the five keys — because they are right there in the vector and the next reader will ask.
+
+The host reviewer's observation about how it was found is the durable one: **W2 is visible only because the all-fields vector includes the nested maps the minimal one did not.** The vector added to catch V1 caught the fix for V1 two hours later.
+
+## 8. PinPointStudio — second pass
+
+### 8.1 W1 — 7.4e contradicted 5.3e
+
+**Accepted, and the reviewer's stronger replacement taken.** [5.3e](ppcp-rv.md#53-psk-identity), new in Draft 2, forbids any value stable across connections appearing in the identity. 7.4e, unchanged from Draft 1, said the original `sid` *is* reused **for the PSK identity** — the exact thing forbidden — and its cross-reference pointed at a clause that had moved, landing on an unrelated rule about uniform failure that reads plausibly enough to go unnoticed.
+
+This is the V2 fix not carried into the section an implementer is reading when they build persistence. As the reviewer put it: *a security document that tells you to transmit an identifier two sections after forbidding it will be resolved by whichever section the implementer read second.*
+
+The tail clause is deleted rather than repaired, because the truth is now stronger than the exception: **after the initial derivation, `sid` survives only as the HKDF salt baked into `PRK`, and is never transmitted again by either peer on any connection.** That sentence is the one-line answer to *"where does `sid` go once the pairing persists?"* and it is what makes B6 closed rather than closed-by-renaming.
+
+### 8.2 W3 — two clauses numbered 4.3b
+
+**Accepted.** The V1 rule was inserted with the label the entropy requirement already held, and both are cited. The entropy rule is renumbered **4.3g**; the three citations of the key-length rule are unaffected. Clerical, and worth doing before the numbers reach a test name.
+
+### 8.3 Consistency items
+
+| | Item | Fix |
+|---|---|---|
+| 1 | **2d reinstated the role language 2e was added to remove**, one clause below it, and A9 had the same problem plus a stale MUST about the querier role | Both rewritten in terms of scanner and displayer, browser and advertiser. A9 now reflects that §3.5b is a SHOULD |
+| 2 | B8's fallback needed one more constraint — a TLS 1.2 `psk_identity_hint` is server-sent, in the clear, and is exactly the hint mechanism 5.3e forbids; and 5.2h enumerated two properties when Draft 2 had added a third | **5.2h now states all three**, with the hint named explicitly as bound by property 3. Moot for the fallback, which is overtaken, but the principle binds any mechanism |
+| 3 | RT-6 did not carry 4.4a's new precondition, so an implementation correctly applying 4.4a1 would fail it | RT-6 names the precondition and points at RT-15 for the other branch |
+| 4 | Two stale references in §7.1 | Both fixed; the tracking row now cites **both halves** of that defence, §3.4 and §5.3, which is the whole of V2 |
+
+## 9. Confirmed by both, no change needed
+
+- **All eleven vectors** recomputed independently by both teams — HKDF from RFC 5869 rather than through a library, HMAC tags likewise, both CBOR payloads by hand. Every value matches, including both octet counts and both URI lengths, and the all-fields payload's first four octets `a8 61 76 01` are the demonstration V1 needed.
+- **The deterministic order under the amended key set** is `v, dn, ep, mu, exp, psk, sid, wifi`. With `n` it would have been `n, v, …`. The fix holds.
+- **RV-D1 accepted** by the reviewer who proposed the alternative: one identity form is right, and two equal-length forms starting with the same byte would need a discriminator for a saving of one HMAC.
+- **A12's reasoning preferred** over the reviewer's own suggestion — *a special case is a rule an implementer can forget; a length constraint is one the encoder enforces for free* — and it keeps working for keys added later.
+- **7.3e better than what was proposed**: the reviewer suggested letting a peer with an untrustworthy clock proceed; Draft 2 does that *and* puts enforcement on the publisher, which holds the authoritative clock and was previously not required to check `exp` at all.
+- **§3.5's mechanism/recommendation split**, **4.3e**, **7.4f**, **§6b**, **4.3f** and **§8's PSK-interface paragraph** all confirmed by both teams.
+- **`mu: 1` only**, from both publishers, until per-peer re-keying exists.
+
+## 10. Status after the second pass
+
+`PPCP-RV` is **Draft 3**. W1–W3 and all six consistency items are carried, and both teams state they have no further findings on the document as it stands.
+
+**One thing is open and it is not a specification question:** which mechanism delivers 5.2h's three properties, now that the assumed one has been measured and cannot. That needs both teams and, on the evidence, its own review round for whichever §5 replaces the current one.
+
+The host reviewer's closing note on where the defects have been found across two passes is worth carrying into that round:
+
+> Draft 1's findings were in the model and the arithmetic. Draft 2's are in the **joins** — a clause that was correct before the fix next door landed, a rule whose scope nobody stated because the author knew what they meant, a label reused because the paragraph above it moved.
