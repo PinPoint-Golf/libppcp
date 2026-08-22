@@ -42,10 +42,10 @@ BCP 14 keywords are used as in [`PPCP-CORE` §2.1](ppcp-core.md#21-requirement-k
 | Channel | Id | Carries | Rule |
 |---|---|---|---|
 | **Control** | 0 | Every message in [§3](#3-connection-and-declaration)–[§9](#9-offline-export-and-reconciliation) except the `payload_*` family | Small, immediate, never blocked by bulk |
-| **Bulk** | 1..n | The `payload_*` family only | May lag, queue, resume, or never complete within the session |
+| **Bulk** | 1..n | The `payload_*` family only, after the stream's `link_bind` ([§3.0](#30-link_bind)) | May lag, queue, resume, or never complete within the session |
 
 - **(2a) MUST NOT** A `payload_chunk` be sent on the control channel.
-- **(2b) MUST NOT** Any control message be sent on a bulk channel.
+- **(2b) MUST NOT** Any control message be sent on a bulk channel. `link_bind` is not a control message: it is the transport binding of [`PPCP-ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link), and it is the first frame on every stream, bulk included.
 - **(2c) MUST** `payload_ack` is sent on the same bulk channel as the chunks it acknowledges, so acknowledgement backpressure does not couple to control latency.
 - **(2d) MAY** An implementation open more than one bulk channel. Channel assignment for a given Capture is fixed by its `payload_begin` and does not change.
 
@@ -57,6 +57,7 @@ The event/payload split is the reason the two channels exist: a shot event must 
 
 | Message | Class | Direction | Channel | Profile |
 |---|---|---|---|---|
+| `link_bind` | Event | dialler → listener | **every channel**, first frame | — |
 | `hello` | Request | initiator → responder | control | — |
 | `hello_accept` | Response | responder → initiator | control | — |
 | `declare` | Request | any → any | control | Core |
@@ -64,6 +65,21 @@ The event/payload split is the reason the two channels exist: a shot event must 
 | `relation_update` | Event | any → any | control | Core |
 | `calibration_update` | Event | owner → any | control | Capture |
 | `discontinuity` | Event | any → any | control | Core |
+
+### 3.0 `link_bind`
+
+*Erratum E1. See [`PPCP-ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link) for the rule this message serves.*
+
+```
+link_bind {
+  link_id         bytes         16 bytes, CSPRNG, minted by the dialler per link
+  channel         uint          the channel this stream carries; equal to the frame header's
+}
+```
+
+- **(3.0a) MUST** `link_bind` is the first frame on every underlying stream a dialler opens where the transport carries one channel per stream. It precedes `hello` on channel 0 and is the only message that ever travels on a bulk channel other than the `payload_*` family.
+- **(3.0b) MUST NOT** `link_bind` be sent where the transport identifies its own streams, and it never appears in a bundle.
+- **(3.0c)** It carries no `session_id` and requires no response: a listener that accepts the binding does nothing, and one that refuses it closes the stream.
 
 ### 3.1 `hello`
 
@@ -78,7 +94,7 @@ hello {
 }
 ```
 
-- **(3.1a) MUST** `hello` is the first message the initiator sends on the control channel.
+- **(3.1a) MUST** `hello` is the first message the initiator sends on the control channel, after the `link_bind` of [§3.0](#30-link_bind) where one is required.
 - **(3.1b) MUST** `versions` is ordered most-preferred first and contains at least one entry.
 
 ### 3.2 `hello_accept`
@@ -574,10 +590,11 @@ error { code: Kind, message: string, in_reply_to: uint (optional), detail: map (
 
 ## 11. Message index
 
-Forty-four messages. `R` request, `S` response, `E` event.
+Forty-five messages. `R` request, `S` response, `E` event.
 
 | Message | | Channel | Profile to originate | Section |
 |---|---|---|---|---|
+| `link_bind` | E | **every**, first frame | — | [3.0](#30-link_bind) |
 | `hello` | R | control | — | [3.1](#31-hello) |
 | `hello_accept` | S | control | — | [3.2](#32-hello_accept) |
 | `declare` | R | control | Core | [3.3](#33-declare) |

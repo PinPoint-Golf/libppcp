@@ -170,7 +170,7 @@ PPCP is transport-agnostic but not transport-indifferent. An implementation MUST
 - **(T4) MUST NOT** PPCP assumes nothing about addressing, discovery or authentication.
 - **(T5) MUST** The transport preserves the two channels' independence end to end. Multiplexing both onto one flow-controlled stream does not satisfy T2 however the multiplexing is done.
 
-Channel numbering, and the mapping from channels to transport streams, is specified in [`PPCP-ENC` §2](ppcp-encoding.md#2-channels).
+Channel numbering, and the mapping from channels to transport streams, is specified in [`PPCP-ENC` §2](ppcp-encoding.md#2-channels). Where each channel is its own stream, the streams of one peer are bound into a link by `link_bind` ([`PPCP-ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link), erratum E1).
 
 ### 3.1 Why two channels is not negotiable
 

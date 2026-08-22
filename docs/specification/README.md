@@ -36,7 +36,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | Read | Document | Authority | What it settles |
 |---|---|---|---|
 | 1st | [**PPCP-CORE**](ppcp-core.md) | Normative | Entities, timing contract, session and shot semantics, conformance profiles, thirty-eight invariants |
-| 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
+| 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-five messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
 | — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **APPROVED**, revision 8 — five review passes, **no open findings**. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Versioned separately from PPCP |
@@ -84,6 +84,15 @@ If implementation shows something here to be wrong, that is the expected outcome
 ---
 
 # Change history
+
+## Errata to 1.0 — from implementation
+
+*Approved is not stable: implementation is expected to find things, and the change belongs here first. Each erratum names the session that found it. Tracked in [`../implementation/implementation-plan.md` §9](../implementation/implementation-plan.md).*
+
+| | Erratum | Found by |
+|---|---|---|
+| **E1** | **A listener had no way to know which of a peer's several streams belonged together, or which was channel 0.** Two implementations built the two-connection transport and resolved it two incompatible ways. `link_bind` — a 16-byte dialler-minted `link_id` and the channel number, as the first frame on every stream — binds streams into a link explicitly. [`ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link), [`MSG` §3.0](ppcp-messages.md#30-link_bind). Forty-five messages. Never in a bundle. | Session 1, both implementation teams |
+
 
 *Newest first. What changed between drafts, kept at the back because a first reader does not need it.*
 

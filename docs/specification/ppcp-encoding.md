@@ -31,6 +31,22 @@ This document specifies how a PPCP message becomes bytes, and how those bytes ar
 
 2d is the practical consequence of the split and the most common source of ordering bugs: the event is deliberately allowed to overtake the payload, which is the entire point of having two channels.
 
+### 2.1 Binding streams to a link
+
+*Erratum E1, 22 August 2026 — added after the first implementation session. Two implementations built the two-connection transport of [`PPCP-CORE` §3.1](ppcp-core.md#31-why-two-channels-is-not-negotiable) and associated a peer's connections two different ways, both of which worked against themselves and neither of which would have met the other.*
+
+A **link** is the set of underlying streams between two peers that together carry one PPCP session — one stream per channel where the transport gives each channel its own stream. A listener receiving several streams needs two facts the transport does not supply: **which streams belong to one peer**, and **which of them is channel 0**. Neither is inferable: arrival order breaks the moment a dialler opens channels concurrently or a dial is abandoned and retried; a transport address is shared by every peer behind one NAT; and a TLS identity exists only on the rendezvous path, not on the direct one.
+
+- **(2.1a) MUST** Where the transport carries one channel per underlying stream, the **dialling peer** mints a **`link_id`** — 16 bytes from a cryptographically secure random number generator, fresh per link — and sends a **`link_bind`** frame as the **first frame on every stream it opens**, on every channel including channel 0. The frame header carries the channel number the stream will carry; the payload is `link_bind { link_id, channel }` ([`PPCP-MSG` §3.0](ppcp-messages.md#30-link_bind)), with `channel` equal to the header's.
+- **(2.1b) MUST** The listening peer associates streams into a link by `link_id` and takes each stream's channel from the header, which [2c](#2-channels) already requires to match every frame on that stream. It MUST NOT infer either from arrival order, from the transport address, or from a rendezvous identity.
+- **(2.1c) MUST** A listener closes a stream whose first frame is not `link_bind`, whose `channel` disagrees with its header, or whose `link_id` names a link that already holds that channel. A `link_bind` naming an unknown `link_id` opens a new link. A link that has not bound channel 0 within the listener's own timeout is discarded with every stream it holds; the timeout is the embedding's policy.
+- **(2.1d) MUST** A dialler opens channel 0 and sends `hello` on it only after the `link_bind` on that stream; bulk channels MAY be opened before, after, or concurrently with channel 0. A bulk channel MAY be opened at any later point in the session — a `preview` channel after the session is established is the expected case — by a further stream carrying `link_bind` with the same `link_id`.
+- **(2.1e) MUST NOT** `link_bind` be sent where the transport itself identifies streams and the channels on them — QUIC stream identifiers, an application multiplexer with per-channel windows — and it never appears in a bundle ([§7](#7-bundle-container)): a file has one stream and its channels are the header byte.
+- **(2.1f)** `link_id` is a transport-binding token and nothing else. It is not `Peer.id`, is never persisted, is never reused across links, and carries no identity a stranger could correlate: on a rendezvous path it travels inside TLS ([`PPCP-RV` 7.6a](ppcp-rv.md#76-peer-identity) is unaffected), and on a direct path the embedding has already accepted that the stream is unauthenticated.
+
+**Why an explicit frame, and not the implicit rules the two implementations chose.** The first grouped by the pairing that the TLS PSK identity resolved to and ordered channels by serialising the dialler's handshakes; the second took the channels in arrival order. Both are correct for a dialler that behaves exactly as that listener assumes, which is the definition of an interoperability failure. The implicit rules also fail on the `direct` path — a tunnel, a socket handed in by an embedding application, the synthetic peer of [`PPCP-CONF` §2c](ppcp-conformance.md#2-required-test-infrastructure) — where there is no PSK identity to group by, and they forbid opening a third channel later, which a `preview` Stream wants. One frame of roughly forty bytes per stream, once, buys an association that is explicit, concurrent-safe and transport-independent. The channel byte was already in every header; the link needed a name.
+
+
 ---
 
 ## 3. Framing
@@ -189,6 +205,7 @@ A bundle is a Session serialised. It is not a distinct entity and not a distinct
 - **(7b) MUST** Frames appear in the order they would have been sent, and the ordering rules of [§2d](#2-channels) apply as they do live: control frames for a Capture may precede its payload frames arbitrarily, and MUST for the manifest.
 - **(7c) MUST** `session_manifest` appears before any `payload_*` frame ([`PPCP-MSG` §9.2a](ppcp-messages.md#92-session_manifest)), so an interrupted read still yields an analysable session.
 - **(7d) MUST** A truncated final frame means the bundle is incomplete. The reader treats the Session as `completeness: partial` **only if the bundle itself did not assert otherwise**, and never upgrades a partial Session to complete on the strength of what happened to be present (I10).
+- **(7g) MUST NOT** A bundle contain a `link_bind` frame ([§2.1e](#21-binding-streams-to-a-link)). A reader that meets one ignores it (I13).
 - **(7e) MUST NOT** A bundle contain a trailing index, footer or table of contents in `ppcp/1.0`. Random access is deliberately not supported at v1; adding it is a MINOR change that appends a frame type, not a container change.
 - **(7f) MUST** A bundle reader accepts a bundle whose `minor` exceeds its own, ignoring frames it does not understand (I13).
 
