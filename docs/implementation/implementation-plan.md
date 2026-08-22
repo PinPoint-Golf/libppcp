@@ -88,7 +88,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | `CMakeLists.txt` with presets (`dev`, `san`, `cov`, `rel`, `release`), `include/ppcp/`, `src/`, `tests/` with `purity.cmake` asserting the sans-I/O rule (no `<sys/socket.h>`, `<pthread.h>`, `<time.h>` clock calls, `<stdio.h>` file I/O in `src/`), `tools/`, `Package.swift` with a `CPPCP` C target, `include/ppcp/version.h`, `README.md` updated from "Empty" to the layout. CI-free but `ctest` runs clean. |
 | Spec | `CORE` A.3; REQ-LIC-2/3/5, REQ-PORT-6 |
 | Unlocks | Everything. |
-| Status | ☐ not started |
+| Status | ☑ done — S1 |
 
 ### L1 — CBOR codec, framing, limits, envelope
 
@@ -97,7 +97,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | Deterministic CBOR encoder and a decoder that enforces `ENC` §8 limits *before allocating*, rejects integer keys, duplicate keys, `null`-as-absent, tags and indefinite lengths, accepts half/single floats, ignores unknown keys at every depth (I13). Frame header read/write (`ENC` §3), channel rules (`ENC` §2), message envelope (`ENC` §5) with per-sender `msg_id` and `reply_to`. The worked example of `ENC` §5.1 reproduces byte-for-byte. Bundle magic header (`ENC` §7) read/write. |
 | Spec | `ENC` §2–5, §7, §8 |
 | Unlocks | CT-I1 (encoding half), CT-I13, the fixture format (`CONF` 2b) |
-| Status | ☐ |
+| Status | ☑ done — S1 |
 
 ### L2 — Injectable clock and timebases
 
@@ -106,7 +106,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | `ppcp_clock` — the embedding supplies `now(tb)`; tests supply a simulated clock with offset, skew and injected discontinuities. `Timebase`, `TimebaseRelation` (affine requires both sigmas — unconstructible otherwise), `ClockDiscontinuity`, `Instant`, `Series`, `Interval`, `Estimate` as C structs with encode/decode and structural validation. No composition API exists (I18). |
 | Spec | `CORE` §5.1, §5.3–5.5, §6.4, §6.5 |
 | Unlocks | CT-I1, CT-I3, CT-I4, CT-I18 (static half), `CONF` 2a |
-| Status | ☐ |
+| Status | ☑ done — S1 |
 
 ### L3 — Canonical instant and rolling shutter
 
@@ -115,7 +115,7 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | `ppcp_canonical_instant(profile_timing, t, d)` and its inverse; `ppcp_row_instant(geometry, canonical_first, r)` for both directions and `R == 1`. Scalar-or-array `AchievedFrames` accessor so the scalar path is the one the product uses. Worked examples A–D of `CORE` §6.1.1 reproduce to the nanosecond. |
 | Spec | `CORE` §6.1, §6.2, §5.8 |
 | Unlocks | **CT-S1 all six assertions**, CT-I17 |
-| Status | ☐ |
+| Status | ☑ done — S1 |
 
 ### L4 — Type vocabulary and validation
 
@@ -196,13 +196,13 @@ Prefix **L**. The reference implementation, the suite, the tooling. Everything e
 | Deliverable | Pairing-code payload encode/decode (`v` first by the two-character rule, every optional field, `sid` → canonical lowercase UUID text), `ppcp:` URI form, `v`-unknown → *version* report (4.2b); HKDF-SHA256 (implemented in the library — HMAC-SHA256 over the SHA-256 from L7) producing `PRK`, `K_tls`, `K_id`; `rn`/`rid` and the 17-octet PSK identity with CSPRNG bytes **supplied by the embedding**; resolver over a set of held pairings; expiry decision helper honouring 4.4a/4.4a1. **All vectors of `RV` §10 reproduce byte-for-byte, including the all-fields code.** Nothing here touches TLS, a socket, storage or a random source. |
 | Spec | `RV` §3.4, §4, §5.1, §5.3, §10 |
 | Unlocks | RT-1, RT-2, RT-3, RT-14 (static half), RT-8 (resolver half) |
-| Status | ☐ |
+| Status | ☑ done — S1 |
 
 ### L13 — Synthetic peer (`tools/ppcp-sim`)
 
 | | |
 |---|---|
-| Deliverable | A command-line peer over two TCP sockets (plaintext — it is test infrastructure, and the `direct` path of `RV` §2 is conformant without RV) that can present **any declaration** from a JSON description: different `timing.convention`, `geometry`, `provenance: measured` with a non-zero offset, `unrelated` timebases, a foreign profile set (Core-only observer; `Core + Arbitrate + Live + Offline` with no Detect), a host that never answers a Candidate, a host delayed past the mint deadline, three timebases. Scriptable scenarios for each interop row. This is the `CONF` 2c requirement and it is what makes CT-S3, S4, S6, S7 writable at all. |
+| Deliverable | A command-line peer over two TCP sockets (plaintext — it is test infrastructure, and the `direct` path of `RV` §2 is conformant without RV) that can present **any declaration** from a JSON description: different `timing.convention`, `geometry`, `provenance: measured` with a non-zero offset, `unrelated` timebases, a foreign profile set (Core-only observer; `Core + Arbitrate + Live + Offline` with no Detect), a host that never answers a Candidate, a host delayed past the mint deadline, three timebases; **a TLS-PSK mode that offers `psk_ke` only**, so the hosts' refusal can be demonstrated rather than asserted (RT-4, requested by H in S1). Scriptable scenarios for each interop row. This is the `CONF` 2c requirement and it is what makes CT-S3, S4, S6, S7 writable at all. |
 | Spec | `CONF` §2c, §4, §5 |
 | Unlocks | CT-S3, CT-S4, CT-S6, CT-S7, every *paired* test, every interop row |
 | Status | ☐ |
@@ -254,7 +254,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 |---|---|
 | Deliverable | `CMakeLists.txt` block mirroring the `libwrist` block exactly: `FetchContent` from `PinPoint-Golf/libppcp`, `PP_LIBPPCP_LOCAL` sibling-checkout override, static link, version/commit provenance into the About box. `LICENSEDEPS.md` gains the MIT entry. Compiles with nothing calling it yet. |
 | Depends | L0 |
-| Status | ☐ |
+| Status | ☑ done — S1 (GitHub fetch defaults OFF until the repo is public: `PP_LIBPPCP_FETCH`) |
 
 ### H1 — Transport: two TCP channels, TLS-PSK via OpenSSL
 
@@ -264,7 +264,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Spec | `CORE` §3; `RV` §5.2, §5.3, §7.7, §8 |
 | Unlocks | RT-4 (host half), RT-10, RT-11, RT-14 (wire half), RT-17 (review) |
 | Depends | Nothing in `libppcp` except the L12 derivation API, which can be stubbed with the §10 vectors until L12 lands |
-| Status | ☐ |
+| Status | ☑ done — S1 (RT-4 `psk_ke` refusal awaits a `ppcp-sim` mode that offers `psk_ke` only — added to L13) |
 
 ### H2 — Host peer adapter and own-Source declaration
 
@@ -346,7 +346,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 |---|---|
 | Deliverable | `Packages/Core/Package.swift` gains `.package(path: "../../../libppcp")` (co-development) with the git URL recorded for later; `CaptureCore` depends on `CPPCP`. `LayerPurityTests` updated to permit `CPPCP` and still forbid every platform framework. `swift test` green on the host. |
 | Depends | L0 |
-| Status | ☐ |
+| Status | ◐ in progress — S1 close-out (Package.swift landed after D finished) |
 
 ### D1 — Transport: two `NWConnection`s, TLS-PSK
 
@@ -356,7 +356,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §3; `RV` §5.2, §5.3, §5.4b1–b2 |
 | Unlocks | RT-4 (device half), RT-10, RT-14 (wire half), RT-17 (review) |
 | Depends | L12 API (stub with §10 vectors until it lands) |
-| Status | ☐ |
+| Status | ☑ done — S1 |
 
 ### D2 — Device peer adapter and declaration from AVFoundation
 
@@ -491,6 +491,15 @@ Append-only. Newest last.
 | 2026-08-22 | user | Requirements OPEN-4 — PinPointCapture licence | **Closed: MIT**, same as `libppcp`, to keep GPL out of App Store distribution. Ground rule 1 still holds — MIT-to-MIT does not license copying; the library stays the only shared artefact |
 | 2026-08-22 | plan | `CORE` B8/B10 — timing defaults and `sampled` exposure accuracy need rig data | Out of scope; the matrix carries `rig` cells |
 | 2026-08-22 | plan | `SessionLink` (`CORE` B2) | Type and message implemented in L4/L5 for comprehension (C1); **no implementation originates it** |
+| 2026-08-22 | L (S1) | `ENC` §5.1 worked example is not in deterministic key order (`t1` sorts before `type`; `{ns,tb}` not `{tb,ns}`), so a 4e-honouring encoder cannot reproduce it | Erratum queued for L17: re-emit §5.1 deterministically (still 87 bytes) or mark it illustrative. Library carries `ppcp_message_encode_literal` only to reproduce it |
+| 2026-08-22 | L (S1) | `CORE` 6.2d names no rounding rule for the row instant | Implemented round-half-away-from-zero; erratum queued: one sentence in 6.2d |
+| 2026-08-22 | L (S1) | `RV` 4.3a promises byte-identical codes but does not say whether a defaulted optional (`mu: 1`) is emitted; the §10.3 vector emits it | Erratum queued: state the rule (emit as the vector does) |
+| 2026-08-22 | L (S1) | `CORE` 5.3 `Timebase.kind` is not in the §10.3 open-registry list | Implemented closed; confirm in L17 |
+| 2026-08-22 | H (S1) | **`CORE` §3 / `ENC` §2 say nothing about how a listener associates one peer's several TCP connections, or which is channel 0.** H groups by the pairing the PSK identity resolved to and orders by the dialler's serialised handshakes; D uses arrival order. Both work against themselves; they need a clause to meet | **Erratum required before S3 (live path)** — L writes the clause in `ENC` §2; the rule chosen is H's (no wire bytes needed); D aligns in D6 |
+| 2026-08-22 | H (S1) | **`RV` 5.3f binary identity fails through OpenSSL's TLS 1.2 PSK callbacks** (`strlen`-lengthed): an embedded `0x00` in `rn2` — ~1 connection in 16 — fails the handshake intermittently | Erratum queued: 5.3a excludes `0x00` from `rn2` bytes (cheapest; survives on both platforms). Pinned by a test in PinPointStudio |
+| 2026-08-22 | D (S1) | **`RV` 5.3a/5.3b cannot be served by a Network.framework *listener*** — no server-side PSK resolver hook; a rotating per-connection identity is refused with `PSK_IDENTITY_NOT_FOUND`. The required pairing-code path (device dials) is unaffected; the discovery path where `RV` 3.5b recommends the device advertise is not implementable on iOS as written | Erratum queued: 3.5b becomes a MAY for a peer whose platform cannot resolve identities server-side, with the host advertising instead; D7 implements discovery with the **device browsing and dialling** (roles reversed from 3.5b) |
+| 2026-08-22 | D (S1) | **`RV` 5.3c uniform failure is unachievable on iOS** (different alerts, different timing) | Erratum queued: 5.3c scoped to peers whose TLS stack exposes the server-side selection; RT-11 `n/a` for such a peer on the code path |
+| 2026-08-22 | H, D (S1) | RT-17 (`review` method) needs a named human reviewer; an author cannot discharge it | **For the user to assign** |
 
 ---
 

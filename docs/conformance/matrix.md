@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-22 — matrix created, nothing run |
+| Last updated | 2026-08-22 — end of Session 1 |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -17,10 +17,10 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 | Test | Invariant | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
-| CT-I1 | I1 | Core | static | L1, L2 | — | — | — |
+| CT-I1 | I1 | Core | static | L1, L2 | pass | — | — |
 | CT-I2 | I2 | Core | fixture | L8, D4 | — | — | — |
-| CT-I3 | I3 | Core | static | L2, L4 | — | — | — |
-| CT-I4 | I4 | Core | static | L2, D2 | — | — | — |
+| CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
+| CT-I4 | I4 | Core | static | L2, D2 | pass | — | — |
 | CT-I5 | I5 | Capture | paired | L6 | — | — | — |
 | CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | — | — | — |
 | CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | — | — | — |
@@ -29,25 +29,25 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I10 | I10 | Capture | paired | L7, D4 | — | — | — |
 | CT-I11 | I11 | Capture | fixture | L7, D4 | — | — | — |
 | CT-I12 | I12 | Capture | fixture | L8, H3, D3 | — | — | — |
-| CT-I13 | I13 | Core | fixture | L1 | — | — | — |
+| CT-I13 | I13 | Core | fixture | L1 | impl | — | — |
 | CT-I14 | I14 | Core | static | L6, H2 | — | — | — |
 | CT-I15 | I15 | Offline | fixture | L8, H3 | — | — | — |
 | CT-I16 | I16 | Offline | paired | L8, H3 | — | — | — |
-| CT-I17 | I17 | Capture | injected | L3 → CT-S1 | — | — | — |
-| CT-I18 | I18 | Core | paired | L9, H5, D6 | — | — | — |
+| CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | — |
+| CT-I18 | I18 | Core | paired | L9, H5, D6 | impl | — | — |
 | CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | — | — |
 | CT-I20 | I20 | Arbitrate | paired | L6, H5 | — | — | — |
 | CT-I21 | I21 | Live | paired | L9, H5, D6 | — | — | — |
-| CT-I22 | I22 | Capture | static | L4, D2 | — | — | — |
+| CT-I22 | I22 | Capture | static | L4, D2 | impl | — | — |
 | CT-I23 | I23 | Mint | injected | L10 → CT-S4 | — | — | — |
 | CT-I24 | I24 | Core | injected | L6 → CT-S6 | — | — | — |
 | CT-I25 | I25 | Offline | static | L4 | — | — | — |
 | CT-I26 | I26 | Detect | static | L4, L10, D5 | — | — | — |
 | CT-I27 | I27 | Capture | static | L4, D4 | — | — | — |
 | CT-I28 | I28 | Capture | static | L4, D2 | — | — | — |
-| CT-I29 | I29 | Detect | static | L4, D5 | — | — | — |
+| CT-I29 | I29 | Detect | static | L4, D5 | impl | — | — |
 | CT-I30 | I30 | Capture | paired | L7, D4 | — | — | — |
-| CT-I31 | I31 | Capture | static | L4, D2 | — | — | — |
+| CT-I31 | I31 | Capture | static | L4, D2 | impl | — | — |
 | CT-I32 | I32 | Mint | injected | L10, D5 | — | — | — |
 | CT-I33 | I33 | Detect | injected | L10, D5 | — | — | — |
 | CT-I34 | I34 | Offline | fixture | L8, H3, D3 | — | — | — |
@@ -61,7 +61,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 | Test | Invariants | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
-| CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | — | — | — |
+| CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | — | — |
 | CT-S2 | I22 | Capture | **rig** | — | rig | rig | rig |
 | CT-S3 | I19 | Core | injected | L13, H2, D2 | — | — | — |
 | CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | — | — | — |
@@ -99,20 +99,20 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 | Test | Method | Asserts | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|
-| RT-1 | static | §10.1 derivation vectors | L12 | — | — | — |
-| RT-2 | static | §10.3 codes, `v` first in the all-fields payload, `sid` → UUID text | L12 | — | — | — |
-| RT-3 | injected | unknown `v` → version report | L12, D7 | — | — | — |
-| RT-4 | injected | strongest mode negotiated, never plaintext, outcome surfaced | H1, D1 | n/a | — | — |
+| RT-1 | static | §10.1 derivation vectors | L12 | pass | — | — |
+| RT-2 | static | §10.3 codes, `v` first in the all-fields payload, `sid` → UUID text | L12 | pass | — | — |
+| RT-3 | injected | unknown `v` → version report | L12, D7 | pass | — | — |
+| RT-4 | injected | strongest mode negotiated, never plaintext, outcome surfaced | H1, D1 | n/a | impl | impl |
 | RT-5 | paired | second handshake on a `mu: 1` code refused | H6 | n/a | — | n/a |
-| RT-6 | injected | expired code reported as expired, no connection | L12, H6, D7 | — | — | — |
+| RT-6 | injected | expired code reported as expired, no connection | L12, H6, D7 | impl | — | — |
 | RT-7 | paired | TXT and instance name carry nothing persistent | H6, D7 | n/a | — | — |
-| RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7 | — | — | — |
+| RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7 | impl | — | — |
 | RT-9 | paired | diagnostic export carries no secret or payload | H6, D7 | n/a | — | — |
-| RT-10 | injected | `session_resume` refused without a completed handshake | H1, D1 | n/a | — | — |
-| RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | — | n/a |
+| RT-10 | injected | `session_resume` refused without a completed handshake | H1, D1 | n/a | impl | impl |
+| RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | pass | n/a (code path; see plan §9 F-D1-2) |
 | RT-12 | **review** | CSPRNG at full width, protected storage, erasure | H6, D7 | n/a | — | — |
 | RT-13 | **review** | network join with consent; not left attached | D7 | n/a | n/a | — |
-| RT-14 | static | §10.2 PSK identity; differs per connection; empty hint at TLS 1.2 | L12, H1, D1 | — | — | — |
+| RT-14 | static | §10.2 PSK identity; differs per connection; empty hint at TLS 1.2 | L12, H1, D1 | pass | pass (wire) | impl |
 | RT-15 | paired | publisher refuses past `exp`; untrusted clock attempts | H6, D7 | n/a | — | — |
 | RT-16 | **review** | no `PRK` persisted from `mu > 1` | H6, D7 | n/a | — | — |
-| RT-17 | **review** | every platform mode offered, from a capability query | H1, D1 | n/a | — | — |
+| RT-17 | **review** | every platform mode offered, from a capability query | H1, D1 | n/a | review — reviewer unassigned | review — reviewer unassigned |
