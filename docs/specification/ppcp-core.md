@@ -12,7 +12,7 @@
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
 | Reviews | [`reviews/`](reviews/) — PinPointCapture and PinPointStudio reviews of Draft 1, both **approve to implement** |
-| Companion documents | [`PPCP-MSG`](ppcp-messages.md), [`PPCP-ENC`](ppcp-encoding.md), [`PPCP-CONF`](ppcp-conformance.md), [`PPCP-RV`](ppcp-rv-scope.md) (scope only, unwritten) |
+| Companion documents | [`PPCP-MSG`](ppcp-messages.md), [`PPCP-ENC`](ppcp-encoding.md), [`PPCP-CONF`](ppcp-conformance.md), [`PPCP-RV`](ppcp-rv.md) (Draft 1, unreviewed) |
 | Licence | Specification: open. Reference implementation `libppcp`: MIT. |
 
 ---
@@ -86,7 +86,7 @@ PPCP is deliberately *not* a streaming protocol. It assumes a device that timest
 | [**PPCP-MSG**](ppcp-messages.md) | Normative | Message catalogue, channel semantics, error codes; informative sequence annex |
 | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, bundle container |
 | [**PPCP-CONF**](ppcp-conformance.md) | Normative | Conformance requirements and the invariant-to-test matrix |
-| [**PPCP-RV**](ppcp-rv-scope.md) | Scope only | Rendezvous, pairing, security. **Not yet written.** Versioned independently. |
+| [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 1, unreviewed — nothing in it is agreed.** Versioned independently. |
 
 ### 1.2 Reading guide
 
@@ -176,7 +176,7 @@ The thirty-two invariants of [§11](#11-invariants) are the conformance surface.
 
 ## 3. Transport contract
 
-PPCP is transport-agnostic but not transport-indifferent. An implementation MUST supply a transport meeting this contract. Discovery, addressing and authentication are **not** part of it — see [`PPCP-RV`](ppcp-rv-scope.md).
+PPCP is transport-agnostic but not transport-indifferent. An implementation MUST supply a transport meeting this contract. Discovery, addressing and authentication are **not** part of it — see [`PPCP-RV`](ppcp-rv.md).
 
 - **(T1) MUST** Ordered, reliable, bidirectional delivery per channel. PPCP does not retransmit, reorder or checksum.
 - **(T2) MUST** **At least two logically independent channels with independent flow control**: one **control** channel and at least one **bulk** channel. See [§3.1](#31-why-two-channels-is-not-negotiable).
@@ -279,7 +279,7 @@ The participant. **`Peer` is not a synonym for device**: a host is a Peer, decla
 - **(5.2.1b) MUST NOT** `Peer.id` is a platform device identifier, an advertising identifier, or any value the platform's privacy rules restrict.
 - **(5.2.1c)** Consequence, accepted: reinstalling an application creates a new `Peer.id`, and bundles exported before the reinstall carry the old one. **Reconciliation is on Session, not on Peer** ([§8.5](#85-reconciliation)).
 
-Whether a peer may rejoin a session after reconnecting without re-pairing is a rendezvous question, delegated to [`PPCP-RV`](ppcp-rv-scope.md).
+Whether a peer may rejoin a session after reconnecting without re-pairing is a rendezvous question, delegated to [`PPCP-RV` §7.5](ppcp-rv.md#75-reconnecting-within-a-session).
 
 ### 5.3 Timebase
 
@@ -1074,9 +1074,9 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 
 ## 12. Security considerations
 
-PPCP itself defines **no security model**. Pairing, authentication, encryption, key derivation, replay resistance and the question of whether a peer may rejoin a session after reconnecting without re-pairing are all delegated to [`PPCP-RV`](ppcp-rv-scope.md).
+PPCP itself defines **no security model**. Pairing, authentication, encryption, key derivation, replay resistance and the question of whether a peer may rejoin a session after reconnecting without re-pairing are all delegated to [`PPCP-RV`](ppcp-rv.md).
 
-This is defensible only if the companion document exists. It does not yet. Until it does, **PPCP has no security model at all, delegated or otherwise**, and that is a gap rather than a design ([Annex B](#annex-b--open-issues)).
+This is defensible only if the companion document exists and is agreed. **A first draft now exists and nothing in it has been agreed**, so the delegation points somewhere rather than nowhere, but it does not yet point at anything settled ([Annex B](#annex-b--open-issues)).
 
 What this specification does require:
 
@@ -1145,7 +1145,7 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 
 | # | Issue | Status |
 |---|---|---|
-| **B1** | **`PPCP-RV` does not exist.** Service type and TXT contents, QR payload format and its version marker, PSK derivation and TLS-PSK identity format, and the optional SSID/passphrase extension are all unspecified. Two conformant peers cannot find one another. | **Blocking interoperability**, not blocking implementation. [Scope drafted](ppcp-rv-scope.md). |
+| **B1** | **`PPCP-RV` is drafted but not agreed.** [Draft 1](ppcp-rv.md) specifies the service type, TXT contents, pairing-code payload, key derivation, TLS profile and security model, with test vectors. Until the implementation teams agree it, two conformant peers still cannot be relied on to find one another. | **Blocking interoperability**, not blocking implementation. Awaiting review. |
 | **B2** | **`SessionLink` is untested** ([§5.17](#517-sessionlink)). Resolved rather than deferred so implementers do not invent divergent forms, but nothing has exercised it. Support is OPTIONAL at v1. | Provisional. Re-examine when offline multi-device is built. |
 | **B3** | **Source ownership transfer mid-session.** Ownership is settled at session start. Whether it may move afterwards — relevant if a host disconnects and a capture peer should take over a wrist sensor rather than lose it — is unspecified. Probably wants to be legal. | Open. |
 | **B4** | **Launch monitor shapes. Reopened in Draft 2 on new evidence.** The host's actual integration is a two-line file rewritten in place, attributable only by arrival order — neither a live nominator nor a retrospective export. Draft 2 adds the third shape ([§8.1](#81-nomination), `basis: arrival_pairing`). What remains open is whether `kind: launch_monitor` as a Source is still the right model for the *connected* case, which no implementation has yet exercised. | **Reopened.** Third shape resolved; the connected case awaits a real device. |

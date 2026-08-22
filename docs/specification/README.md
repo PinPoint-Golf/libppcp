@@ -28,7 +28,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the six places it will silently fail |
-| — | [**PPCP-RV**](ppcp-rv-scope.md) | Scope only | Rendezvous, pairing, security. **Unwritten.** What it must fix, and why it is separate |
+| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 1, unreviewed** — service type, pairing code, key derivation, TLS profile, security model, test vectors |
 | — | [**Review disposition**](review-disposition-2026-08-22.md) | Record | Every review comment across all three rounds, what was done with it, and the calls a reviewer may want to reverse |
 | — | [**reviews/**](reviews/) | Input | The two Draft 1 reviews as submitted |
 
@@ -63,13 +63,13 @@ All answered, and both teams agreed on every one. Four are now closed.
 | **Q4** | 50 ms coincidence default | **Open, but sharpened.** The field is now split from `issue_hold_ns`, so a measurement will know which quantity it is estimating. Two measurements are needed: intra-bay spread sets the floor, adjacent-bay separation the ceiling. [Annex B8](ppcp-core.md#annex-b--open-issues) |
 | **Q5** | Version support window | **Closed.** Two MINOR back or twelve months, whichever is longer. |
 | **Q6** | Unbounded candidate audio retention | **Closed — confirmed** by both. The application owns the bound; the protocol owns expressibility and assertable absence. |
-| **Q7** | `PPCP-RV` does not exist | **Open, and the deadline moved earlier.** `_ppcp._tcp` has already shipped in an application bundle, and the QR payload is gated by the first store submission rather than by `ppcp/1.0`. [`PPCP-RV` §5.1](ppcp-rv-scope.md#51-the-real-deadline-is-earlier-than-ppcp10) |
+| **Q7** | `PPCP-RV` does not exist | **Open — now drafted, not agreed.** [Draft 1](ppcp-rv.md) was written while the Draft 2 reviews were out. The deadline moved earlier: `_ppcp._tcp` has already shipped in an application bundle, and the pairing code is gated by the first store submission rather than by `ppcp/1.0`. |
 
 ## What is still open
 
 [`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) has the full list. The ones needing someone to act:
 
-- **`PPCP-RV`** — ratify the service type, specify the QR payload with a version marker in its first field. Before the first store submission, not before v1.0.
+- **`PPCP-RV`** — [Draft 1](ppcp-rv.md) is written and needs both teams' review. §4, the pairing code, is the part that cannot be changed after the first code is printed, and should get the hardest reading. Before the first store submission, not before v1.0.
 - **Two timing defaults**, neither measured: the coincidence window and the issue hold. Rig work.
 - **The rig itself.** `frame_start_to_exposure_offset_ns` and `readout_ns` are `assumed` on every device until it exists; provenance now makes that visible rather than silent.
 - **The synthetic peer simulator.** Four of the eight silent-failure tests are untestable without a peer that declares something the reference implementation would not.

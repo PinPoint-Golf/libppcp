@@ -653,7 +653,7 @@ sequenceDiagram
 
 | Step | Reference | Note |
 |---|---|---|
-| 1–5 | REQ-DISC-2, REQ-AUTH-1, [§3.1](#31-hello) | QR is the primary pairing path, not a fallback. Its format is `PPCP-RV`, which does not yet exist. |
+| 1–5 | REQ-DISC-2, REQ-AUTH-1, [§3.1](#31-hello) | QR is the primary pairing path, not a fallback. Its format is [`PPCP-RV` §4](ppcp-rv.md#4-rv-2--the-pairing-code), drafted and not yet agreed. |
 | 6 | I1, I4, [`CORE` §5.3](ppcp-core.md#53-timebase) | iOS camera and mic share `tb:hosttime`, so no relation is needed. Android `UNKNOWN` declares distinct ids, so a relation is structurally required. |
 | 7 | **I19**, 3.3d | The host declares its own conventions. Omitting this works for one vendor and breaks every third-party host. |
 | 9 | **I22** | `frame_start_to_exposure_offset_ns` is mandatory on this convention and declared even when zero. |

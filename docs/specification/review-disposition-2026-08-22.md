@@ -240,7 +240,7 @@ How the host maps its internal identifiers onto conformant ones is its own decis
 
 ### 5.7 Answers to Q1–Q7 and the requirements' open decisions
 
-Q1, Q3, Q6 confirmed. Q2 kept. Q5 settled — see [§7](#7-q5-settled). Q4 sharpened rather than settled, per [§5.2](#52-f2--the-protocol-never-modelled-when-a-host-may-issue). Q7: agreement that RV-2 comes before any release shipping a QR, which is now recorded in [`PPCP-RV` §5.1](ppcp-rv-scope.md#51-the-real-deadline-is-earlier-than-ppcp10).
+Q1, Q3, Q6 confirmed. Q2 kept. Q5 settled — see [§7](#7-q5-settled). Q4 sharpened rather than settled, per [§5.2](#52-f2--the-protocol-never-modelled-when-a-host-may-issue). Q7: agreement that RV-2 comes before any release shipping a QR, which is now recorded in [`PPCP-RV` Annex A1](ppcp-rv.md#annex-a--decisions-and-alternatives).
 
 The requirements document's OPEN-3 through OPEN-7 are its owner's to close. The reviewer's position on **OPEN-6** — that v1 ship offline-only rather than tethered-only — is consistent with this specification's build order and is worth the requirements owner weighing: it is the path with no clock pressure, and it is the one a host can consume before doing the F3 and F6 work.
 
@@ -337,7 +337,7 @@ Both teams reached the same conclusion independently and it changes the schedule
 - **A service type has already shipped by guess.** The mobile application declares `_ppcp._tcp` in its bundle, chosen with nothing to reference, and that string goes to app review as part of the bundle. RV-1 should **ratify** it rather than pick another name.
 - **RV-2 — the QR payload — is gated by the first store submission, not by `ppcp/1.0`.** A printed code outlives a release, and the payload is parsed with no chance to negotiate first. A version marker in its first field is the one item that cannot be fixed afterwards.
 
-Recorded in [`PPCP-RV` §5.1](ppcp-rv-scope.md#51-the-real-deadline-is-earlier-than-ppcp10).
+Recorded in [`PPCP-RV` Annex A1](ppcp-rv.md#annex-a--decisions-and-alternatives), and [Draft 1](ppcp-rv.md) was written while the Draft 2 reviews were out. Nothing in it is agreed.
 
 ---
 

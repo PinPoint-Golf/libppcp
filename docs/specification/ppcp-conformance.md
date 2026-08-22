@@ -211,6 +211,6 @@ Stated so the boundary is not mistaken for an omission.
 | Frame rate, resolution, optical quality thresholds | Host ingest policy, deliberately outside the protocol (I14). |
 | Detection accuracy, classifier quality, false-positive rate | Device-internal. The protocol carries `confidence`; it does not judge it. |
 | **Which candidates a Mint peer promotes** | Detector tuning, and therefore I14 territory. The suite tests the *shape* of the result — one Candidate per Shot, nothing discarded, no window — never the choice. |
-| Rendezvous, pairing, key derivation | [`PPCP-RV`](ppcp-rv-scope.md), which does not exist yet. **No pairing interoperability is currently testable at all.** |
+| Rendezvous, pairing, key derivation | [`PPCP-RV`](ppcp-rv.md), which carries its own tests (RT-1…RT-11) and its own vectors. They fold in here once it is agreed; until then **no pairing interoperability is testable.** |
 | Byte-transfer performance, throughput, latency | Transport. PPCP declares uncertainty; it does not require a quality. |
 | Battery, thermal endurance, sustained capture rate | Product requirements, verified against the device, not the protocol. Note that `MeasuredCapability.method` exists precisely so a cold figure cannot be presented as a sustained one (I28). |
