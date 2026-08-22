@@ -429,3 +429,38 @@ Three raisings against text that has been correct for three drafts, with two dis
 `PPCP-RV` is **Draft 6**. Both teams approve. §4, §6 and §7 are approved without reservation, and §5 now rests on a measurement taken on the hardware it concerns.
 
 One thing remains open and it is not a drafting question: **whether 5.4j stands or is deleted** — the owner's word on whether the sensitivity judgement of §5.4.3 covers candidate audio. Both reviewers have said either answer is fine; what is not fine is §5.4.3 naming an exception that nothing acts on, which Draft 6 continues to prevent by default.
+
+
+---
+
+# The candidate-audio decision — 22 August 2026
+
+Recorded separately, because it closes a question the specification deliberately kept open rather than answering by default.
+
+## 21. The question, and the answer
+
+Draft 4's [§5.4.3](ppcp-rv.md#543-the-decision) argued the forward-secrecy relaxation on **swing video** and then named a different part of the payload as the one carrying a privacy dimension: the **candidate-attached audio windows**. Retention attaches to candidates rather than shots, so those windows cover events that were *not* shots — an adjacent player, a conversation — and `PPCP-CORE` §13c states their count is not bounded by anything the user does. In the lesson case that is a coach and a pupil talking.
+
+The host reviewer put it exactly: **the trade was argued on video and paid for by audio.**
+
+Draft 4 added 5.4j — a SHOULD withholding that audio over a connection without forward secrecy — as the conservative default, written with an explicit instruction that it be **deleted rather than worked around** if the owner's judgement covered the audio too.
+
+**The protocol owner has answered: it does. 5.4j is deleted**, along with 5.4j1 and 5.4j2, which existed only to scope it.
+
+## 22. What was kept, and why
+
+The reasoning that identified the audio **stays in §5.4.3**, with the answer recorded against it.
+
+Both reviewers were explicit that either answer was legitimate and that only one outcome was not — §5.4.3 naming an exception that nothing acts on, which the next reader would take for an oversight. Deleting the clause *and* the paragraph would have produced exactly that, with the reasoning gone as well. So the specification now says: this is the more sensitive part of the payload, the judgement was put to the owner specifically about it, and it covers it.
+
+The consequence is stated rather than softened. **Every session on a plain-PSK leg carries candidate audio with no forward secrecy**, and an attacker who records one and later obtains its pairing secret decrypts that audio along with the video. [§7.1](ppcp-rv.md#71-threat-model)'s *not defended* table names it.
+
+**5.4k stays.** It was asked for on its own merits under R5 — forward secrecy became a per-connection outcome that nothing reported, leaving 5.4i unable to apply a policy to it and a peer unable to tell a user the whole truth — and B13 still turns on it.
+
+**N1 goes with 5.4j.** The host reviewer's finding that the clause was scoped to the wrong axis was correct, and Draft 6 fixed it; Draft 7 removes the clause the finding was about. The substance of N1 survives in one place worth keeping: `PPCP-CORE` I38's exits include payload the owner chose not to send, so a withhold decision anywhere can never become unbounded retention.
+
+## 23. Status
+
+`PPCP-RV` is **Draft 7 with no open findings.** Both teams approve; §4, §6 and §7 without reservation; the mechanism in §5 rests on a measurement taken on the target hardware.
+
+What remains is not drafting: **B13**, whether the absence of forward secrecy should be user-visible, which is the implementation teams' product question and which 5.4k makes answerable either way; and **B2**, per-peer re-keying for multi-use codes, which both publishers avoid by emitting `mu: 1` only.

@@ -29,7 +29,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 **Approved is not stable.** Implementation proceeds against this text. `ppcp/1.0` freezes — errata only — when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated. [Annex B](ppcp-core.md#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
 
-[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval — it is at Draft 6 with its own review cycle, and both teams approve it.
+[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval — it is at Draft 7 with its own review cycle, and both teams approve it.
 
 ## The documents
 
@@ -39,7 +39,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-two messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
-| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 6** — four review passes, approved by both teams. The device measurement is in and unfavourable, so §5 stands as written. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Not covered by the PPCP approval |
+| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 7** — four review passes, approved by both teams, **no open findings**. The device measurement is in and unfavourable, so §5 stands as written. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Not covered by the PPCP approval |
 | — | [**Requirements traceability**](requirements-traceability.md) | Audit | All 172 requirements against the specification set — 164 covered or deliberately out of scope, **six findings** |
 | — | [**Review disposition**](review-disposition-2026-08-22.md) | Record | Every review comment across all three rounds, what was done with it, and the calls a reviewer may want to reverse |
 | — | [**reviews/**](reviews/) | Input | All eighteen reviews as submitted |
@@ -58,13 +58,13 @@ All answered, and both teams agreed on every one. Four are now closed.
 | **Q4** | 50 ms coincidence default | **Open, and sharpened again.** The floor must be measured **per nominator class** — acoustic-to-acoustic is tight, a live external nominator with a coarse clock may be an order of magnitude wider — because if the second exceeds the adjacent-bay ceiling there is no single conformant value. A per-`basis` override is additive rather than breaking, so it is not added speculatively; the measurement design is what had to change. [Annex B8](ppcp-core.md#annex-b--open-issues) |
 | **Q5** | Version support window | **Closed.** Two MINOR back or twelve months, whichever is longer. |
 | **Q6** | Unbounded candidate audio retention | **Closed — confirmed** by both. The application owns the bound; the protocol owns expressibility and assertable absence. |
-| **Q7** | `PPCP-RV` does not exist | **Closed as a question; the document exists and both teams approve it.** [Draft 6](ppcp-rv.md) rests on a measurement taken on the target hardware. Forward secrecy is best-effort by product decision ([§5.4.3](ppcp-rv.md#543-the-decision)), which overrode both reviewers' stated position and was recorded as such. The pairing code — the irreversible part — has survived four passes and four independent recomputations. The deadline stands: `_ppcp._tcp` has shipped in an application bundle, and the code is gated by the first store submission. |
+| **Q7** | `PPCP-RV` does not exist | **Closed as a question; the document exists and both teams approve it.** [Draft 7](ppcp-rv.md) rests on a measurement taken on the target hardware and has no open findings. Forward secrecy is best-effort by product decision ([§5.4.3](ppcp-rv.md#543-the-decision)), which overrode both reviewers' stated position and was recorded as such. The pairing code — the irreversible part — has survived four passes and four independent recomputations. The deadline stands: `_ppcp._tcp` has shipped in an application bundle, and the code is gated by the first store submission. |
 
 ## What is still open
 
 [`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) has the full list. The ones needing someone to act:
 
-- **`PPCP-RV`** — [Draft 6](ppcp-rv.md) is approved by both teams. One thing is open and it is not a drafting question: whether **5.4j stands or is deleted** — the owner's word on whether the sensitivity judgement of §5.4.3 covers candidate audio. Both reviewers say either answer is fine.
+- **`PPCP-RV`** — [Draft 7](ppcp-rv.md) is approved by both teams with **no open findings**. The last question — whether the sensitivity judgement covers candidate audio — was answered: it does, and 5.4j is deleted with the reasoning kept. What remains is B13, a product question about whether the absence of forward secrecy is user-visible.
 - **Two timing defaults**, neither measured: the coincidence window and the issue hold. The window's floor must be measured per nominator class, not pooled — see [Annex B8](ppcp-core.md#annex-b--open-issues). Rig work.
 - **The rig itself.** `frame_start_to_exposure_offset_ns` and `readout_ns` are `assumed` on every device until it exists; provenance now makes that visible rather than silent.
 - **The synthetic peer simulator.** Four of the seven silent-failure tests are untestable without a peer that declares something the reference implementation would not.

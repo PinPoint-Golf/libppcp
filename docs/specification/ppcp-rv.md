@@ -5,9 +5,9 @@
 | | |
 |---|---|
 | Document | `PPCP-RV` |
-| Version | **1.0, Draft 6** |
+| Version | **1.0, Draft 7** |
 | Payload version | `ppcp1` |
-| Status | **Draft — the on-device measurement is in and unfavourable ([§5.4.1](#541-what-was-measured)); [§5.2](#52-tls-profile) stands as written and forward secrecy is best-effort.** |
+| Status | **Draft — no open findings.** The on-device measurement is in and unfavourable ([§5.4.1](#541-what-was-measured)); [§5.2](#52-tls-profile) stands as written, forward secrecy is best-effort, and the sensitivity judgement covers candidate audio ([§5.4.3](#543-the-decision)). |
 | Date | 22 August 2026 |
 | Versioned | Independently of PPCP. Same repository. |
 | Relates to | [`PPCP-CORE`](ppcp-core.md) §3 (transport contract), §5.2.1 (peer identity), §12 (security considerations) |
@@ -374,22 +374,15 @@ Neither was overruled by schedule pressure, which is what both were guarding aga
 - **(5.4g) MUST** Single use and publisher-side expiry ([§7.3](#73-single-use-and-expiry)) are now the **primary** defence around the pairing secret rather than a secondary one, because the secret's later disclosure is no longer contained by the key exchange.
 - **(5.4h) SHOULD** A peer erase a session's derived key material at session close unless the pairing is persisted ([7.2d](#72-handling-the-pairing-secret)), and a persisted pairing remains visible and revocable ([7.4b](#74-persistent-pairings)). Key material that no longer exists cannot be disclosed later.
 - **(5.4i)** Where a deployment does regard its payload as sensitive — a different product on this protocol, or this one after a reassessment — the answer is Route A or B, not a variation of D. [§5.2h](#52-tls-profile) still states the property, and [§5.4.2](#542-what-the-routes-were) still names what obtains it.
-- **(5.4j) SHOULD** A peer does not transfer **candidate-attached audio payload** over a connection that did not achieve forward secrecy **and is carried over a network the peer does not control** — shared or public infrastructure, rather than a wired tunnel or a publisher-provided hotspot — unless the user has been told and has agreed. The Capture is announced as normal, so its metadata and its absence stay assertable (I10); only the payload waits.
-- **(5.4j1)** **A bundle is not a connection**, and is out of scope here. Candidate audio in a bundle is protected at rest ([7.2c](#72-handling-the-pairing-secret)) and by physical control of the medium, not by a key exchange, and [§5.4.3](#543-the-decision)'s relaxation did not touch either.
-- **(5.4j2) MUST** A peer that withholds payload under 5.4j **may still evict it** under its own retention policy. [`PPCP-CORE` I38](ppcp-core.md#11-invariants) binds payload a receiver has not confirmed; payload the owner **chose not to send** is one of that invariant's stated exits ([`PPCP-CORE` §5.14g](ppcp-core.md#514-capture)). Withholding must not become unbounded retention of the material this clause exists to protect.
 - **(5.4k) MUST** A peer makes the **achieved TLS version and key-exchange mode** available to its application layer, and records both in its diagnostic export. [7.2b](#72-handling-the-pairing-secret) forbids that export carrying keys or payloads; the negotiated mode is neither.
 
-**Why 5.4j exists, and how to remove it.** [§5.4.3](#543-the-decision) argues the relaxation on swing video and then identifies a different part of the payload as the one carrying a privacy dimension — the candidate-attached audio windows, whose count is *"not bounded by anything the user does"* ([`PPCP-CORE` §13c](ppcp-core.md#13-privacy-considerations)), and which in the lesson case is a coach and a pupil talking. The trade was argued on video; applied uniformly, it is paid for by audio.
+**The judgement covers candidate audio too — recorded, because it was asked and answered.** [§5.4.3](#543-the-decision) argues the relaxation on swing video and then identifies a different part of the payload as the one carrying a privacy dimension: the candidate-attached audio windows, whose count is *"not bounded by anything the user does"* ([`PPCP-CORE` §13c](ppcp-core.md#13-privacy-considerations)), and which in the lesson case is a coach and a pupil talking.
 
-5.4j applies the decision's own reasoning to the payload that reasoning named, and it costs a session nothing: the diagnostic value of candidate audio is entirely after the fact, so nothing in the live path needs it. It is a **SHOULD with an explicit escape**, not a prohibition.
+Draft 4 carried a clause withholding that audio over a connection without forward secrecy. **The protocol owner has since answered the question it existed to force: the sensitivity judgement covers the audio as well, and the clause is deleted.** Both reviewers had said either answer was acceptable and that the one unacceptable outcome was §5.4.3 naming an exception that nothing acted on — so the reasoning above stays, with the answer recorded against it rather than the paragraph quietly removed.
 
-5.4j1 and 5.4j2 correct two things about the clause as first drafted. It offered deferral *"to a connection that did"* achieve forward secrecy — a connection that, on the measured platform, will never occur, so the clause reduced to withhold-or-ask. And it said nothing about bundles, which is how this payload overwhelmingly travels: an entry-level session has no host at all, and a range session exports later. Left unscoped it was either largely notional, or it removed candidate audio from the offline path entirely and with it the diagnostic purpose the retention design exists for.
+What follows from that, and is not softened: **every session on a plain-PSK leg carries candidate audio with no forward secrecy**, and an attacker who records one and later obtains its pairing secret decrypts that audio along with the video. That is the accepted consequence, not an oversight, and [§7.1](#71-threat-model)'s *not defended* table says so.
 
-The axis was wrong. What [§5.4.3](#543-the-decision) gave up is **confidentiality in transit against a passive recorder on an untrusted network**. A wired tunnel, a file copied locally, or a bundle on the device's own storage has no passive recorder on the wire.
-
-**If the owner's judgement is that the audio is covered too, that is a legitimate answer and this clause should be deleted rather than worked around** — because [§5.4.3](#543-the-decision) would otherwise read as having named an exception and not taken it, and the next reader will assume it was an oversight.
-
-5.4k is what 5.4j and 5.4i both need. Forward secrecy is now a **per-connection outcome** rather than a property of the protocol, and nothing previously required a peer to know which it got — so a deployment could not apply a policy to it, and a peer telling a user "this connection is encrypted" would be saying something true and not the whole of it.
+5.4k is what [5.4i](#543-the-decision) needs, and what makes [B13](#annex-b--open-issues) answerable either way. Forward secrecy is now a **per-connection outcome** rather than a property of the protocol, and nothing previously required a peer to know which it got — so a deployment could not apply a policy to it, and a peer telling a user "this connection is encrypted" would be saying something true and not the whole of it.
 
 **This decision is reversible and the reversal is bounded.** Only `§5` changes under any route; discovery, the pairing code including the part that cannot be corrected after printing, network join and the security model are all independent of the mechanism, and [§5.3](#53-psk-identity)'s resolvable identity survives as a pre-handshake selector under a non-TLS one.
 
@@ -443,7 +436,7 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 | Traffic analysis | Payload sizes and timing reveal that capture is happening and roughly when. Not addressed. |
 | Denial of service | An attacker on the link can disrupt multicast or the transport. The fallbacks in [§3.6](#36-multicast-is-not-to-be-relied-on) reduce the impact; nothing prevents it. |
 | **Impersonation between peers that scanned the same multi-use code** | They hold **identical key material** by construction ([§7.4f](#74-persistent-pairings)). `mu: 1` is the pairwise case; `mu > 1` is a group credential and must be read as one. |
-| **Retrospective decryption of a recorded session, where the pairing secret is later obtained and the peers could not reach an ephemeral key exchange** | A deliberate trade, taken on the sensitivity of the payload ([§5.4.3](#543-the-decision)). Single use and publisher-side expiry ([§7.3](#73-single-use-and-expiry)) reduce the window in which a secret is obtainable; they do not close it. |
+| **Retrospective decryption of a recorded session, where the pairing secret is later obtained and the peers could not reach an ephemeral key exchange** | A deliberate trade, taken on the sensitivity of the payload ([§5.4.3](#543-the-decision)) — **including the candidate-attached audio**, which the owner's judgement was asked about specifically and covers. Single use and publisher-side expiry ([§7.3](#73-single-use-and-expiry)) reduce the window in which a secret is obtainable; they do not close it. |
 | Anything after the byte stream exists | PPCP's problem, and PPCP assumes the stream is authenticated ([§1.3c](#13-where-it-stops)). |
 
 ### 7.2 Handling the pairing secret
@@ -731,3 +724,15 @@ The protocol owner has taken the decision, on the grounds that the data carried 
 **Only forward secrecy is relaxed.** The channel is still encrypted and still mutually authenticated; an unpaired peer still receives nothing; nothing stable still crosses in the clear. Two of the three properties of [5.2h](#52-tls-profile) are unchanged, and [5.2f](#52-tls-profile) — never fall back to an unencrypted connection, under any circumstances including a user instruction — is unchanged and unaffected.
 
 **One item was already decided by shipping.** The mobile application declares `_ppcp._tcp` in its bundle, chosen before this document existed. [§3.1](#31-service-type) ratifies it rather than picking a different name; see [Annex A1](#annex-a--decisions-and-alternatives). Both reviewers endorsed that.
+
+## Draft 7
+
+The last open item, and it was a decision rather than a finding.
+
+**5.4j is deleted.** The protocol owner has answered the question Draft 4 raised and Draft 6 kept open: the sensitivity judgement of [§5.4.3](#543-the-decision) covers candidate-attached audio as well as swing video. The clause withholding that audio over a connection without forward secrecy goes with it, and so do 5.4j1 and 5.4j2, which existed only to scope it.
+
+**The reasoning that identified the audio stays.** Both reviewers said either answer was acceptable and that the unacceptable outcome was §5.4.3 naming an exception nothing acted on — so §5.4.3 still records that candidate audio is the part of the payload with a privacy dimension, and now records that the judgement was put to the owner and covers it. What follows is stated rather than softened: every session on a plain-PSK leg carries that audio with no forward secrecy, and [§7.1](#71-threat-model)'s *not defended* table names it.
+
+**5.4k stays.** It was asked for on its own merits — a per-connection outcome that nothing reported left [5.4i](#543-the-decision) unable to apply a policy and a peer unable to tell a user the whole truth — and [B13](#annex-b--open-issues) still needs it.
+
+`PPCP-RV` has no open findings. What remains is [B13](#annex-b--open-issues), a product question, and [B2](#annex-b--open-issues), per-peer re-keying, which both publishers avoid by emitting `mu: 1` only.
