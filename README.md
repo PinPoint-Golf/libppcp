@@ -9,7 +9,7 @@ A mobile phone has a 120–240 fps camera, a microphone, an IMU and a hardware e
 | Specification | [`docs/specification/`](docs/specification/) — **PPCP 1.0, APPROVED for implementation** (22 August 2026) |
 | Wire version | `ppcp/1.0` |
 | Licence | Specification: open. Library: MIT. |
-| Companion spec | `PPCP-RV` — rendezvous, pairing and the security model, versioned independently. [Draft 1](docs/specification/ppcp-rv.md); unreviewed. |
+| Companion spec | [`PPCP-RV`](docs/specification/ppcp-rv.md) — rendezvous, pairing and the security model. **Approved**, versioned independently. Implementing it is optional; implementing PPCP is not. |
 
 ## Start here
 

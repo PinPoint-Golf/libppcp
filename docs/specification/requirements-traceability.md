@@ -285,7 +285,7 @@ Time is covered by `Session.epoch`. Location and weather are not. `ContextChange
 
 ## 4. What was done, and what to disagree with
 
-All six are closed in `PPCP-CORE` revision 7. **None has been reviewed**, and two of them took a design decision that the implementation teams should weigh.
+All six are closed in `PPCP-CORE` revision 7, and **all have since been reviewed by both teams** — the closures themselves produced four further findings, carried in revisions 8 and 9. Two of the six took a design decision, recorded below with the reasoning both teams then endorsed.
 
 **G1 — `Annotation` as a distinct type, not a `Source`.** The alternative was a `Source` of `kind: user`, which needs no new entity or message and reuses the whole announce-and-payload path. It was rejected because it puts a person in the position the model reserves for instruments. Every payload elsewhere in PPCP is a Capture; a Capture realises an observation; a `Source` has a clock, a calibration and an owning peer. A human being has none of those. **The cost of a separate type is one entity and one message. The cost of the alternative is the model's spine.** If the teams disagree, this is the place.
 

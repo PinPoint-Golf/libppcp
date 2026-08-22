@@ -13,7 +13,7 @@
 | Editor | libppcp maintainers, `PinPoint-Golf/libppcp` |
 | Basis | `capture-companion-requirements.md` (21 August 2026) and its review of 22 August 2026; `ppcp-protocol-overview.md` model draft 4 and its review of 22 August 2026 |
 | Reviews | [`reviews/`](reviews/) — PinPointCapture and PinPointStudio reviews of Draft 1, both **approve to implement** |
-| Companion documents | [`PPCP-MSG`](ppcp-messages.md), [`PPCP-ENC`](ppcp-encoding.md), [`PPCP-CONF`](ppcp-conformance.md), [`PPCP-RV`](ppcp-rv.md) (Draft 1, unreviewed) |
+| Companion documents | [`PPCP-MSG`](ppcp-messages.md), [`PPCP-ENC`](ppcp-encoding.md), [`PPCP-CONF`](ppcp-conformance.md), [`PPCP-RV`](ppcp-rv.md) (approved, versioned separately) |
 | Licence | Specification: open. Reference implementation `libppcp`: MIT. |
 
 ---
@@ -67,7 +67,7 @@ PPCP is deliberately *not* a streaming protocol. It assumes a device that timest
 | [**PPCP-MSG**](ppcp-messages.md) | Normative | Message catalogue, channel semantics, error codes; informative sequence annex |
 | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, bundle container |
 | [**PPCP-CONF**](ppcp-conformance.md) | Normative | Conformance requirements and the invariant-to-test matrix |
-| [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **Draft 1, unreviewed — nothing in it is agreed.** Versioned independently. |
+| [**PPCP-RV**](ppcp-rv.md) | Normative | Rendezvous, pairing, security. **Approved for implementation**, versioned independently. Implementing it is OPTIONAL; implementing PPCP is not. |
 
 ### 1.2 Reading guide
 

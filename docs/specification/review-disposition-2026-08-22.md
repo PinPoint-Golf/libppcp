@@ -580,7 +580,7 @@ Both teams have signed off. The specification moves to **APPROVED for implementa
 
 Neither is a specification problem, and neither is the protocol team's to build.
 
-[`PPCP-RV`](ppcp-rv.md) is not covered by this approval. It is Draft 1, unreviewed, and has its own cycle.
+[`PPCP-RV`](ppcp-rv.md) was not covered by this approval — at the time it was Draft 1 and unreviewed. It has since been approved in its own right; see [`rv-review-disposition-2026-08-22.md`](rv-review-disposition-2026-08-22.md).
 
 
 ---
