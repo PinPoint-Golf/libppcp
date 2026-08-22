@@ -23,6 +23,7 @@ set(PPCP_TESTS
     test_l9_queue
     test_ct_s4
     test_ct_i35
+    test_ct_i37
     test_ct_s6
     test_umbrella
     test_rv)

@@ -40,20 +40,19 @@ extern "C" {
  * policy callbacks, ppcp_shot_attach_candidate() and the deliberate absence of
  * any merge operation. */
 
-/* ======================================================================
- * L11 — Markup (CORE §5.18; MSG §9.0)
- * ====================================================================== */
-
-/* L11 — not yet implemented.  The codec landed in L4 (model.h), because I24
- * makes every peer parse an `annotation` whether or not it declares Markup.
- * What is still missing is the BEHAVIOUR: supersession by `id`, then
- * `revision`, then bytewise `author_peer_id` — a total order, so both delivery
- * orders converge. */
-PPCP_API int ppcp_annotation_supersedes(const ppcp_annotation *a,
-                                        const ppcp_annotation *b);
-
-/* ⚠ There is deliberately no path from an Annotation to a Shot, a Candidate, a
- * calibration or any computed quantity.  I37 is asserted by API surface. */
+/* L11 landed: annotation supersession, placement and the converging store are
+ * in ppcp/markup.h.
+ *
+ * ⚠ THIS HEADER IS NOW EMPTY OF DECLARATIONS, and that is the point it was
+ * built to reach: every symbol the two applications were coding against has a
+ * definition in libppcp.a.  It stays in the tree, and stays included by
+ * ppcp/ppcp.h, so the next work package that needs to publish a name ahead of
+ * its body has somewhere to put it — and so an application that included it
+ * still compiles.
+ *
+ * What remains planned is not API: L13's `ppcp-sim`, L14's `ppcp-conform`,
+ * L15's reference run and L16's audits are tools and tests, and none of them
+ * adds a symbol here. */
 
 #ifdef __cplusplus
 }

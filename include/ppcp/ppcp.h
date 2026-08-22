@@ -26,6 +26,7 @@
  *   ppcp/bundle.h    L8 — the bundle writer and reader, and the ENC §7 container
  *   ppcp/sync.h      L9 — the sync estimator, the relation set, liveness
  *   ppcp/shot.h      L10 — Detect, Mint and Arbitrate
+ *   ppcp/markup.h    L11 — Annotations: supersession, placement, the store
  *
  * WHAT IS DECLARED BUT NOT YET BUILT:
  *
@@ -58,6 +59,7 @@
 #include "ppcp/bundle.h"
 #include "ppcp/sync.h"
 #include "ppcp/shot.h"
+#include "ppcp/markup.h"
 #include "ppcp/planned.h"
 
 #endif /* PPCP_PPCP_H */
