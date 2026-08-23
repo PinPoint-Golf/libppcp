@@ -254,4 +254,27 @@ if(TARGET ppcp-sim)
         preview-capture.json preview-capture
         "violations=0,errors_rx=0"
         4000)
+
+    # ================================================ L14 — the reference run
+    #
+    # `ppcp-conform` driving `libppcp` through the SAME instrument the two
+    # applications are measured by (plan A11).  --self stands a second
+    # `ppcp-sim` up as the peer under test over loopback, so these rows are two
+    # processes, two TCP connections and a wire — not two engines through a byte
+    # buffer, which CONF §2c says passes I19, I22, I24 and I31 by accident.
+    #
+    # Two rows because the row table is keyed on the role of the peer under
+    # test: a host and a capture peer are asked different questions.  Negative
+    # rows (CONF 1d) are NOT run here and the tool refuses to pretend otherwise
+    # — libppcp declares all eight profiles, so it has no undeclared one to
+    # prove anything about.
+    set(PPCP_ALL_PROFILES core,capture,detect,mint,arbitrate,live,offline,markup)
+    add_test(NAME L14-conform-self-host
+             COMMAND $<TARGET_FILE:ppcp-conform> --self --role host --quiet
+                     --profiles ${PPCP_ALL_PROFILES} --column libppcp)
+    add_test(NAME L14-conform-self-capture
+             COMMAND $<TARGET_FILE:ppcp-conform> --self --role capture --quiet
+                     --profiles ${PPCP_ALL_PROFILES} --column libppcp)
+    set_tests_properties(L14-conform-self-host L14-conform-self-capture
+                         PROPERTIES TIMEOUT 240)
 endif()

@@ -6,6 +6,8 @@
 # include/ and this directory is deliberately outside it.
 #
 #   ppcp-sim      L13 — the synthetic peer CONF 2c requires.
-#   ppcp-conform  L14 — lands in S4.
+#   ppcp-conform  L14 — the conformance driver.  It RUNS ppcp-sim, one process
+#                 per row, so every verdict carries a command that re-runs.
 
 add_subdirectory(ppcp-sim)
+add_subdirectory(ppcp-conform)
