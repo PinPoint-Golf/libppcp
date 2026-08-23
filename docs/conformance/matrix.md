@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-23 — S5 wave 1 (L17). Errata E5–E29 into the specification; CT-I6's counterpart fixed; three new socket rows (`CT-I6-sockets`, `CT-I22-sockets-capture-request`, `F-S5-3-sockets-offer-during-live-session`). Both application columns still from the S4 `ppcp-conform` runs |
+| Last updated | 2026-08-23 — **S5 wave 2 (L17)**. Both application columns re-read from their S5 claim files: PinPointStudio `5f9d53c` (`docs/ppcp-conformance.md` §10.4, §11), PinPointCapture `b83fdc7` (`docs/ppcp-conformance.md` §3, §4a and `docs/conformance/ppcp-conform.json`). All ten `CONF` §5a pairings pass; see [`freeze-readiness.md`](freeze-readiness.md) for what they do and do not prove |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -22,24 +22,24 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | Test | Invariant | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
 | CT-I1 | I1 | Core | static | L1, L2 | pass | — | — |
-| CT-I2 | I2 | Core | fixture | L8, **L15**, D4 | pass | — | pass |
+| CT-I2 | I2 | Core | fixture | L8, **L15**, D4 | pass | — | pass (own half) |
 | CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
 | CT-I4 | I4 | Core | static | L2, D2 | pass | — | pass |
 | CT-I5 | I5 | Capture | paired | L6 | impl | — | — |
-| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, **L17** | pass | **re-runnable** — `ppcp-conform`'s row now uses a minting-capture counterpart (L17); the host run that excused it can be repeated | pass |
+| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, **L17** | pass | n/a — the negative Mint row RAN and passed (`CONF` 1d), 23 Aug at `4d0e04a` | pass |
 | CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass (conform) | — |
 | CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass (conform) | pass (own half) |
 | CT-I9 | I9 | Core | static | L4, L10 | pass | — | — |
-| CT-I10 | I10 | Capture | paired | L7, D4 | — | — | pass |
+| CT-I10 | I10 | Capture | paired | L7, D4 | — | — | pass (owner half) |
 | CT-I11 | I11 | Capture | fixture | L7, **L15**, D4 | pass | — | pass |
-| CT-I12 | I12 | Capture | fixture | L8, **L15**, H3, D3 | pass | pass (conform) | pass |
+| CT-I12 | I12 | Capture | fixture | L8, **L15**, H3, D3 | pass | pass (conform) | pass (own half) |
 | CT-I13 | I13 | Core | fixture | L1, **L15** | pass | — | — |
 | CT-I14 | I14 | Core | static | L6, H2 | pass | pass | — |
 | CT-I15 | I15 | Offline | fixture | L8, **L15**, H3 | pass | impl | — |
 | CT-I16 | I16 | Offline | paired | L8, H3 | impl | impl | — |
 | CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | impl |
 | CT-I18 | I18 | Core | paired | L9, H5, D6 | pass | pass (negative half) | pass (conform) |
-| CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | pass | pass |
+| CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | pass | pass (own half) |
 | CT-I20 | I20 | Arbitrate | paired | L6, H5 | pass | pass (conform) | — |
 | CT-I21 | I21 | Live | paired | L9, H5, D6 | pass | pass (conform) | pass (own half) |
 | CT-I22 | I22 | Capture | static | L4, D2 | impl | — | pass |
@@ -50,15 +50,15 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I27 | I27 | Capture | static | L4, D4 | — | — | pass |
 | CT-I28 | I28 | Capture | static | L4, D2 | — | — | pass |
 | CT-I29 | I29 | Detect | static | L4, L10, D5 | pass | — | pass |
-| CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | pass |
+| CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | pass (own half) |
 | CT-I31 | I31 | Capture | static | L4, D2 | impl | — | pass |
 | CT-I32 | I32 | Mint | injected | L10, D5 | pass | — | impl |
 | CT-I33 | I33 | Detect | injected | L10, D5 | pass | — | pass (own half) |
 | CT-I34 | I34 | Offline | fixture | L8, **L15**, H3, D3 | pass | pass | pass |
 | CT-I35 | I35 | Arbitrate | injected | L10, H5 | pass | impl | pass (conform) |
 | CT-I36 | I36 | Capture | fixture | L7, L8, **L15**, D4 | pass | — | pass |
-| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | pass (conform) | pass |
-| CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | pass | pass |
+| CT-I36a | I36 | Capture | paired | L7, H4, D4 | pass (conform) | pass (conform) | pass (own half) |
+| CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | pass | pass (device) |
 | CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | pass (own half) |
 
 ## 2. Silent-failure tests — `CONF` §4
@@ -68,25 +68,25 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | impl | impl (6 pass) |
 | CT-S2 | I22 | Capture | **rig** | — | rig | rig | rig |
 | CT-S3 | I19 | Core | injected | L13, **L14**, H2, D2 | pass | pass (conform) | — |
-| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | pass (conform; 1,2,3,5,6 pass, 7 impl) |
+| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | pass (conform; 1, 2, 3, 5, 6 pass, 7 impl — the live half needs a host link) |
 | CT-S5 | I18 | Core | paired | L9, H5, D6 | pass | pass (conform) | pass (simulator half) |
 | CT-S6 | I24 | Core | injected | L5, L6, L13 | pass | pass (conform) | — |
-| CT-S7 | I31 | Capture | injected | L13, **L14**, D2 | pass | pass (conform) | impl (1–3 pass; 4 blocked: ppcp-sim via D9) |
+| CT-S7 | I31 | Capture | injected | L13, **L14**, D2 | pass | pass (conform) | impl (1–3 pass; **4 blocked: a phone** — a simulator enumerates no camera Source) |
 
 ## 3. Interoperability pairings — `CONF` §5a
 
 | # | A | B | Proves | Session | Status |
 |---|---|---|---|---|---|
-| IOP-1 | Reference device | reference host | happy path | S5 | — |
-| IOP-2 | Reference device | synthetic third-party host, different camera conventions | I19, I22 | S5 | harness ready — `tools/scenarios/foreign-capture.json` and `three-timebase-host.json` are the foreign declarations; run against PinPointCapture in S5 |
-| IOP-3 | Reference device, no host → bundle | reference host import | I20, I23, I16, I9 | S5 | harness ready — `--scenario offer-session` offers a stored Session over the live link and replays it (`ctest --preset dev -R CT-I12-sockets`) |
-| IOP-4 | Reference host | observer-only peer (Core + Live) | I24 | S5 | harness ready — `tools/scenarios/observer-core.json` + `--scenario observer`; run against PinPointStudio in S5 |
-| IOP-5 | Reference host | peer declaring `unrelated` timebases | I3, 8.2i1 | S5 | harness ready — `ctest --preset dev -R IOP-5-sockets-unrelated` runs it with `ppcp-sim` at both ends; the row itself needs PinPointStudio as A |
-| IOP-6 | Reference host owning an acoustic Source | device with an acoustic Source | I8 | S5 | harness ready — `tools/scenarios/acoustic-host.json` + `--scenario acoustic-host`; `ctest --preset dev -R CT-I8-sockets` is the `ppcp-sim`-only form |
-| IOP-7 | Reference host that never issues `shot` | nominating peer | I32 | S5 | harness ready — `--scenario silent-host`; `ctest --preset dev -R CT-S4-sockets-silent-host` is the `ppcp-sim`-only form |
-| IOP-8 | Reference host delayed past the mint deadline | nominating peer | I35 | S5 | harness ready — `--scenario late-host` |
-| IOP-9 | Reference host | capture peer with `continuous` + `preview` Streams | I36 | S5 | harness ready — `ctest --preset dev -R IOP-9-sockets-preview`; the row itself needs PinPointStudio as A |
-| IOP-10 | Bundle written by A | read by B, both directions | `ENC` 7a | S5 | — |
+| IOP-1 | Reference device | reference host | happy path | S5 | **pass — the real pair.** PinPointCapture ↔ PinPointStudio over **TLS 1.2 `TLS_PSK_WITH_AES_128_GCM_SHA256`** on loopback, both ends agreeing the mode and its absence of forward secrecy independently. Transport, `hello`/`declare`, Session, Streams, sync, arm, Candidates, arbitration, offer and replay all ran. **No Capture carried bytes** — every one is `absent` (8.4b), because the device is a simulator with no camera. Also passes against `ppcp-sim`'s `reference-host` |
+| IOP-2 | Reference device | synthetic third-party host, different camera conventions | I19, I22 | S5 | **pass** — PinPointCapture against `three-timebase-host.json`, `make conform-iop`. ⚠ **The half the row is named for did not run**: `declared_camera: false`, so no camera declaration met a foreign one. That half needs a phone |
+| IOP-3 | Reference device, no host → bundle | reference host import | I20, I23, I16, I9 | S5 | **pass** — two bundles PinPointCapture wrote, imported by PinPointStudio (`ses-interop-one-shot.ppcpbndl` 13 frames, `ses-interop-two-shots.ppcpbndl` 20 frames; both `partial`, **0 clips**, 0 commits). **IOP-3-live** additionally passes: a Session replayed onto the live link is imported and not merged (erratum E28) |
+| IOP-4 | Reference host | observer-only peer (Core + Live) | I24 | S5 | **pass** — PinPointStudio against `observer-core.json`: `declares_rx 1`, `candidates_rx 0`, `shots_rx 0`, `issued 0`, `heartbeat_acks 6`, `errors_fatal 0` |
+| IOP-5 | Reference host | peer declaring `unrelated` timebases | I3, 8.2i1 | S5 | **pass** — PinPointStudio against `unrelated-capture.json`: `candidates_rx 1`, `retained 1`, `issued 0`, `groups 0`, and no zero offset substituted. `excluded` is 0 and that is correct, not a miss (erratum E19, `CONF` 5a1) |
+| IOP-6 | Reference host owning an acoustic Source | device with an acoustic Source | I8 | S5 | **pass — the real pair.** PinPointCapture ↔ PinPointStudio with both peers nominating: **one Shot referencing four Candidates from both peers** (`max_shot_candidates: 4`, `nominations_refused: 0`). Also passes against `ppcp-sim`'s `acoustic-host` |
+| IOP-7 | Reference host that never issues `shot` | nominating peer | I32 | S5 | **pass** — PinPointStudio never issuing: `issued 0`, `candidates_rx 1`, `shots_rx 1`, `adopted 1` — the device's own 8.2i deadline is the only thing that fired |
+| IOP-8 | Reference host delayed past the mint deadline | nominating peer | I35 | S5 | **pass** — PinPointStudio delayed 3 s against a 1.2 s deadline: `issued 0`, `adopted 1`, `shots_rx 1`, sim `minted 1`, `t0_revisions 0`. The host attached rather than issuing a second Shot |
+| IOP-9 | Reference host | capture peer with `continuous` + `preview` Streams | I36 | S5 | **pass** — PinPointStudio against `preview-capture.json`: `streams_rx 3` (1 preview, 2 continuous), `captures_rx 2`, `captures_absent 1`, `captures_not_retained 1`, **`preview_payload_frames 0`** |
+| IOP-10 | Bundle written by A | read by B, both directions | `ENC` 7a | S5 | **pass, both directions.** PinPointStudio's `pinpointstudio-host-session.ppcpbndl` (5 frames, 1657 bytes, `declare` at offset 424 per erratum E9) read by PinPointCapture; PinPointCapture's two bundles read by PinPointStudio. Also demonstrated over the live link in the real pair (`replay_completed: true`) |
 
 "Reference device" and "reference host" are, for this programme, PinPointCapture on the simulator and PinPointStudio; `ppcp-sim` stands in for the synthetic and degraded peers. `CONF` 5c (a pairing by an implementation not written by the reference team) remains open until a third party exists.
 
@@ -94,8 +94,8 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 | Gate | Work package | Status |
 |---|---|---|
-| Profile-boundary audit runs in `ctest` and passes | L16 | **pass** — `ctest --preset dev -R L16-profile-boundary`. 45 messages compared between `PPCP-MSG` §11 and `src/ppcp_message.c`, message for message, profile for profile, clause for clause; no MUST anywhere requires originating a message no profile confers |
-| Adjacent-MUST sweep run against revision 9 and recorded | L16, L17 | **generator built** — `ctest --preset dev -R L16-adjacent-must`; 466 normative clauses grouped into 118 sections. [`adjacent-must-sweep-s4.md`](adjacent-must-sweep-s4.md) is the sweep keyed to session S4's three errata. The sweep itself is a human reading it, and that is L17 |
+| Profile-boundary audit runs in `ctest` and passes | L16 | **pass** — `ctest --preset dev -R L16-profile-boundary`. 45 messages compared between `PPCP-MSG` §11 and `src/ppcp_message.c`, message for message, profile for profile, clause for clause; no MUST anywhere requires originating a message no profile confers. Since erratum E18 it also asserts §11's **Required by** column against the documents, so the 5b2 sweep's answer cannot go stale |
+| Adjacent-MUST sweep run and recorded | L16, L17 | **pass — run, not merely generated.** `ctest --preset dev -R L16-adjacent-must` builds it; [`adjacent-must-sweep-s4.md`](adjacent-must-sweep-s4.md) covers S4's three errata and [`adjacent-must-sweep-s5.md`](adjacent-must-sweep-s5.md) covers S5's twenty-five, 492 clauses in 26 sections. **Reading the S5 sweep found five clauses that disagreed with the new errata** (I13 and `CORE` 10.1d vs E11; 5.11j vs E16; I8 vs E29; I16 vs E28); all five reconciled |
 
 ## 5. PPCP-RV tests — `RV` §9
 

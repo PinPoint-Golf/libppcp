@@ -7,7 +7,8 @@
 | Wire version | `ppcp/1.0` |
 | Status | **APPROVED for implementation**, 22 August 2026. Revision 9, final — see [`CORE` Annex D](ppcp-core.md#annex-d--change-history) — **plus errata E1–E29**, all normative, listed in [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9) |
 | Date | 22 August 2026; errata to 23 August 2026 |
-| Errata | **29**, from implementation sessions S1–S5. `ppcp/1.0` is not frozen: the interoperability pairings of [`CONF` §5](ppcp-conformance.md#5-interoperability) and the freeze-readiness report are what close it |
+| Errata | **29**, from implementation sessions S1–S5 |
+| Freeze | **The text is recommended for freeze; `ppcp/1.0` is NOT declared stable.** All ten interoperability pairings of [`CONF` §5](ppcp-conformance.md#5-interoperability) pass, three of them between the two real applications, and both freeze-gate audits run and pass. Five conditions remain — see [`../conformance/freeze-readiness.md`](../conformance/freeze-readiness.md) |
 | Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
 
@@ -28,7 +29,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 3 | Draft 2 | 4 host + 5 consistency, 3 mobile | Draft 3 |
 | 4 | Draft 3 | 3 host + 2 consistency, 2 mobile | **Approved** |
 
-**Approved is not stable.** Implementation proceeds against this text. `ppcp/1.0` freezes — errata only — when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated. [Annex B](ppcp-core.md#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
+**Approved is not stable, and the two are different acts.** The conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated — all ten, three of them between the two real applications over TLS. [`freeze-readiness.md`](../conformance/freeze-readiness.md) is the assessment: **freeze the documents against anything but errata; do not declare `ppcp/1.0` stable yet.** What is outstanding is evidence rather than text — a Capture carrying bytes across the two applications, a camera declaration meeting a foreign one on real hardware, and two `review`-method security requirements that no test can discharge and no reviewer has been named for. [Annex B](ppcp-core.md#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
 
 **Twenty-nine errata have been taken, and that is the process working rather than failing.** Every one was found by building the thing: two implementations that each invented a different way to associate a peer's connections (E1); a PSK identity that failed one handshake in sixteen because a zero byte truncated it (E21); a document whose only worked example no conformant encoder could reproduce (E5); a `session_offer` that silently rebound the live Session's clock reference (E28); and a sweep that found 27 of the 45 messages required by no normative clause at all (E18). Four more were open questions the implementation had to answer, decided and marked reversible (E24–E27). The full list, with the finding that produced each, is [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9).
 
