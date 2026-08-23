@@ -26,6 +26,7 @@ set(PPCP_TESTS
     test_ct_i37
     test_ct_s6
     test_umbrella
+    test_fixtures
     test_rv)
 
 foreach(t ${PPCP_TESTS})
@@ -33,6 +34,23 @@ foreach(t ${PPCP_TESTS})
     target_link_libraries(${t} PRIVATE ppcp ppcp_build_flags)
     add_test(NAME ${t} COMMAND ${t})
 endforeach()
+
+# The checked-in bundle fixtures of CONF 2b.  The test reads them from the
+# SOURCE tree, not from a copy: a fixture that lives beside the build is a
+# fixture that can be regenerated without anyone noticing.
+target_compile_definitions(test_fixtures PRIVATE
+    PPCP_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+# ENC 4e — deterministic encoding, asserted against the checked-in bytes.  The
+# generator runs into a temporary directory and every file must come out
+# byte-identical to the one under version control.  A difference is either a
+# codec change that wants explaining in a commit message or a determinism bug,
+# and both should be loud rather than quiet.
+add_test(NAME L15-fixtures-stable
+    COMMAND ${CMAKE_COMMAND}
+        -DPPCP_FIXTURE_TOOL=$<TARGET_FILE:ppcp-fixtures>
+        -DPPCP_FIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/fixtures
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/fixtures_stable.cmake)
 
 # CT-I18 (static half) and CT-I9 (API surface) are assertions about what the
 # public headers do NOT contain, which no C program can make about itself.
@@ -278,3 +296,26 @@ if(TARGET ppcp-sim)
     set_tests_properties(L14-conform-self-host L14-conform-self-capture
                          PROPERTIES TIMEOUT 240)
 endif()
+
+# ======================================================= L16 — the two audits
+#
+# CONF 5b1 and 5b2 are freeze gates, and a gate nobody can run is a gate nobody
+# passes.  Both run here.
+#
+# The profile-boundary audit FAILS the build: it compares the specification's
+# own message catalogue with the implementation's, message for message, profile
+# for profile, clause for clause, and a drift between them is exactly the defect
+# 5b1 describes — a MUST in one document requiring what the other forbids.
+add_test(NAME L16-profile-boundary
+    COMMAND $<TARGET_FILE:audit-profile-boundary>
+            ${CMAKE_CURRENT_SOURCE_DIR}/../docs/specification
+            ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+# The adjacent-MUST sweep is a CHECKLIST GENERATOR, so what a test can assert is
+# that it still parses the specification's clause convention.  That is not
+# nothing: the day the convention moves, the sweep goes blind, and it would go
+# blind silently.  The tool exits 1 when it parses no clauses at all.
+add_test(NAME L16-adjacent-must
+    COMMAND $<TARGET_FILE:audit-adjacent-must>
+            ${CMAKE_CURRENT_SOURCE_DIR}/../docs/specification
+            --out ${CMAKE_CURRENT_BINARY_DIR}/adjacent-must-sweep.md)

@@ -11,3 +11,6 @@
 
 add_subdirectory(ppcp-sim)
 add_subdirectory(ppcp-conform)
+add_subdirectory(ppcp-fixtures)
+add_subdirectory(audit-profile-boundary)
+add_subdirectory(audit-adjacent-must)

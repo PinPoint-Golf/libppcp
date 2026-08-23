@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-23 — Session 3 closed |
+| Last updated | 2026-08-23 — Session 4, libppcp wave 1 (L14, L15, L16) |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -22,7 +22,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | Test | Invariant | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
 | CT-I1 | I1 | Core | static | L1, L2 | pass | — | — |
-| CT-I2 | I2 | Core | fixture | L8, D4 | — | — | pass |
+| CT-I2 | I2 | Core | fixture | L8, **L15**, D4 | pass | — | pass |
 | CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
 | CT-I4 | I4 | Core | static | L2, D2 | pass | — | pass |
 | CT-I5 | I5 | Capture | paired | L6 | impl | — | — |
@@ -31,11 +31,11 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass | pass (own half) |
 | CT-I9 | I9 | Core | static | L4, L10 | pass | — | — |
 | CT-I10 | I10 | Capture | paired | L7, D4 | — | — | pass |
-| CT-I11 | I11 | Capture | fixture | L7, D4 | — | — | pass |
-| CT-I12 | I12 | Capture | fixture | L8, H3, D3 | pass | pass | pass |
-| CT-I13 | I13 | Core | fixture | L1 | impl | — | — |
+| CT-I11 | I11 | Capture | fixture | L7, **L15**, D4 | pass | — | pass |
+| CT-I12 | I12 | Capture | fixture | L8, **L15**, H3, D3 | pass | pass | pass |
+| CT-I13 | I13 | Core | fixture | L1, **L15** | pass | — | — |
 | CT-I14 | I14 | Core | static | L6, H2 | pass | pass | — |
-| CT-I15 | I15 | Offline | fixture | L8, H3 | — | impl | — |
+| CT-I15 | I15 | Offline | fixture | L8, **L15**, H3 | pass | impl | — |
 | CT-I16 | I16 | Offline | paired | L8, H3 | impl | impl | — |
 | CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | impl |
 | CT-I18 | I18 | Core | paired | L9, H5, D6 | pass | pass (negative half) | pass (own half) |
@@ -54,9 +54,9 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I31 | I31 | Capture | static | L4, D2 | impl | — | pass |
 | CT-I32 | I32 | Mint | injected | L10, D5 | pass | — | impl |
 | CT-I33 | I33 | Detect | injected | L10, D5 | pass | — | pass (own half) |
-| CT-I34 | I34 | Offline | fixture | L8, H3, D3 | pass | pass | pass |
+| CT-I34 | I34 | Offline | fixture | L8, **L15**, H3, D3 | pass | pass | pass |
 | CT-I35 | I35 | Arbitrate | injected | L10, H5 | pass | impl | — |
-| CT-I36 | I36 | Capture | fixture | L7, L8, D4 | impl | — | pass |
+| CT-I36 | I36 | Capture | fixture | L7, L8, **L15**, D4 | pass | — | pass |
 | CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | pass | pass |
 | CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | pass | pass |
 | CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | pass (own half) |
@@ -67,11 +67,11 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 |---|---|---|---|---|---|---|---|
 | CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | impl | impl (6 pass) |
 | CT-S2 | I22 | Capture | **rig** | — | rig | rig | rig |
-| CT-S3 | I19 | Core | injected | L13, H2, D2 | — | impl | — |
+| CT-S3 | I19 | Core | injected | L13, **L14**, H2, D2 | pass | impl | — |
 | CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | impl (1,2,3,5 pass; 6 blocked: D9; 7 impl) |
 | CT-S5 | I18 | Core | paired | L9, H5, D6 | pass | impl | blocked: D9 |
 | CT-S6 | I24 | Core | injected | L5, L6, L13 | pass | — | — |
-| CT-S7 | I31 | Capture | injected | L13, D2 | — | — | impl (1–3 pass; 4 blocked: ppcp-sim via D9) |
+| CT-S7 | I31 | Capture | injected | L13, **L14**, D2 | pass | — | impl (1–3 pass; 4 blocked: ppcp-sim via D9) |
 
 ## 3. Interoperability pairings — `CONF` §5a
 
@@ -94,8 +94,8 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 | Gate | Work package | Status |
 |---|---|---|
-| Profile-boundary audit runs in `ctest` and passes | L16 | — (the table L16 reads landed in L5) |
-| Adjacent-MUST sweep run against revision 9 and recorded | L16, L17 | — |
+| Profile-boundary audit runs in `ctest` and passes | L16 | **pass** — `ctest --preset dev -R L16-profile-boundary`. 45 messages compared between `PPCP-MSG` §11 and `src/ppcp_message.c`, message for message, profile for profile, clause for clause; no MUST anywhere requires originating a message no profile confers |
+| Adjacent-MUST sweep run against revision 9 and recorded | L16, L17 | **generator built** — `ctest --preset dev -R L16-adjacent-must`; 466 normative clauses grouped into 118 sections. [`adjacent-must-sweep-s4.md`](adjacent-must-sweep-s4.md) is the sweep keyed to session S4's three errata. The sweep itself is a human reading it, and that is L17 |
 
 ## 5. PPCP-RV tests — `RV` §9
 
@@ -149,3 +149,44 @@ The declarations are in [`../../tools/scenarios/`](../../tools/scenarios/) and i
 | `RT-4-psk-ke-only-accepted-is-a-failure` | the same, `-allow_no_dhe_kex` | A peer that **accepts** `psk_ke` is reported as an RT-4 failure — which is also what proves the hand-built ClientHello and its PSK binder are correct |
 
 The two RT-4 rows are skipped where the OpenSSL CLI is absent; it is the peer under test there, not a dependency of anything that ships.
+
+## 7. The `ppcp-conform` rows — work package L14
+
+**A different claim again from §6, and the one the two application columns will be filled from.**
+
+§6's rows are two `ppcp-sim` processes measured against each other. These are a **peer under test** driven from outside, through its real transport, by an instrument that takes the claimed profile set as input and applies `CONF` §1b–d: positive rows for declared profiles, negative rows for undeclared ones, `n/a` when a negative row passes. `libppcp`'s own column is filled by `--self`, which stands a second `ppcp-sim` up as the peer under test over loopback — the same instrument, so the reference and the applications are measured the same way (plan A11).
+
+```sh
+# the reference run, both roles; ctest -R L14-conform runs exactly this
+ppcp-conform --self --role host    --profiles core,capture,detect,mint,arbitrate,live,offline,markup \
+             --column libppcp --json host.json --markdown host.md
+ppcp-conform --self --role capture --profiles core,capture,detect,mint,arbitrate,live,offline,markup \
+             --column libppcp --json capture.json
+
+# an application, over its own loopback transport
+ppcp-conform --connect 127.0.0.1:9000 --role host \
+             --profiles core,capture,detect,arbitrate,live,offline,markup \
+             --column PinPointStudio --json pps.json --markdown pps.md
+```
+
+Exit **0** all applicable rows passed · **1** a row failed · **2** bad invocation · **3** no row applied, which is deliberately not 0. `tools/README.md` carries the full contract.
+
+| Row | Peer under test | Counterpart declaration / scenario | Asserts |
+|---|---|---|---|
+| CT-I7 | host | `reference-capture` / `late-candidate-capture` | A Candidate 700 ms after the Shot attaches; `t0` is byte-identical |
+| CT-I8 | host | `reference-capture` / `nominating-capture` | Every Candidate retained and present in `Shot.candidates` |
+| CT-I20 | host | `reference-capture` / `reference-capture` | No `authority: host` Shot from a peer that declared `role: capture` |
+| CT-I21 | host | `three-timebase-capture` / `reference-capture` | Three probe sequences, three directly-measured relations, none composed |
+| CT-I36a | host | `preview-capture` / `preview-capture` | A `continuous` segment and a discarded `preview` as `absent` / `not_retained` |
+| CT-S5 | host | `three-timebase-capture` / `reference-capture` | Relations measured, never composed, both ends |
+| CT-S6 | host | `observer-core` / `observer` | An observer originates nothing past `hello`, `declare` and its acks |
+| IOP-5 | host | `unrelated-capture` / `unrelated-capture` | Excluded and **retained**; no Shot, and no zero substituted |
+| CT-I12 | host | `reference-capture` / `offer-session` | A stored Session offered live and replayed into the same ingest path |
+| **CT-S3** | host | **`foreign-capture`** / `nominating-capture` | A camera that is not a phone — `start` convention, `global` geometry, 17 ppm — accepted on its declaration |
+| **CT-S7** | host | **`measured-capture`** / `nominating-capture` | `provenance: measured` with a **non-zero** offset: the accident `CONF` 2c exists to prevent |
+| CT-S4 | capture | `reference-host` / `silent-host` | A host that never issues: only the peer's own 8.2i deadline fires |
+| CT-I35 | capture | `reference-host` / `late-host` | A host past the deadline attaches rather than issuing; `t0` does not move |
+| CT-I18 | capture | `three-timebase-host` / `reference-host` | Three clocks probed directly; nothing composed |
+| CT-I6, CT-I20n, CT-I26, CT-I25 | any | negative rows (`CONF` 1d) | Run only where the profile is **not** declared: parsed, never originated |
+
+**Not in this table, on purpose.** `static` and `fixture` rows, which the implementation's own suite answers against the checked-in fixtures of `tests/fixtures/`; and **CT-I34**, although §1 calls it paired — nothing on the wire distinguishes an importer that de-duplicated from one that imported twice, so it is a fixture row and claiming it from outside would be claiming what cannot be seen.
