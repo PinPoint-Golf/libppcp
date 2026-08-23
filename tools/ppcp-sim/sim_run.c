@@ -378,20 +378,21 @@ static bool flush_tx(sim *s, uint8_t ch)
 
 static void drain_events(sim *s);
 
-/* ⚠ ONE FRAME PER FEED, AND THE REASON IS A LIBRARY DEFECT.
+/* ⚠ ONE FRAME PER FEED — ONCE A WORKAROUND, NOW A CHOICE.
  *
- * ppcp_peer_feed() consumes as many whole frames as the caller's buffer holds,
- * but the engine's event ring is PPCP_PEER_EVENT_QUEUE (four) deep and
- * overflow DROPS THE OLDEST EVENT with nothing the embedding can read to find
- * out.  A single socket read carrying a replayed bundle — session_open,
- * declare, stream_open, capture_announce, session_manifest, three payload
- * frames — silently lost the `capture_announce` here, which is how this was
- * found (finding F-L13-1, plan §9).
+ * F-L13-1: ppcp_peer_feed() used to consume as many whole frames as the
+ * caller's buffer held while the engine's four-deep event ring dropped the
+ * OLDEST event with nothing the embedding could read to find out.  A single
+ * socket read carrying a replayed bundle — session_open, declare, stream_open,
+ * capture_announce, session_manifest, three payload frames — silently lost the
+ * `capture_announce` here, which is how the defect was found.
  *
- * So this loop hands the engine exactly one frame and drains the events it
- * raised before handing it the next.  That is what every embedding must do
- * today, and it is why the finding matters to PinPointStudio's bundle import,
- * which feeds a whole file.
+ * It is fixed (L15, S4): the feed now stops before a frame whose events would
+ * not fit, reports what it consumed, and says so through
+ * ppcp_peer_feed_stalled().  This loop keeps feeding one frame at a time
+ * anyway, because that is what makes `sim_log_frames` able to print one line
+ * per frame, and because a tool whose job is to observe the wire should meet
+ * the wire a frame at a time.  It drains after each, so the stall never fires.
  */
 static bool pump_rx(sim *s, uint8_t ch)
 {

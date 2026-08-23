@@ -212,7 +212,32 @@ PPCP_API void        ppcp_peer_free(ppcp_peer *p);
  *
  * A malformed frame is answered with `error`/`malformed` and does NOT close
  * the transport (ENC 5d); a `payload_len` past the channel's limit is fatal
- * (ENC 8a) and returns PPCP_ERR_FATAL_LIMIT with the engine closed. */
+ * (ENC 8a) and returns PPCP_ERR_FATAL_LIMIT with the engine closed.
+ *
+ * ⚠ FEED STOPS WHEN THE EVENT QUEUE IS FULL (F-L13-1, plan §9, 23 Aug 2026).
+ *
+ * The event queue is PPCP_PEER_EVENT_QUEUE deep and a frame may raise two
+ * events (a `hello` raises PPCP_EVENT_HELLO and PPCP_EVENT_CONNECTED).  Before
+ * S4 this function consumed every whole frame the caller offered and the ring
+ * dropped the OLDEST event to make room — so one socket read carrying a
+ * replayed bundle silently lost `capture_announce`.  It no longer does: the
+ * loop stops before a frame it cannot report, `*out_consumed` says how far it
+ * got, and the caller drains with ppcp_peer_next_event() and re-presents the
+ * remainder.  The return is still PPCP_OK — running out of event room is not
+ * an error, it is backpressure — so the loop an embedding wants is:
+ *
+ *     size_t off = 0, took = 0;
+ *     while (off < len) {
+ *         if (ppcp_peer_feed(p, ch, bytes + off, len - off, &took) != PPCP_OK)
+ *             break;
+ *         off += took;
+ *         drain_every_event(p);                  // ppcp_peer_next_event()
+ *         if (took == 0 && !ppcp_peer_feed_stalled(p))
+ *             break;                             // partial frame: need bytes
+ *     }
+ *
+ * ppcp_peer_feed_stalled() is what tells "no room for events" apart from "not
+ * a whole frame yet", which are the only two reasons a feed returns short. */
 PPCP_API ppcp_result ppcp_peer_feed(ppcp_peer *p, uint8_t channel,
                                     const uint8_t *bytes, size_t len,
                                     size_t *out_consumed);
@@ -320,6 +345,25 @@ typedef struct ppcp_event {
 
 /* PPCP_ERR_NOT_FOUND when the queue is empty. */
 PPCP_API ppcp_result ppcp_peer_next_event(ppcp_peer *p, ppcp_event *out);
+
+/* How many events are waiting, and how many the queue holds.  The capacity is
+ * PPCP_PEER_EVENT_QUEUE; it is a function too so a Swift or C++ caller that
+ * never saw the macro can still ask. */
+PPCP_API size_t ppcp_peer_events_pending(const ppcp_peer *p);
+PPCP_API size_t ppcp_peer_events_capacity(void);
+
+/* True when the last ppcp_peer_feed() (or ppcp_bundle_reader_feed() into this
+ * peer) returned before the end of the caller's bytes because the event queue
+ * had no room for the next frame's events.  Cleared by the next feed that gets
+ * past that point.  Drain and feed the remainder. */
+PPCP_API bool ppcp_peer_feed_stalled(const ppcp_peer *p);
+
+/* Events lost to a full queue over this peer's lifetime.  With the S4 feed
+ * this can only be raised by the engine's OWN events — link lost, link
+ * restored, raised from ppcp_peer_tick() rather than from a frame — so a
+ * non-zero value means the embedding is not draining between ticks.  A
+ * conformance harness asserts it is zero. */
+PPCP_API uint64_t ppcp_peer_events_dropped(const ppcp_peer *p);
 
 /* ------------------------------------------------------------ origination */
 

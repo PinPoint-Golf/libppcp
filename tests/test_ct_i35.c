@@ -72,14 +72,22 @@ static void rig_new(rig *r, ppcp_role role, const char *id, const char *tb_id,
 
 static void rig_free(rig *r) { ppcp_peer_free(r->p); free(r->mem); }
 
+/* F-L13-1: the receiver stops feeding when its event queue is full, so a pump
+ * that DEQUEUED first would throw away the frames it could not deliver.  It
+ * peeks and commits exactly what was taken instead — the socket idiom of
+ * peer.h — so an undelivered frame stays queued for the next pump, after the
+ * caller has drained.  Nothing is lost either way. */
 static void pump(ppcp_peer *from, ppcp_peer *to, uint8_t ch)
 {
-    static uint8_t buf[131072];
-    size_t         n = 0, consumed = 0;
     while (ppcp_peer_pending(from, ch) > 0) {
-        if (ppcp_peer_drain(from, ch, buf, sizeof(buf), &n) != PPCP_OK || n == 0)
+        const uint8_t *view = NULL;
+        size_t         len = 0, consumed = 0;
+        if (ppcp_peer_drain_peek(from, ch, &view, &len) != PPCP_OK || len == 0)
             break;
-        (void)ppcp_peer_feed(to, ch, buf, n, &consumed);
+        if (ppcp_peer_feed(to, ch, view, len, &consumed) != PPCP_OK || consumed == 0)
+            break;
+        if (ppcp_peer_drain_commit(from, ch, consumed) != PPCP_OK)
+            break;
     }
 }
 
@@ -549,9 +557,19 @@ static void test_orphan_capture_request(void)
     rig_new(&dev, PPCP_ROLE_CAPTURE, "peer:dev", "tb:dev", dprof, 3);
 
     TEST("MSG 7.3 — the host asks an owner for an interval it never nominated");
+    /* The rigs' handshake left events queued on both peers; a full queue now
+     * stops the feed rather than dropping the oldest (F-L13-1), so this test
+     * drains what it does not care about before it asks for what it does. */
+    drop_events(host.p);
+    drop_events(dev.p);
     CHECK_EQ_I(ppcp_instant_make_z(&t0, "tb:host", 1000000000), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_capture_request(host.p, "shot:1", &t0, NULL, 0,
                                          500000000, 500000000), PPCP_OK);
+    /* Pump and drain alternately: the handshake frames still queued ahead of
+     * the request fill the four-deep ring, and since F-L13-1 a full ring stops
+     * the feed rather than dropping the oldest.  Draining between pumps is the
+     * loop peer.h documents, and it is the loop both applications run. */
+    do {
     pump(host.p, dev.p, PPCP_CHANNEL_CONTROL);
     while (ppcp_peer_next_event(dev.p, &ev) == PPCP_OK) {
         if (ev.kind == PPCP_EVENT_CAPTURE_REQUEST && ev.msg != NULL) {
@@ -564,11 +582,14 @@ static void test_orphan_capture_request(void)
                                    ev.msg->body.capture_request.t0.tb.len, "tb:host"));
         }
     }
+    } while (ppcp_peer_pending(host.p, PPCP_CHANNEL_CONTROL) > 0);
     CHECK(saw_request);
 
     TEST("CT-I10 / 8.4b — the interval is gone: the answer is a Capture, not an `error`");
+    drop_events(host.p);
     CHECK_EQ_I(ppcp_peer_capture_absent(dev.p, "cap:1", "shot:1", "stream:video",
                                         PPCP_ABSENT_OUTSIDE_BUFFER, req_id), PPCP_OK);
+    do {
     pump(dev.p, host.p, PPCP_CHANNEL_CONTROL);
     while (ppcp_peer_next_event(host.p, &ev) == PPCP_OK) {
         if (ev.kind == PPCP_EVENT_ERROR)
@@ -584,6 +605,7 @@ static void test_orphan_capture_request(void)
             CHECK_EQ_I(ev.msg->env.reply_to, req_id);
         }
     }
+    } while (ppcp_peer_pending(dev.p, PPCP_CHANNEL_CONTROL) > 0);
     CHECK(saw_absent);
     CHECK(!saw_error);
     CHECK(ppcp_peer_get_state(host.p) != PPCP_PEER_CLOSED);

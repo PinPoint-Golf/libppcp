@@ -157,6 +157,8 @@ struct ppcp_peer {
     ppcp_result     ev_status[PPCP_PEER_EVENT_QUEUE];
     uint8_t         ev_channel[PPCP_PEER_EVENT_QUEUE];
     size_t          ev_head, ev_count;
+    uint64_t        ev_dropped;   /* F-L13-1: what the ring lost, readable */
+    bool            feed_stalled; /* F-L13-1: feed stopped for want of event room */
 
     ppcp_arena decl_arena;
     ppcp_arena scratch_arena;
@@ -685,7 +687,16 @@ static ppcp_msg *peer_push_event_ch(ppcp_peer *p, ppcp_event_kind kind, ppcp_res
         /* The oldest event is dropped, not the newest: an embedding that is
          * not draining has already lost the earlier ones' timeliness, and
          * losing the most recent state change is worse than losing a stale
-         * one.  The drop is visible — the queue never silently grows. */
+         * one.
+         *
+         * F-L13-1 — this used to be reachable from ppcp_peer_feed(), which
+         * consumed every whole frame it was given, so one socket read carrying
+         * a replayed bundle lost `capture_announce` and nothing said so.  The
+         * feed now stops rather than overrun (see PEER_EVENT_HEADROOM), which
+         * leaves only the events the engine raises itself from
+         * ppcp_peer_tick().  Those can still overrun an embedding that never
+         * drains, so the loss is COUNTED and readable rather than silent. */
+        p->ev_dropped++;
         p->ev_head = (p->ev_head + 1) % PPCP_PEER_EVENT_QUEUE;
         p->ev_count--;
     }
@@ -703,6 +714,36 @@ static ppcp_msg *peer_push_event_ch(ppcp_peer *p, ppcp_event_kind kind, ppcp_res
 static ppcp_msg *peer_push_event(ppcp_peer *p, ppcp_event_kind kind, ppcp_result status)
 {
     return peer_push_event_ch(p, kind, status, PPCP_CHANNEL_CONTROL);
+}
+
+/* The most events one fed frame can raise: a `hello` raises PPCP_EVENT_HELLO
+ * and PPCP_EVENT_CONNECTED, and nothing raises three.  ppcp_peer_feed() will
+ * not start a frame it cannot report in full. */
+#define PEER_EVENT_HEADROOM 2
+
+static bool peer_event_room(const ppcp_peer *p)
+{
+    return p->ev_count + PEER_EVENT_HEADROOM <= PPCP_PEER_EVENT_QUEUE;
+}
+
+size_t ppcp_peer_events_pending(const ppcp_peer *p)
+{
+    return (p == NULL) ? 0 : p->ev_count;
+}
+
+size_t ppcp_peer_events_capacity(void)
+{
+    return (size_t)PPCP_PEER_EVENT_QUEUE;
+}
+
+bool ppcp_peer_feed_stalled(const ppcp_peer *p)
+{
+    return (p != NULL) && p->feed_stalled;
+}
+
+uint64_t ppcp_peer_events_dropped(const ppcp_peer *p)
+{
+    return (p == NULL) ? 0 : p->ev_dropped;
 }
 
 ppcp_result ppcp_peer_next_event(ppcp_peer *p, ppcp_event *out)
@@ -2420,6 +2461,7 @@ ppcp_result ppcp_peer_feed(ppcp_peer *p, uint8_t channel, const uint8_t *bytes, 
     if (channel >= PPCP_PEER_MAX_CHANNELS)
         return PPCP_ERR_INVALID;
     *out_consumed = 0;
+    p->feed_stalled = false;
     if (p->state == PPCP_PEER_CLOSED)
         return PPCP_ERR_INVALID;
 
@@ -2429,6 +2471,18 @@ ppcp_result ppcp_peer_feed(ppcp_peer *p, uint8_t channel, const uint8_t *bytes, 
         size_t            consumed = 0;
         ppcp_msg          m;
         ppcp_arena       *arena;
+
+        /* F-L13-1.  Every frame below raises at least one event, and the
+         * borrowed ppcp_msg in an event stays valid only until the ring wraps.
+         * Consuming a frame whose events cannot be queued would drop an older
+         * one — which is how a replayed bundle lost `capture_announce`.  So the
+         * loop stops here instead, `*out_consumed` says how far it got, and the
+         * caller drains and re-presents the rest.  This is backpressure, not an
+         * error, so the return stays PPCP_OK. */
+        if (!peer_event_room(p)) {
+            p->feed_stalled = true;
+            break;
+        }
 
         rc = ppcp_frame_header_parse(bytes + off, &hdr);
         if (rc != PPCP_OK) {

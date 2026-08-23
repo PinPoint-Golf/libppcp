@@ -370,7 +370,10 @@ static void test_round_trip(void)
     write_session(&bundle, PPCP_STREAM_KIND_VIDEO, true, false, PPCP_UNKNOWN);
     sink = new_sink(&sm);
     r    = new_reader(&rm, sink);
-    CHECK_EQ_I(ppcp_bundle_reader_feed(r, bundle.b, bundle.n, &consumed), PPCP_OK);
+    /* F-L13-1: with a live sink the reader stops when the sink's event queue
+     * is full, so the replay is a drain-and-continue loop.  Ten frames past a
+     * four-deep ring is exactly the shape that used to lose events. */
+    CHECK_EQ_I(ppcp_test_reader_feed_all(r, sink, bundle.b, bundle.n, &consumed), PPCP_OK);
     CHECK_EQ_I(consumed, bundle.n);
     CHECK_EQ_I(ppcp_bundle_reader_frame_count(r), 10);
     CHECK(ppcp_bundle_reader_manifest_ordered(r));
@@ -464,7 +467,8 @@ static void test_any_subset(void)
         write_session(&bundle, kinds[i], kinds[i] != NULL, false, PPCP_UNKNOWN);
         sink = new_sink(&sm);
         r    = new_reader(&rm, sink);
-        CHECK_EQ_I(ppcp_bundle_reader_feed(r, bundle.b, bundle.n, &consumed), PPCP_OK);
+        CHECK_EQ_I(ppcp_test_reader_feed_all(r, sink, bundle.b, bundle.n, &consumed),
+                   PPCP_OK);
         CHECK_EQ_I(consumed, bundle.n);
         CHECK(!ppcp_bundle_reader_truncated(r));
         CHECK(ppcp_peer_session_id(sink) != NULL);

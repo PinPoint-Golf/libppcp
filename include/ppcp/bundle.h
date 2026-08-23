@@ -99,9 +99,26 @@ PPCP_API ppcp_result ppcp_bundle_reader_new(void *storage, size_t storage_len,
 /* Consumes whole frames and reports how many bytes it took; the caller
  * re-presents the tail with more bytes after it, exactly as with
  * ppcp_peer_feed().  A short final frame is not an error here — ENC 3c makes
- * that the reader's decision and ENC 7d makes the decision `partial`. */
+ * that the reader's decision and ENC 7d makes the decision `partial`.
+ *
+ * ⚠ WITH A SINK, IT ALSO STOPS WHEN THE SINK'S EVENT QUEUE IS FULL (F-L13-1).
+ *
+ * The reader drains the sink's ANSWERS itself (see below), but its EVENTS are
+ * the caller's — they are the reason a bundle is replayed into a live peer at
+ * all.  Before S4 this function fed the whole file whatever the sink's 4-deep
+ * ring could hold, and the ring dropped the oldest each time: a replayed
+ * Session lost `capture_announce`.  It now returns early, PPCP_OK, with
+ * ppcp_bundle_reader_stalled() true and `*out_consumed` short of `len`.  The
+ * caller drains the sink with ppcp_peer_next_event() and calls again with the
+ * remainder.  The frame that did not fit was not delivered, not counted and
+ * not inspected, so nothing is seen twice. */
 PPCP_API ppcp_result ppcp_bundle_reader_feed(ppcp_bundle_reader *r, const uint8_t *bytes,
                                              size_t len, size_t *out_consumed);
+
+/* True when the last feed stopped because the sink could not take another
+ * frame's events, as opposed to stopping on a partial frame.  Always false
+ * with a NULL sink. */
+PPCP_API bool ppcp_bundle_reader_stalled(const ppcp_bundle_reader *r);
 
 /* ENC 7d, and it is worth reading twice.
  *

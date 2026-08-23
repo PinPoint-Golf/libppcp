@@ -98,4 +98,74 @@ PPCP_TEST_UNUSED static size_t ppcp_unhex(const char *hex, unsigned char *out, s
     return n;
 }
 
+/* ============================ F-L13-1: feeding past the event queue's depth
+ *
+ * ppcp_peer_feed() stops rather than overrun the 4-deep event ring, so a test
+ * that hands it more frames than that has to drain between calls.  These are
+ * the loops peer.h and bundle.h document, written once.  A test that CARES
+ * about the events drains them itself; these are for the tests that do not. */
+#ifdef PPCP_PEER_H
+PPCP_TEST_UNUSED static size_t ppcp_test_drain_events(ppcp_peer *p)
+{
+    ppcp_event e;
+    size_t     n = 0;
+    while (ppcp_peer_next_event(p, &e) == PPCP_OK)
+        n++;
+    return n;
+}
+
+/* Feeds every whole frame in `b`, draining events between calls.  Returns the
+ * first non-OK result, and reports the bytes consumed — short only if the tail
+ * is a partial frame. */
+PPCP_TEST_UNUSED static ppcp_result ppcp_test_feed_all(ppcp_peer *p, uint8_t ch,
+                                                       const uint8_t *b, size_t len,
+                                                       size_t *out_consumed)
+{
+    size_t off = 0;
+    *out_consumed = 0;
+    while (off < len) {
+        size_t      took = 0;
+        ppcp_result rc = ppcp_peer_feed(p, ch, b + off, len - off, &took);
+        if (rc != PPCP_OK) {
+            *out_consumed = off + took;
+            return rc;
+        }
+        off += took;
+        (void)ppcp_test_drain_events(p);
+        if (took == 0 && !ppcp_peer_feed_stalled(p))
+            break;   /* a partial frame: more bytes, not more room, are needed */
+    }
+    *out_consumed = off;
+    return PPCP_OK;
+}
+#endif /* PPCP_PEER_H */
+
+#ifdef PPCP_BUNDLE_H
+/* The same loop for a bundle replayed into a live sink.  `sink` may be NULL,
+ * in which case it is one call. */
+PPCP_TEST_UNUSED static ppcp_result ppcp_test_reader_feed_all(ppcp_bundle_reader *r,
+                                                              ppcp_peer *sink,
+                                                              const uint8_t *b, size_t len,
+                                                              size_t *out_consumed)
+{
+    size_t off = 0;
+    *out_consumed = 0;
+    while (off <= len) {
+        size_t      took = 0;
+        ppcp_result rc = ppcp_bundle_reader_feed(r, b + off, len - off, &took);
+        if (rc != PPCP_OK) {
+            *out_consumed = off + took;
+            return rc;
+        }
+        off += took;
+        if (sink != NULL)
+            (void)ppcp_test_drain_events(sink);
+        if (!ppcp_bundle_reader_stalled(r))
+            break;
+    }
+    *out_consumed = off;
+    return PPCP_OK;
+}
+#endif /* PPCP_BUNDLE_H */
+
 #endif /* PPCP_TEST_UTIL_H */

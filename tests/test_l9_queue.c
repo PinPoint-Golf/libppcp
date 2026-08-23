@@ -121,10 +121,22 @@ static void test_partial_write(void)
     CHECK(!ppcp_peer_drain_is_partial(p, PPCP_CHANNEL_CONTROL));
 
     rx = make_peer(&rmem, PPCP_ROLE_HOST, "peer:host", host_profiles, 4);
-    CHECK_EQ_I(ppcp_peer_feed(rx, PPCP_CHANNEL_CONTROL, wire, wire_len, &consumed), PPCP_OK);
-    CHECK_EQ_I(consumed, wire_len);          /* nothing lost, nothing duplicated */
-    while (ppcp_peer_next_event(rx, &ev) == PPCP_OK)
-        events++;
+    /* F-L13-1: three frames raise four events past a four-deep ring, so the
+     * feed stops and the caller drains.  Counting them here is the point of
+     * the check below, so the loop is written out rather than borrowed. */
+    {
+        size_t off = 0;
+        while (off < wire_len) {
+            CHECK_EQ_I(ppcp_peer_feed(rx, PPCP_CHANNEL_CONTROL, wire + off,
+                                      wire_len - off, &consumed), PPCP_OK);
+            off += consumed;
+            while (ppcp_peer_next_event(rx, &ev) == PPCP_OK)
+                events++;
+            if (consumed == 0 && !ppcp_peer_feed_stalled(rx))
+                break;
+        }
+        CHECK_EQ_I(off, wire_len);           /* nothing lost, nothing duplicated */
+    }
     CHECK(events >= 3);
 
     TEST("after a whole write, drain() works again");
@@ -348,15 +360,27 @@ static void test_offer_and_replay(void)
             off += fed;
             for (ch = 0; ch < 2; ch++) {
                 while (ppcp_peer_pending(dev, ch) > 0) {
+                    size_t hoff = 0;
                     CHECK_EQ_I(ppcp_peer_drain(dev, ch, wire, sizeof(wire), &n), PPCP_OK);
-                    CHECK_EQ_I(ppcp_peer_feed(host, ch, wire, n, &consumed), PPCP_OK);
-                    while (ppcp_peer_next_event(host, &ev) == PPCP_OK) {
-                        if (ev.msg == NULL)
-                            continue;
-                        if (ev.msg->type == PPCP_MT_SESSION_MANIFEST) got_manifest++;
-                        if (ev.msg->type == PPCP_MT_CAPTURE_ANNOUNCE) got_announce++;
-                        if (ev.msg->type == PPCP_MT_PAYLOAD_BEGIN ||
-                            ev.msg->type == PPCP_MT_PAYLOAD_END)      got_payload++;
+                    /* F-L13-1: one drain can carry more frames than the event
+                     * ring is deep, so feed and drain until the bytes are gone
+                     * rather than letting the ring lose the earliest — which is
+                     * how a replayed Session used to lose `capture_announce`,
+                     * the very thing this test counts. */
+                    while (hoff < n) {
+                        CHECK_EQ_I(ppcp_peer_feed(host, ch, wire + hoff, n - hoff,
+                                                  &consumed), PPCP_OK);
+                        hoff += consumed;
+                        while (ppcp_peer_next_event(host, &ev) == PPCP_OK) {
+                            if (ev.msg == NULL)
+                                continue;
+                            if (ev.msg->type == PPCP_MT_SESSION_MANIFEST) got_manifest++;
+                            if (ev.msg->type == PPCP_MT_CAPTURE_ANNOUNCE) got_announce++;
+                            if (ev.msg->type == PPCP_MT_PAYLOAD_BEGIN ||
+                                ev.msg->type == PPCP_MT_PAYLOAD_END)      got_payload++;
+                        }
+                        if (consumed == 0 && !ppcp_peer_feed_stalled(host))
+                            break;
                     }
                 }
             }

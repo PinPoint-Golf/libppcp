@@ -358,6 +358,7 @@ struct ppcp_bundle_reader {
     uint16_t   minor;
     size_t     frame_count;
     bool       tail_pending;        /* the last feed ended mid-frame (ENC 7d) */
+    bool       sink_stalled;        /* F-L13-1: the sink has no room for events */
     bool       manifest_seen;
     bool       manifest_ordered;    /* ENC 7c held */
     bool       has_asserted;
@@ -499,6 +500,7 @@ ppcp_result ppcp_bundle_reader_feed(ppcp_bundle_reader *r, const uint8_t *bytes,
     *out_consumed = 0;
     if (r->finished)
         return PPCP_ERR_INVALID;
+    r->sink_stalled = false;
 
     if (!r->header_done) {
         ppcp_bundle_header h;
@@ -540,6 +542,18 @@ ppcp_result ppcp_bundle_reader_feed(ppcp_bundle_reader *r, const uint8_t *bytes,
         if (r->sink != NULL) {
             (void)ppcp_peer_feed(r->sink, hdr.channel, bytes + off, consumed, &fed);
             reader_discard_answers(r);
+            /* F-L13-1, the reader half.  The sink refuses a frame it cannot
+             * report as events, and it refuses it whole — so this frame has
+             * NOT been delivered and must not be accounted for either.  Stop,
+             * report what was consumed before it, and let the caller drain the
+             * sink with ppcp_peer_next_event() and call again.  Before S4 this
+             * loop fed the whole file and the sink's 4-deep ring dropped the
+             * oldest event each time round: a replayed Session lost its
+             * `capture_announce` frames and nothing said so. */
+            if (fed == 0 && ppcp_peer_feed_stalled(r->sink)) {
+                r->sink_stalled = true;
+                break;
+            }
         }
 
         ppcp_arena_reset(&r->arena);
@@ -556,6 +570,11 @@ ppcp_result ppcp_bundle_reader_feed(ppcp_bundle_reader *r, const uint8_t *bytes,
     r->tail_pending = (off < len);
     *out_consumed   = off;
     return PPCP_OK;
+}
+
+bool ppcp_bundle_reader_stalled(const ppcp_bundle_reader *r)
+{
+    return (r != NULL) && r->sink_stalled;
 }
 
 ppcp_result ppcp_bundle_reader_finish(ppcp_bundle_reader *r, ppcp_completeness *out)
