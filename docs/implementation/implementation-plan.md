@@ -275,7 +275,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Spec | `CORE` §5.6.1, §7.2; `MSG` §3 |
 | Unlocks | CT-S3 assertions 1 and 3 (host side), CT-I19 |
 | Depends | L6 |
-| Status | ☐ |
+| Status | ☑ done — S2 (`b025904`, `63eb71b`; box filled 23 Aug after re-verification — S2's crash close-out missed it). `ctest --test-dir build/ppcp-tests -R 'ppcp_host_peer_test|ppcp_source_declaration_test'` 2/2: CT-I14, CT-I19, CT-S3 (host side) pass. The 120 fps floor is the ingest callback; own Sources declared from `CameraCapabilities`; listener binds by `link_bind`. Re-verified against L6 in S2 recovery and against L9–L15 in S3/S4 |
 
 ### H3 — Bundle import as a file transport
 
