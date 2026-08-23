@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-23 — Session 4 closed; both application columns from `ppcp-conform` (PinPointStudio `docs/ppcp-conformance.md` §10; PinPointCapture `docs/conformance/ppcp-conform.md`) |
+| Last updated | 2026-08-23 — S5 wave 1 (L17). Errata E5–E29 into the specification; CT-I6's counterpart fixed; three new socket rows (`CT-I6-sockets`, `CT-I22-sockets-capture-request`, `F-S5-3-sockets-offer-during-live-session`). Both application columns still from the S4 `ppcp-conform` runs |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -26,7 +26,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
 | CT-I4 | I4 | Core | static | L2, D2 | pass | — | pass |
 | CT-I5 | I5 | Capture | paired | L6 | impl | — | — |
-| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | pass | impl (conform row needs a minting-capture counterpart — §9) | pass |
+| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, **L17** | pass | **re-runnable** — `ppcp-conform`'s row now uses a minting-capture counterpart (L17); the host run that excused it can be repeated | pass |
 | CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass (conform) | — |
 | CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass (conform) | pass (own half) |
 | CT-I9 | I9 | Core | static | L4, L10 | pass | — | — |
@@ -145,6 +145,9 @@ The declarations are in [`../../tools/scenarios/`](../../tools/scenarios/) and i
 | `CT-S4-sockets-silent-host` | `silent-host` ↔ `nominating-capture` | Assertion 6: a host that never answers, and a peer that mints only at the 8.2i deadline |
 | `IOP-5-sockets-unrelated` | `reference-host` ↔ `unrelated-capture` | The host excludes and **retains**; the peer mints nothing; no zero is substituted |
 | `IOP-9-sockets-preview` | `reference-host` ↔ `preview-capture` | A `continuous` segment and a discarded `preview` as `absent`/`not_retained` |
+| `CT-I6-sockets` | `arbiter-no-detect` ↔ `nominating-capture` | A peer without Mint parses a device-authority `shot` and issues none on its own authority (`minted_shots_rx=0`) |
+| `CT-I22-sockets-capture-request` | `requesting-host` ↔ `nominating-capture` | A host **asks** (8.4a): the device half of I22 — a window in the host's convention converted into the peer's own buffer — is drivable from outside for the first time (F-S5-2) |
+| `F-S5-3-sockets-offer-during-live-session` | `reference-host` ↔ `offer-session` | An offered Session replayed onto a live link does **not** rebind the live Session's `timebase_ref` (`live_ref_rebound=0`, `imported_frames_rx>=1`) — erratum E28 |
 | `RT-4-psk-ke-only-refused` | `ppcp-sim` ↔ `openssl s_server -tls1_3` | A DHE-requiring peer refuses a `psk_ke`-only ClientHello |
 | `RT-4-psk-ke-only-accepted-is-a-failure` | the same, `-allow_no_dhe_kex` | A peer that **accepts** `psk_ke` is reported as an RT-4 failure — which is also what proves the hand-built ClientHello and its PSK binder are correct |
 
