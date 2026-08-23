@@ -135,6 +135,12 @@ Registered in [`tests/CMakeLists.txt`](../../tests/CMakeLists.txt); `ctest --pre
 
 ---
 
+## What `ppcp-conform` does with these
+
+Work package L14's [`ppcp-conform`](../ppcp-conform/) is a table of conformance rows, and every row in it is one of these declarations with one of these scenarios — the tool holds no peer of its own. So a row is reproducible by hand from the command the tool's JSON reports, and adding a declaration here adds something the conformance run can use without a code change. `../README.md` has the command line and the exit codes.
+
+The two that existed only for this are now used by it: **`foreign-capture.json` is CT-S3** and **`measured-capture.json` is CT-S7**, both against a host under test.
+
 ## For PinPointStudio and PinPointCapture
 
 Nothing here is specific to `libppcp` being on the other end. Point `--connect` at a host's listener, or `--listen` and dial it from a device, and the tool is the counterpart:
