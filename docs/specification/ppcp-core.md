@@ -1317,6 +1317,7 @@ The corollary for a mobile team: the protocol layer is not Swift or Kotlin. It i
 |---|---|---|
 | **E1** | [`PPCP-ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link) | **Added, 22 August 2026.** A link is bound by an explicit `link_bind` first frame carrying a dialler-minted `link_id`. Two implementations had invented two different implicit rules for associating a peer's connections, each correct against itself and neither able to meet the other. |
 | **E2** | [`PPCP-MSG` 6.1g](ppcp-messages.md#61-sync_probe--sync_reply) | **Added, 23 August 2026.** Where `sync_probe.timebase_id` names a timebase the **responder** declared, the responder stamps `t2`/`t3` on that timebase. Without it a peer with one clock could not measure two clocks of one counterpart — 6.1d addressed the prober's clocks and 6.1b left the responder's to the responder — so I21's remote half was unreachable (F-H5-1, PinPointStudio, S3). |
+| **E3** | [`PPCP-RV` 7.3a, 7.3f, 7.5c](ppcp-rv.md#73-single-use-and-expiry) | **Amended, 23 August 2026.** `mu` counts **pairings**, not handshakes, and invalidates the **code** rather than the pairings made from it. A link is several TLS handshakes over one `K_tls` (§3.1, `ENC` §2.1), so the default `mu: 1` was spent by the control channel and the bulk channel of the same link was refused; and the literal reading made §7.5's reconnection impossible by default (F-H6-1, F-H6-1a, PinPointStudio, S4). |
 
 ---
 

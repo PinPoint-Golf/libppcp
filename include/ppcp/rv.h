@@ -175,8 +175,20 @@ PPCP_API ppcp_result ppcp_rv_payload_set_secret(ppcp_rv_payload *p,
  * text: never an identifier, a trust signal or a storage key. */
 PPCP_API ppcp_result ppcp_rv_payload_set_display_name(ppcp_rv_payload *p,
                                                       const char *dn, size_t dn_len);
-/* 7.3a — the maximum successful pairings this code may complete.  Default 1;
- * see ppcp_rv_may_persist() for what a value above 1 costs (7.4f). */
+/* 7.3a — the maximum PAIRINGS this code may establish.  Default 1; see
+ * ppcp_rv_may_persist() for what a value above 1 costs (7.4f).
+ *
+ * ⚠ PAIRINGS, NOT HANDSHAKES (erratum E3, F-H6-1).  One pairing is one derived
+ * `K_tls` and therefore one link, and a link is TWO TLS handshakes — three with
+ * a preview channel — because CORE §3.1 and ENC §2.1 give every channel its own
+ * connection.  An embedding that decremented a counter per handshake would
+ * spend a `mu: 1` code on the control channel and refuse the bulk channel of
+ * the same link.  Count links.
+ *
+ * Exhausting `mu` invalidates the CODE and not the pairings established from it
+ * (7.3f), so reconnection within a session (7.5) still works from a `mu: 1`
+ * code.  This library holds no counter: 7.3a is the publisher's to enforce, and
+ * the publisher is the embedding. */
 PPCP_API ppcp_result ppcp_rv_payload_set_max_uses(ppcp_rv_payload *p, uint64_t mu);
 /* 7.3c — the shortest expiry the workflow tolerates, seconds since the Unix
  * epoch.  Secondary to 7.3a and 7.3b, which are clock-free. */

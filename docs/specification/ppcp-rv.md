@@ -451,10 +451,13 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 
 ### 7.3 Single use and expiry
 
-- **(7.3a) MUST** A publisher invalidates a pairing code once `mu` handshakes have completed with it. The default is one.
+*Erratum E3, 23 August 2026 — 7.3a reworded and 7.3f added, after the third implementation session. 7.3a counted **handshakes**, and a PPCP link is two (optionally three) TCP connections each carrying its own TLS session keyed by the same `K_tls` ([`PPCP-CORE` §3.1](ppcp-core.md#31-why-two-channels-is-not-negotiable), [`PPCP-ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link)). So the default `mu: 1` — the pairwise case the whole model is built around — was spent by the control channel's handshake and the bulk channel **of the same link** was then refused: every conformant pairing died on its second channel (finding F-H6-1, PinPointStudio, session S4).*
+
+- **(7.3a) MUST** A publisher invalidates a pairing code once `mu` **pairings** have been established with it. The default is one. A pairing is one derived `K_tls` and therefore one link; a link is **several** TLS handshakes, one per channel, and they count once between them.
 - **(7.3b) MUST** A publisher invalidates the code when the session it belongs to closes, whether or not it was used.
 - **(7.3c) SHOULD** A code carries `exp`, and a publisher chooses the shortest expiry the workflow tolerates.
 - **(7.3d) MUST** A publisher generates fresh `psk` and `sid` for every code. A code is never regenerated with the same secret.
+- **(7.3f) MUST** `mu` and [7.3b](#73-single-use-and-expiry) invalidate the **code**, not the pairings already established from it. A pairing outlives the code that created it: it ends when its session closes, when either side revokes it ([7.4d](#74-persistent-pairings)), or — for a code whose `mu` exceeded 1 — with the session it was scoped to ([7.4f](#74-persistent-pairings)). Reconnection within a session ([§7.5](#75-reconnecting-within-a-session)) is therefore available from a `mu: 1` code, which the previous reading of 7.3a made impossible: one link and no reconnection made §7.5 dead letter in the default case (F-H6-1a).
 - **(7.3e) MUST** A publisher **refuses a handshake** for a code past its `exp`. Expiry is enforced by the party holding the authoritative clock, not by the party reading a printed number — which is what lets [4.4a1](#44-handling-a-scanned-code) permit a peer with an untrustworthy clock to attempt the pairing rather than be locked out.
 
 7.3a and 7.3b are clock-free and are the primary defence; `exp` depends on two wall clocks agreeing and is therefore secondary rather than relied upon. `mu` exists because pairing several devices from one displayed code is a real workflow, and the alternative — a code that is silently reusable forever — is worse than one that says how many times it may be used.
@@ -484,7 +487,7 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 
 - **(7.5a) MUST** A reconnecting peer completes a full handshake ([§5.2](#52-tls-profile)) on the new connection, using the same derived `K_tls`. It does not require a new pairing code.
 - **(7.5b) MUST** `session_resume` is accepted only on a connection that completed that handshake, and only for the `sid` bound to it.
-- **(7.5c) MUST NOT** A peer accept `session_resume` for a session whose pairing has been invalidated under [§7.3](#73-single-use-and-expiry).
+- **(7.5c) MUST NOT** A peer accept `session_resume` for a session whose **pairing** has ended — revoked under [7.4d](#74-persistent-pairings), or closed with its session under [7.3b](#73-single-use-and-expiry). A code that has spent its `mu` is invalid for establishing further pairings and says nothing about the pairing this connection already holds ([7.3f](#73-single-use-and-expiry)).
 - **(7.5d)** TLS session resumption tickets MAY be used to shorten the handshake. They do not replace it, and a peer MUST NOT accept application data on an early-data path.
 
 7.5d matters because TLS 1.3 early data is replayable by design. A resumed connection that accepted `arm` — or a capture request — as early data would accept a replay of it.
