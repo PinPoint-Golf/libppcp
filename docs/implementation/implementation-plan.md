@@ -315,7 +315,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Spec | `RV` §3, §4, §5, §7 |
 | Unlocks | RT-5, RT-6, RT-7 (browser half), RT-8, RT-9, RT-12 (review), RT-15, RT-16 (review) |
 | Depends | L12, H1 |
-| Status | ☐ |
+| Status | ☑ done — S4 (`6b9b1af`). `ctest --test-dir build/ppcp-tests -R ppcp_rendezvous_test`; RT-5/7/8/9/15/16 pass, RT-6/13 n/a, RT-12 review. Found erratum E3 (`mu` counts pairings). Keychain store and `DNSServiceBrowse` compiled, not exercised at runtime; browser not yet started by `PpcpHostService` |
 
 ### H7 — Markup and annotations
 
@@ -333,7 +333,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Deliverable | `docs/ppcp-conformance.md` stating the profile set, the `ppcp-conform` command that reproduces it, and the results pasted in matrix row format. A `ctest` target that runs `ppcp-conform` against a headless `ppcp_host_peer` over loopback. |
 | Depends | L14, H1–H7 |
 | Unlocks | The PinPointStudio column of the matrix |
-| Status | ☐ |
+| Status | ☑ done — S4 (`f2b2522`…`e4710f2`). `ctest --test-dir build/ppcp-tests -R ppcp_conformance`: 11/12 applicable rows pass via `ppcp-conform` against headless `ppcp_conform_host` over a harness-only plaintext channel (`PP_PPCP_PLAINTEXT_HARNESS`, default OFF, fatal under shipping). CT-I6 `impl` — the tool picks a host counterpart (§9). Found and fixed four host defects: no `declare` ever sent, listener dropped bytes after `link_bind`, `syncTimebase` unset, one engine for all links |
 
 ---
 
@@ -417,7 +417,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `RV` §2, §3, §4, §6, §7 |
 | Unlocks | RT-3, RT-6, RT-7, RT-8, RT-9, RT-12 (review), RT-13 (review), RT-15, RT-16 (review) |
 | Depends | L12, D1 |
-| Status | ☐ |
+| Status | ☑ done — S4 (`d732f8f`, `dd6e556`). `make test-core`: RT-3/6/7/8/9 pass, RT-15 impl, RT-12/13/16 review. Mic-to-ball distance setting in (§9 decision). Keychain ThisDeviceOnly and HotspotConfiguration entitlement unverified on a phone |
 
 ### D8 — Markup
 
@@ -435,7 +435,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Deliverable | A debug-only "conformance harness" entry (beside the existing `DebugScreenGallery`) that runs the device peer over **plaintext** loopback sockets (the `direct` path) so `ppcp-conform` can drive it in the simulator without TLS or a QR; `docs/ppcp-conformance.md` with the profile set, the command, and the rows. A `make conform` target. |
 | Depends | L14, D1–D8 |
 | Unlocks | The PinPointCapture column of the matrix |
-| Status | ☐ |
+| Status | ☑ done — S4 (`b9667df`, `fe08d11`, `b8e8153`). `make conform` exit 0: CT-S4, CT-I35, CT-I18 pass, CT-I20n n/a, via `ppcp-conform` against the DEBUG plaintext harness (`PpcpDirectTransport`, no key material can reach it). CT-S4(6) pass after the device started publishing its own relation estimate (6.1f). 166 core / 25 app tests |
 
 ---
 
@@ -450,7 +450,7 @@ Each session runs one agent per repo in parallel. A session ends when every agen
 | **S1 — foundations** | L0, L1, L2, L3; **L12** (pulled forward — it has no dependency on the peer engine and both apps need its API for transport work); stub `include/ppcp/ppcp.h` listing every planned public symbol with a one-line contract, so H and D can code against it | H0 *(needs L0 — sequence inside the session: H starts on H1 while L0 lands)*, H1 | D0 *(same)*, D1 | `ctest` green in `libppcp`; ENC §5.1 and CORE §6.1.1 examples reproduce; RV §10 vectors reproduce; both transports complete a loopback TLS-PSK handshake with the §10 `K_tls` and report the negotiated mode |
 | **S2 — the bundle path** ☑ closed 22 Aug (after a crash and recovery run — §9) | L4, L5, L6, L7, L8 | H2, H3 | D2, D3 | A hostless bundle written by `libppcp` tests imports into PinPointStudio idempotently; PinPointCapture writes a bundle from its real declaration on a simulator and `libppcp` reads it back; CT-I1/3/4/13/22/27/28/29/31 passing in `libppcp` |
 | **S3 — the live path** ☑ closed 23 Aug ( wave 1 = L9–L11 ∥ H4 ∥ D4, wave 2 = L13 ∥ H5, H7 ∥ D5, D6, D8) | L9, L10, L11, L13 (+ **L9 queue** from §9: drain partial-write, `session_manifest` originator, link-binder channel from header, Swift note on `ppcp_msg`; and **offline session offer** — `session_offer`/`session_accept`/`session_manifest` as peer originators plus bundle replay onto a live link, so a connected device can offer its stored sessions) | H4, H5 (+ the **offer list** UI: sessions a connected device offers, chosen in-app), H7 | D4, D5, D6 (+ **offering stored bundles** on connect), D8 | `ppcp-sim` ↔ `libppcp` full session; PinPointStudio establishes a session with `ppcp-sim` over H1 and arbitrates; PinPointCapture (simulator) establishes with `ppcp-sim` over D1, nominates and mints; CT-S1, S3, S4, S5, S6, S7 passing in `libppcp` |
-| **S4 — conformance and rendezvous** (started 23 Aug; wave 1 = L15→L14→L16 ∥ H-compose + H6 ∥ D-compose + D7 + D9-harness; wave 2 = H8 ∥ D9-claim) | L15 (the §9 queue first), L14, L16 | **H-compose** (construct `PpcpHostPeer` in the app; wire `registerPpcpPeer`/`setTimebaseOffsetNs`; syntax-only ctest row over app-side `src/Ppcp/*.cpp`), H6, H8 | **D-compose** (`AppModel` composes `DetectAndMint`/`SessionOfferService`/`PreviewProducer`), D7 (+ mic-to-ball distance setting, §9), D9 | All three claim files exist and every matrix cell is one of *passing*, *n/a by profile*, *blocked: rig*, or has a named blocker |
+| **S4 — conformance and rendezvous** ☑ closed 23 Aug ( wave 1 = L15→L14→L16 ∥ H-compose + H6 ∥ D-compose + D7 + D9-harness; wave 2 = H8 ∥ D9-claim) | L15 (the §9 queue first), L14, L16 | **H-compose** (construct `PpcpHostPeer` in the app; wire `registerPpcpPeer`/`setTimebaseOffsetNs`; syntax-only ctest row over app-side `src/Ppcp/*.cpp`), H6, H8 | **D-compose** (`AppModel` composes `DetectAndMint`/`SessionOfferService`/`PreviewProducer`), D7 (+ mic-to-ball distance setting, §9), D9 | All three claim files exist and every matrix cell is one of *passing*, *n/a by profile*, *blocked: rig*, or has a named blocker |
 | **S5 — interoperability and freeze** | L17; run every non-rig interop row in `CONF` §5 with the real pairs (PinPointStudio ↔ `ppcp-sim` as a foreign host; PinPointCapture no-host → bundle → PinPointStudio; PinPointStudio ↔ PinPointCapture on the simulator over loopback) | fixes from interop | fixes from interop | Freeze-readiness report written; errata in the specification; remaining open rows are rig or product decisions |
 
 **Cross-team sync points inside a session** (the orchestrator relays; agents never message each other):
@@ -561,6 +561,11 @@ Append-only. Newest last.
 
 | 2026-08-23 | L (S4) | **L14, L15 and L16 landed.** `ppcp-conform` (the instrument all three implementations are measured by), eight checked-in fixture bundles with a byte-identity check, a **generated** `claim-libppcp.md`, and the two freeze-gate audits in `ctest`. CT-S3 and CT-S7 move to `pass` for `libppcp`: `foreign-capture.json` and `measured-capture.json` through the conformance tool, which is what L13 built those peers for. CT-I2, I11, I13, I15 and I36 move to `pass` on fixtures read back from disk | Recorded. **Three refusals worth carrying into S5**, each documented at the point an implementer meets it: `ppcp-conform` carries only *paired* and *injected* rows; **CT-I34 is not claimable from outside** — nothing on the wire distinguishes an importer that de-duplicated from one that imported twice; and `--self` will not run a `CONF` 1d negative row, because the stand-in's profile set comes from a declaration FILE and not from `--profiles`. It passed by luck the first time it was tried, which is why the refusal is in the code and not in a comment |
 | 2026-08-23 | L (S4) | **The audits found nothing broken, and that is the result.** 45 messages agree between `PPCP-MSG` §11 and `src/ppcp_message.c` on profile and clause; no MUST anywhere requires originating a message no profile confers. Two facts fell out of writing it: the specification binds `shot` to a SET (Mint / Arbitrate) while the engine carries one `originating_profile` per message, so the check is membership rather than equality; and **27 of the 45 catalogued messages are required by no MUST in any document** | Both recorded rather than actioned. The second is not a defect — an OPTIONAL message is a real thing — but it is the list a `CONF` 5b2 sweep should start from, because a message nothing requires is a message nothing tests. **L17 input** |
+| 2026-08-23 | orchestrator (S4) | **Session S4 closed.** All three claim files exist; both application columns come from `ppcp-conform` over plaintext loopback (E4). Hit the usage limit once mid-wave-2; nothing lost | S5 next: L17 (E1–E4 into the spec + F-D7-1..4 decisions + the CT-I6 counterpart), real-pair interop. **Needs Mark with a phone** (see memory) |
+| 2026-08-23 | H (S4) | **`ppcp-conform`'s CT-I6 row picks `reference-host` as the counterpart for a host under test**; CORE 5.2b / MSG 3.2c require `role_conflict` (fatal), so the row dies at `hello` | **L17**: CT-I6 needs a minting-capture counterpart. PinPointStudio's run excuses exactly that row, reason in `run-conform.sh` |
+| 2026-08-23 | H (S4) | Four host defects found by the conformance run, all fixed (`3351362`): no `declare` was ever sent (MSG 3.3c); the listener discarded bytes read past `link_bind` so a peer that coalesces `link_bind`+`hello` never got past the handshake; `syncTimebase` unset so every device `sync_probe` was answered `error`; one engine shared by all links so the second device after a drop never got a Session | Evidence that CONF 2c's "foreign" counterpart is what finds the bugs a self-written pair cannot |
+| 2026-08-23 | H (S4) | The old `F_L13_1` guard in PinPointStudio was not red after L15's fix — it asserted a property both the defect and the fix satisfy | Rewritten on `events_dropped`/`feed_stalled`. Lesson: a regression guard must fail on the fix |
+| 2026-08-23 | D (S4) | CT-S4(6) was blocked on the device never calling `publishRelations()` (6.1f) — three defects, all the device's; the library refused correctly each time and invented nothing | Fixed; row passes via `ppcp-conform` |
 
 ---
 

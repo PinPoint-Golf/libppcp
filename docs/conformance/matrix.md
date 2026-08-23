@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-23 — Session 4, libppcp wave 1 (L14, L15, L16) |
+| Last updated | 2026-08-23 — Session 4 closed; both application columns from `ppcp-conform` (PinPointStudio `docs/ppcp-conformance.md` §10; PinPointCapture `docs/conformance/ppcp-conform.md`) |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -26,22 +26,22 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
 | CT-I4 | I4 | Core | static | L2, D2 | pass | — | pass |
 | CT-I5 | I5 | Capture | paired | L6 | impl | — | — |
-| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | pass | — | pass |
-| CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass | — |
-| CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass | pass (own half) |
+| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | pass | impl (conform row needs a minting-capture counterpart — §9) | pass |
+| CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass (conform) | — |
+| CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass (conform) | pass (own half) |
 | CT-I9 | I9 | Core | static | L4, L10 | pass | — | — |
 | CT-I10 | I10 | Capture | paired | L7, D4 | — | — | pass |
 | CT-I11 | I11 | Capture | fixture | L7, **L15**, D4 | pass | — | pass |
-| CT-I12 | I12 | Capture | fixture | L8, **L15**, H3, D3 | pass | pass | pass |
+| CT-I12 | I12 | Capture | fixture | L8, **L15**, H3, D3 | pass | pass (conform) | pass |
 | CT-I13 | I13 | Core | fixture | L1, **L15** | pass | — | — |
 | CT-I14 | I14 | Core | static | L6, H2 | pass | pass | — |
 | CT-I15 | I15 | Offline | fixture | L8, **L15**, H3 | pass | impl | — |
 | CT-I16 | I16 | Offline | paired | L8, H3 | impl | impl | — |
 | CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | impl |
-| CT-I18 | I18 | Core | paired | L9, H5, D6 | pass | pass (negative half) | pass (own half) |
+| CT-I18 | I18 | Core | paired | L9, H5, D6 | pass | pass (negative half) | pass (conform) |
 | CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | pass | pass |
-| CT-I20 | I20 | Arbitrate | paired | L6, H5 | pass | pass | — |
-| CT-I21 | I21 | Live | paired | L9, H5, D6 | pass | pass | pass (own half) |
+| CT-I20 | I20 | Arbitrate | paired | L6, H5 | pass | pass (conform) | — |
+| CT-I21 | I21 | Live | paired | L9, H5, D6 | pass | pass (conform) | pass (own half) |
 | CT-I22 | I22 | Capture | static | L4, D2 | impl | — | pass |
 | CT-I23 | I23 | Mint | injected | L10 → CT-S4 | pass | — | pass (own half) |
 | CT-I24 | I24 | Core | injected | L6, L13 → CT-S6 | pass | — | — |
@@ -55,9 +55,9 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I32 | I32 | Mint | injected | L10, D5 | pass | — | impl |
 | CT-I33 | I33 | Detect | injected | L10, D5 | pass | — | pass (own half) |
 | CT-I34 | I34 | Offline | fixture | L8, **L15**, H3, D3 | pass | pass | pass |
-| CT-I35 | I35 | Arbitrate | injected | L10, H5 | pass | impl | — |
+| CT-I35 | I35 | Arbitrate | injected | L10, H5 | pass | impl | pass (conform) |
 | CT-I36 | I36 | Capture | fixture | L7, L8, **L15**, D4 | pass | — | pass |
-| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | pass | pass |
+| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | pass (conform) | pass |
 | CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | pass | pass |
 | CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | pass (own half) |
 
@@ -67,11 +67,11 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 |---|---|---|---|---|---|---|---|
 | CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | impl | impl (6 pass) |
 | CT-S2 | I22 | Capture | **rig** | — | rig | rig | rig |
-| CT-S3 | I19 | Core | injected | L13, **L14**, H2, D2 | pass | impl | — |
-| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | impl (1,2,3,5 pass; 6 blocked: D9; 7 impl) |
-| CT-S5 | I18 | Core | paired | L9, H5, D6 | pass | impl | blocked: D9 |
-| CT-S6 | I24 | Core | injected | L5, L6, L13 | pass | — | — |
-| CT-S7 | I31 | Capture | injected | L13, **L14**, D2 | pass | — | impl (1–3 pass; 4 blocked: ppcp-sim via D9) |
+| CT-S3 | I19 | Core | injected | L13, **L14**, H2, D2 | pass | pass (conform) | — |
+| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | pass (conform; 1,2,3,5,6 pass, 7 impl) |
+| CT-S5 | I18 | Core | paired | L9, H5, D6 | pass | pass (conform) | pass (simulator half) |
+| CT-S6 | I24 | Core | injected | L5, L6, L13 | pass | pass (conform) | — |
+| CT-S7 | I31 | Capture | injected | L13, **L14**, D2 | pass | pass (conform) | impl (1–3 pass; 4 blocked: ppcp-sim via D9) |
 
 ## 3. Interoperability pairings — `CONF` §5a
 
@@ -105,20 +105,20 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 |---|---|---|---|---|---|---|
 | RT-1 | static | §10.1 derivation vectors | L12 | pass | — | pass |
 | RT-2 | static | §10.3 codes, `v` first in the all-fields payload, `sid` → UUID text | L12 | pass | — | — |
-| RT-3 | injected | unknown `v` → version report | L12, D7 | pass | — | — |
+| RT-3 | injected | unknown `v` → version report | L12, D7 | pass | — | pass |
 | RT-4 | injected | strongest mode negotiated, never plaintext, outcome surfaced | H1, D1, **L13** | n/a | impl — the counterpart now exists | impl — the counterpart now exists |
-| RT-5 | paired | second handshake on a `mu: 1` code refused | H6 | n/a | — | n/a |
-| RT-6 | injected | expired code reported as expired, no connection | L12, H6, D7 | impl | — | — |
-| RT-7 | paired | TXT and instance name carry nothing persistent | H6, D7 | n/a | — | — |
-| RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7 | impl | — | — |
-| RT-9 | paired | diagnostic export carries no secret or payload | H6, D7 | n/a | — | — |
+| RT-5 | paired | second handshake on a `mu: 1` code refused | H6 | n/a | pass | n/a |
+| RT-6 | injected | expired code reported as expired, no connection | L12, H6, D7 | impl | n/a (publishes, does not scan) | pass |
+| RT-7 | paired | TXT and instance name carry nothing persistent | H6, D7 | n/a | pass (browser half) | pass |
+| RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7 | impl | pass | pass |
+| RT-9 | paired | diagnostic export carries no secret or payload | H6, D7 | n/a | pass | pass |
 | RT-10 | injected | `session_resume` refused without a completed handshake | H1, D1 | n/a | impl | impl |
 | RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | pass | n/a (code path; plan §9, narrowed) |
-| RT-12 | **review** | CSPRNG at full width, protected storage, erasure | H6, D7 | n/a | — | — |
-| RT-13 | **review** | network join with consent; not left attached | D7 | n/a | n/a | — |
+| RT-12 | **review** | CSPRNG at full width, protected storage, erasure | H6, D7 | n/a | review | review |
+| RT-13 | **review** | network join with consent; not left attached | D7 | n/a | n/a | review |
 | RT-14 | static | §10.2 PSK identity; differs per connection; empty hint at TLS 1.2 | L12, H1, D1 | pass | pass (wire) | impl |
-| RT-15 | paired | publisher refuses past `exp`; untrusted clock attempts | H6, D7 | n/a | — | — |
-| RT-16 | **review** | no `PRK` persisted from `mu > 1` | H6, D7 | n/a | — | — |
+| RT-15 | paired | publisher refuses past `exp`; untrusted clock attempts | H6, D7 | n/a | pass (publisher half) | impl |
+| RT-16 | **review** | no `PRK` persisted from `mu > 1` | H6, D7 | n/a | pass | review |
 | RT-17 | **review** | every platform mode offered, from a capability query | H1, D1 | n/a | review — reviewer unassigned | review — reviewer unassigned |
 
 ## 6. The socket-paired rows
