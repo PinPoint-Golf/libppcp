@@ -655,12 +655,13 @@ ppcp_result ppcp_capture_validate(const ppcp_capture *c)
         /* 5.14d: always mandatory on a segment, absent or not. */
         if (!c->has_interval)
             return PPCP_ERR_INVALID;
-    } else if (c->completeness == PPCP_ABSENT) {
-        /* 5.14: `interval` is absent when `completeness: absent`, except on a
-         * stream-anchored Capture. */
-        if (c->has_interval)
-            return PPCP_ERR_INVALID;
     }
+    /* 5.14d1 (erratum E12): an `absent` Capture MAY carry `interval` whatever
+     * its anchor, and SHOULD where the peer knows the span it could not
+     * supply.  8.4b's answer to an orphan capture request is SHOT-anchored and
+     * `absent`, and the pre-erratum rule forbade the one field that says which
+     * span left the buffer — so a device could report the cause and not the
+     * extent. */
     /* 5.14 / I10: `absent_reason` is mandatory when absent, and meaningless
      * otherwise.  Absence is ASSERTED, never inferred from a missing payload. */
     if (c->completeness == PPCP_ABSENT) {

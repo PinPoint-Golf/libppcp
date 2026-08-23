@@ -745,14 +745,16 @@ static ppcp_result arb_issue(ppcp_arbiter *a, arb_group *g)
     if (ref == NULL || sess == NULL)
         return PPCP_ERR_NOT_FOUND;
 
-    /* WHICH contributing Candidate sets `t0`.  The specification does not say,
-     * and it is a choice a host has to make: 8.2h's rationale is a fast IMU
+    /* WHICH contributing Candidate sets `t0` — CORE 8.2b1, erratum E14, which
+     * this implementation's answer became.  8.2h's rationale is a fast IMU
      * nomination followed by a sample-accurate acoustic one resolving to the
      * acoustic instant, which is the LEAST UNCERTAIN, not the earliest and not
      * the most confident.  So: the smallest combined timing uncertainty — the
-     * relation's sigma at that instant, widened by `tof_correction`'s where
-     * there is one — and the earliest instant breaks a tie, so the choice is
-     * deterministic and independent of arrival order.
+     * relation's sigma at that instant, PLUS `tof_correction`'s where there is
+     * one — and the earliest instant breaks a tie, so the choice is
+     * deterministic and independent of arrival order.  Before E14 §8.2 said
+     * nothing here, so two conformant hosts could issue different `t0` for one
+     * event and I7 would freeze both.
      *
      * ⚠ `confidence` is NOT consulted.  It is the nominator's belief that the
      * event happened, not a statement about WHEN, and using it here would be
