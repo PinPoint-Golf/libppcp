@@ -5,8 +5,9 @@
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **APPROVED for implementation**, 22 August 2026. Revision 9, final — see [`CORE` Annex D](ppcp-core.md#annex-d--change-history) |
-| Date | 22 August 2026 |
+| Status | **APPROVED for implementation**, 22 August 2026. Revision 9, final — see [`CORE` Annex D](ppcp-core.md#annex-d--change-history) — **plus errata E1–E29**, all normative, listed in [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9) |
+| Date | 22 August 2026; errata to 23 August 2026 |
+| Errata | **29**, from implementation sessions S1–S5. `ppcp/1.0` is not frozen: the interoperability pairings of [`CONF` §5](ppcp-conformance.md#5-interoperability) and the freeze-readiness report are what close it |
 | Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
 
@@ -28,6 +29,8 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 4 | Draft 3 | 3 host + 2 consistency, 2 mobile | **Approved** |
 
 **Approved is not stable.** Implementation proceeds against this text. `ppcp/1.0` freezes — errata only — when the conformance suite passes on both implementations and the [interoperability pairings](ppcp-conformance.md#5-interoperability) are demonstrated. [Annex B](ppcp-core.md#annex-b--open-issues) lists what is still expected to move; none of it blocks implementation.
+
+**Twenty-nine errata have been taken, and that is the process working rather than failing.** Every one was found by building the thing: two implementations that each invented a different way to associate a peer's connections (E1); a PSK identity that failed one handshake in sixteen because a zero byte truncated it (E21); a document whose only worked example no conformant encoder could reproduce (E5); a `session_offer` that silently rebound the live Session's clock reference (E28); and a sweep that found 27 of the 45 messages required by no normative clause at all (E18). Four more were open questions the implementation had to answer, decided and marked reversible (E24–E27). The full list, with the finding that produced each, is [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9).
 
 [`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval — it is versioned separately, and is now approved for implementation in its own right.
 
@@ -87,12 +90,18 @@ If implementation shows something here to be wrong, that is the expected outcome
 
 ## Errata to 1.0 — from implementation
 
-*Approved is not stable: implementation is expected to find things, and the change belongs here first. Each erratum names the session that found it. Tracked in [`../implementation/implementation-plan.md` §9](../implementation/implementation-plan.md).*
+*Approved is not stable: implementation is expected to find things, and the change belongs here first. **[`PPCP-CORE`'s errata table](ppcp-core.md#errata-after-revision-9) is the authoritative list** — every erratum, its clause, what changed and the finding that produced it. This is the summary. Tracked in [`../implementation/implementation-plan.md` §9](../implementation/implementation-plan.md).*
 
-| | Erratum | Found by |
+**Twenty-nine errata, E1–E29**, from implementation sessions S1–S5. Grouped by what they were:
+
+| | Errata | What they are |
 |---|---|---|
-| **E1** | **A listener had no way to know which of a peer's several streams belonged together, or which was channel 0.** Two implementations built the two-connection transport and resolved it two incompatible ways. `link_bind` — a 16-byte dialler-minted `link_id` and the channel number, as the first frame on every stream — binds streams into a link explicitly. [`ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link), [`MSG` §3.0](ppcp-messages.md#30-link_bind). Forty-five messages. Never in a bundle. | Session 1, both implementation teams |
-
+| **Two implementations disagreed** | E1, E28 | The two most serious. A listener had no way to know which of a peer's streams belonged together (`link_bind`, E1); and a `session_open` naming a different Session silently rebound the live Session's `timebase_ref`, so a host expressed every subsequent `t0` in the exporting device's clock and arbitrated two Sessions as one (E28). Both were invisible from inside one implementation. |
+| **A clause was unsatisfiable as written** | E6, E9, E16, E19 | Eight message bodies named a field the envelope reserved and a duplicate key makes malformed. A bundle need not carry `declare`, yet Capture identity is scoped by the minting peer. A preview segment the specification *requires* announcing could not be announced. A hostless conformance run was told to exercise `arm`, which the profile boundary forbids. |
+| **A rule was missing where two peers had to agree** | E5, E10, E11, E14, E20, E25 | Deterministic ordering in the worked example; two rounding rules; which vocabularies are closed; **which Candidate sets `t0`**; whether a defaulted optional is emitted; one syntax for a version range. Each is a place where two conformant implementations could differ and neither could tell. |
+| **A platform made a clause unimplementable** | E21, E22, E23, E24 | A zero byte in a PSK identity truncated by a `strlen`-lengthed interface — one handshake in sixteen. A listener with no server-side PSK resolver. A clock test iOS does not expose. |
+| **The model had no room for the answer** | E7, E12, E13, E17, E29 | No declared container for a payload. No way to say *which* span left the buffer. Camera vocabulary on a stream with no frames. A `closed_at` in a clock the closing peer cannot read. A Candidate excluded for a missing relation and never revisited when it arrived. |
+| **Scope and reading** | E2, E3, E4, E8, E15, E18, E26, E27 | `mu` counts pairings, not handshakes. 2c binds the rendezvous paths, not a handed-in socket. A responder's timebase is addressable. Three completeness states, not two. C3 binds requests. And the sweep that found **27 of 45 messages required by no normative clause**. |
 
 *Newest first. What changed between drafts, kept at the back because a first reader does not need it.*
 

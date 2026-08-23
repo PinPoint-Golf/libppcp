@@ -52,9 +52,9 @@ The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer
 
 ## The evidence
 
-Generated 2026-08-23 from commit `a4c8a74` by `tools/make-claim.sh`.
+Generated 2026-08-23 from commit `9571b01` by `tools/make-claim.sh`.
 
-### The suite — 46 rows, all passing
+### The suite — 49 rows, all passing
 
 Every row below is a command: `ctest --preset dev -R <name>`.
 
@@ -89,6 +89,8 @@ Every row below is a command: `ctest --preset dev -R <name>`.
 | `CT-I7-sockets` | Passed |
 | `CT-I8-sockets` | Passed |
 | `CT-I12-sockets` | Passed |
+| `F-S5-3-sockets-offer-during-live-session` | Passed |
+| `CT-I22-sockets-capture-request` | Passed |
 | `CT-I18-sockets` | Passed |
 | `CT-I20-sockets-refusal` | Passed |
 | `CT-I20-sockets` | Passed |
@@ -96,6 +98,7 @@ Every row below is a command: `ctest --preset dev -R <name>`.
 | `CT-I34-sockets` | Passed |
 | `CT-S5-sockets` | Passed |
 | `CT-S6-sockets-arbitrate` | Passed |
+| `CT-I6-sockets` | Passed |
 | `CT-S6-sockets-observer` | Passed |
 | `CT-S4-sockets-silent-host` | Passed |
 | `IOP-5-sockets-unrelated` | Passed |
@@ -154,8 +157,8 @@ ask of a wire format, and this is where it is asked.
 
 | Fixture | Bytes | Rows |
 |---|---|---|
-| `ct-i12-empty.ppcpb` | 809 | CT-I12, CT-I34 |
-| `ct-i12-imu.ppcpb` | 1446 | CT-I12, CT-I34 |
+| `ct-i12-empty.ppcpb` | 809 | CT-I12 |
+| `ct-i12-imu.ppcpb` | 1446 | CT-I12 |
 | `ct-i12-video.ppcpb` | 1448 | CT-I12, CT-I34 |
 | `ct-i13-unknowns.ppcpb` | 1577 | CT-I13 |
 | `ct-i15-wall-step.ppcpb` | 1473 | CT-I15 |
@@ -188,7 +191,7 @@ ask of a wire format, and this is where it is asked.
 
 ## Specification defects found, and what was done about them
 
-Every one is in the plan's §9 log with the commit that closed it. The four that changed the specification are errata, recorded in `PPCP-CORE`'s errata table:
+Every one is in the plan's §9 log with the commit that closed it. **Twenty-nine changed the specification and are errata**, recorded in [`PPCP-CORE`'s errata table](../specification/ppcp-core.md#errata-after-revision-9), which is the authoritative list. The ones this library found or fixed:
 
 | # | Clause | What was wrong |
 |---|---|---|
@@ -196,5 +199,27 @@ Every one is in the plan's §9 log with the commit that closed it. The four that
 | **E2** | `MSG` 6.1g | `sync_probe.timebase_id` addressed the *prober's* clocks (6.1d) and 6.1b left the responder's to the responder, so a peer with one clock could not measure two clocks of one counterpart. I21's remote half was unreachable. |
 | **E3** | `RV` 7.3a, 7.3f, 7.5c | `mu` counted *handshakes*, and a PPCP link is two or three TLS handshakes over one `K_tls`. The default `mu: 1` was spent by the control channel and the bulk channel of the same link refused. It counts **pairings**, and spends the **code** rather than the pairing — without which §7.5's reconnection was dead letter by default. |
 | **E4** | `RV` 2c, 2c1, RT-5 | "There is no unauthenticated path" forbade the plaintext transport `CONF` §2c's own **required** test infrastructure runs over, while 9a permits it. Jointly unsatisfiable for a peer that both claims RV and is testable. |
+| **E5** | `ENC` §5.1 | The document's only worked example was not in deterministic key order, so an encoder honouring 4e could not reproduce it. Re-emitted; the old ordering stays legal on receipt and `ppcp_message_encode_literal()` still produces it. |
+| **E6** | `ENC` 5a1 | 5a reserved `session_id`, 4d makes a duplicate key malformed, and `MSG` lists the field in eight bodies — so `session_open` was unencodable. The body's `session_id` **is** the envelope's. |
+| **E7** | `ENC` 6g, 6h | A payload had no declared container. A receiver writing a clip to disk had to guess an extension from `format.codec`, which is a codec three hops away. |
+| **E8** | `ENC` 7d, 7d1 | Two completeness states named where the protocol has three: an unasserted, untruncated bundle was neither. The reader reports the assertion and the truncation separately. |
+| **E9** | `ENC` 7h | A bundle need not carry `declare`, yet 8.5c scopes Capture identity by the minting peer — so a file of bare `capture_announce` frames was unattributable and un-deduplicable. |
+| **E10** | `CORE` 6.1f, 6.2e | Neither division said how to round, and every worked example has an even `d`, so two implementations could differ by a nanosecond with both examples passing. |
+| **E11** | `CORE` 5.3c, §10.3 | `Timebase.kind` is closed, and §10.3 now says which vocabularies are open. A peer cannot ignore whether a clock halts across sleep. |
+| **E12** | `CORE` 5.14d1 | An `absent` Capture may carry `interval` whatever its anchor: 8.4b's answer is shot-anchored, and the table forbade the field that says which span left the buffer. |
+| **E13** | `CORE` 5.8l | `AchievedSummary` is camera vocabulary and 5.11b requires a segment on every continuous Stream, including one with no frames. |
+| **E14** | `CORE` 8.2b1 | §8.2 never said **which** contributing Candidate sets `t0`, so two conformant hosts could issue different `t0` for one event and I7 would freeze both. |
+| **E15** | `CORE` C3, C3a, C3b | C3 binds the **request** class only, and the catalogue's origination column is not the profile a **responder** needs. |
+| **E16** | `MSG` 8.1i, 8.1i1 | 8.1i forbade announcing a preview Capture `pending`, and 5.11c3 *requires* announcing the discarded preview segment, which has no other transfer state to carry. |
+| **E17** | `MSG` 5.1e | `stream_close.closed_at` is optional and is in the Stream's timebase, which a consumer closing the Stream has no reading of. |
+| **E18** | `MSG` 1c, §11 | The `CONF` 5b2 sweep: **27 of 45 messages were required by no normative clause**, and seven of those were responses nothing obliged a peer to send. §11 gains a **Required by** column and the 5b1 audit asserts it on every run. |
+| **E19** | `CONF` §3, CT-S1, CT-S4(1), 5a1 | Four editorial corrections, one of them substantive: CT-S4 assertion 1 required a hostless session to run `arm`, which `CORE` 7.3b forbids. |
+| **E20** | `RV` 4.3a1 | 4.3a promised byte-identical codes and did not say whether a defaulted optional is emitted. It is. |
+| **E21** | `RV` 5.3a1 | **No octet of the PSK identity may be `0x00`.** A `strlen`-lengthed PSK interface truncated it and the handshake failed roughly one connection in sixteen. |
+| **E22** | `RV` 5.3c1 | Scope: the wrong-key branch 5.3c and 5.3d equalise is unreachable while both keys come from one `PRK`. |
+| **E23** | `RV` 3.5d | A peer whose platform has no server-side PSK resolver does not advertise for reconnection. |
+| **E24–E27** | `RV` 4.4a2, 3.3d–e, 7.4h, 3.4d1–2 | Four questions L17 was asked to **decide**, each recorded as reversible: what may substitute for the boot-clock test, one range syntax across the set, whether a persisted pairing keeps a network hint, and what a multi-pairing peer advertises. |
+| **E28** | `MSG` 4.1a1, 9.1b | **A `session_open` naming a different `session_id` opens a SECOND Session and changes nothing about the first.** 4.1a's immutability rule was written about the *same* id, so one `session_offer` accepted mid-session silently rebound the host's `timebase_ref` to the exporting device's clock. |
+| **E29** | `CORE` 8.2d1 | A Candidate excluded for want of a relation was never revisited, so a peer nominating before the sync burst converged was silently unarbitrated for the whole Session. |
 
 The seven findings the two application teams raised against this library in session S3 — the event-ring drop, the unreadable Session parameters on the originating path, the unreachable remote half of I21, the missing mint readback, the missing `session_resume` originator, 6.1c's inexpressible escape, and Live's silent precondition — are all closed, each with its commit, in plan §9.
