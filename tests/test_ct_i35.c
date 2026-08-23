@@ -52,6 +52,8 @@ static void rig_new(rig *r, ppcp_role role, const char *id, const char *tb_id,
     cfg.peer_id       = id;
     cfg.profiles      = profiles;
     cfg.profile_count = nprof;
+    /* F-H5-3: Live is refused without one, and every rig here declares Live. */
+    cfg.health_report = ppcp_test_health;
     r->mem = malloc(ppcp_peer_sizeof());
     if (r->mem == NULL) abort();
     if (ppcp_peer_new(r->mem, ppcp_peer_sizeof(), &cfg, &r->p) != PPCP_OK) abort();

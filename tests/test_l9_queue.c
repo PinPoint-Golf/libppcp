@@ -33,6 +33,8 @@ static ppcp_peer *make_peer(void **storage, ppcp_role role, const char *id,
     cfg.peer_id       = id;
     cfg.profiles      = profiles;
     cfg.profile_count = nprof;
+    /* F-H5-3: Live is refused without one, and every rig here declares Live. */
+    cfg.health_report = ppcp_test_health;
 
     mem = malloc(ppcp_peer_sizeof());
     if (mem == NULL)

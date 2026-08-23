@@ -91,6 +91,8 @@ static void rig_new(rig *r, ppcp_role role, const char *id, const char *tb_id,
     cfg.peer_id       = id;
     cfg.profiles      = profiles;
     cfg.profile_count = nprof;
+    /* F-H5-3: Live is refused without one, and every rig here declares Live. */
+    cfg.health_report = ppcp_test_health;
 
     r->mem = malloc(ppcp_peer_sizeof());
     if (r->mem == NULL) abort();
@@ -379,6 +381,24 @@ static void test_zero_host(void)
     CHECK_EQ_I(minted, 1);
     CHECK_EQ_I(ppcp_mint_minted_count(m), 1);
     CHECK_EQ_I(pol.calls, 2);                      /* both were offered */
+
+    TEST("F-D5-1 — the engine says which Shot it minted, without decoding the wire");
+    {
+        ppcp_id c1, c2;
+        const ppcp_shot *sh = ppcp_mint_shot_at(m, 0);
+        CHECK(sh != NULL);
+        CHECK(ppcp_mint_shot_at(m, 1) == NULL);     /* one minted, one index */
+        CHECK_EQ_I(sh->authority, PPCP_AUTHORITY_DEVICE);
+        CHECK_EQ_I(sh->candidate_count, 1);          /* I23 */
+        CHECK(ppcp_cbor_key_is(sh->candidates[0].v, sh->candidates[0].len, "cand:1"));
+        CHECK(ppcp_cbor_key_is(sh->t0.tb.v, sh->t0.tb.len, "tb:dev"));
+        CHECK_EQ_I(ppcp_id_set_z(&c1, "cand:1"), PPCP_OK);
+        CHECK_EQ_I(ppcp_id_set_z(&c2, "cand:2"), PPCP_OK);
+        CHECK(ppcp_mint_shot_for(m, &c1) == sh);
+        /* The one the policy declined has no Shot, and saying so is the point:
+         * before S4 the only way to find out was to decode drain_peek. */
+        CHECK(ppcp_mint_shot_for(m, &c2) == NULL);
+    }
 
     TEST("CT-S4 (2) / I8 — BOTH Candidates were emitted and both are retained");
     {

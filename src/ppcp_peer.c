@@ -129,6 +129,14 @@ struct ppcp_peer {
     ppcp_id  own_timebases[PPCP_PEER_MAX_OWN_TIMEBASES];
     size_t   own_timebase_count;
 
+    /* 6.1c (F-D6-2) — stamps the embedding took nearer the socket than a clock
+     * read at decode time, and the standing declaration that this responder
+     * cannot tell reception from transmission at all. */
+    bool     has_reply_stamps;
+    int64_t  reply_t2_ns;
+    int64_t  reply_t3_ns;
+    bool     zero_residence;
+
     /* L9 — clock synchronisation.  One estimator per local timebase (I21). */
     ppcp_sync_estimator sync[PPCP_PEER_MAX_SYNC];
     sync_sched          sched[PPCP_PEER_MAX_SYNC];
@@ -493,6 +501,15 @@ ppcp_result ppcp_peer_new(void *storage, size_t storage_len, const ppcp_peer_con
     p->clock         = cfg->clock;
     p->health        = cfg->health;
     p->health_report = cfg->health_report;
+    /* F-H5-3 — Live without a health source is a peer that answers every
+     * `heartbeat` with `profile_not_supported`, so CORE §7.4 never runs and
+     * the link is never live.  It cost PinPointStudio an hour and two wrongly
+     * raised defects (plan §9, S3), because nothing said so until a heartbeat
+     * came back refused.  It says so here instead: the profile is a promise
+     * about behaviour (2.2.2), and the callback is the only way this library
+     * can keep this one.  A peer that has no thermometer declares no Live. */
+    if (peer_has_profile(p, PPCP_PROFILE_LIVE) && p->health_report == NULL)
+        return PPCP_ERR_INVALID;
     if (cfg->sync_timebase != NULL) {
         rc = ppcp_id_set_z(&p->sync_tb, cfg->sync_timebase);
         if (rc != PPCP_OK)
@@ -981,6 +998,72 @@ ppcp_result ppcp_peer_session_open(ppcp_peer *p, const ppcp_session *s)
      * zero.  One Session, one record, whichever end opened it. */
     p->session_params     = m.body.session_open;
     p->has_session_params = true;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_peer_session_resume(ppcp_peer *p, const ppcp_session *s,
+                                     const ppcp_id *minted_shots, size_t minted_shot_count,
+                                     const ppcp_pending_capture *pending,
+                                     size_t pending_count)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+    size_t      i;
+
+    if (p == NULL || s == NULL)
+        return PPCP_ERR_INVALID;
+    if (minted_shot_count > 0 && minted_shots == NULL)
+        return PPCP_ERR_INVALID;
+    if (pending_count > 0 && pending == NULL)
+        return PPCP_ERR_INVALID;
+    if (minted_shot_count > PPCP_MAX_MINTED_SHOTS || pending_count > PPCP_MAX_PENDING)
+        return PPCP_ERR_LIMIT;
+    rc = ppcp_session_validate(s);
+    if (rc != PPCP_OK)
+        return rc;
+    for (i = 0; i < minted_shot_count; i++)
+        if (!ppcp_id_is_set(&minted_shots[i]))
+            return PPCP_ERR_INVALID;
+    for (i = 0; i < pending_count; i++)
+        if (!ppcp_id_is_set(&pending[i].capture_id))
+            return PPCP_ERR_INVALID;
+
+    rc = ppcp_msg_init(&m, PPCP_MT_SESSION_RESUME, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.session_resume.session_id = s->id;
+    m.body.session_resume.peer_id    = p->peer_id;
+    for (i = 0; i < minted_shot_count; i++)
+        m.body.session_resume.minted_shots[i] = minted_shots[i];
+    m.body.session_resume.minted_shot_count = minted_shot_count;
+    for (i = 0; i < pending_count; i++)
+        m.body.session_resume.pending[i] = pending[i];
+    m.body.session_resume.pending_count = pending_count;
+    rc = peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+    if (rc != PPCP_OK)
+        return rc;
+
+    /* The Session did not end (4.3), so the engine is in it again — and with
+     * the same parameters it had, which is what F-H5-2 made readable on the
+     * originating path. */
+    p->has_session  = true;
+    p->session_id   = s->id;
+    p->timebase_ref = s->timebase_ref;
+    p->state        = PPCP_PEER_JOINED;
+    p->session_params.session_id            = s->id;
+    p->session_params.timebase_ref          = s->timebase_ref;
+    p->session_params.epoch                 = s->epoch;
+    p->session_params.has_arbitration       = s->has_arbitration;
+    p->session_params.coincidence_window_ns = s->coincidence_window_ns;
+    p->session_params.issue_hold_ns         = s->issue_hold_ns;
+    p->session_params.has_heartbeat_interval = s->has_heartbeat_interval;
+    p->session_params.heartbeat_interval_ms  = s->heartbeat_interval_ms;
+    p->has_session_params = true;
+
+    /* 4.3b — the burst runs BEFORE any queued payload resumes.  Arming it here
+     * rather than trusting the embedding to remember is the difference between
+     * a MUST and a comment. */
+    (void)ppcp_peer_sync_trigger(p, PPCP_SYNC_ON_NETWORK_CHANGE);
     return PPCP_OK;
 }
 
@@ -1705,6 +1788,31 @@ ppcp_result ppcp_peer_sync_probe_to(ppcp_peer *p, const char *local_tb,
     return peer_sync_probe_at(p, i);
 }
 
+ppcp_result ppcp_peer_sync_reply_stamps(ppcp_peer *p, int64_t t2_ns, int64_t t3_ns)
+{
+    if (p == NULL)
+        return PPCP_ERR_INVALID;
+    if (t3_ns < t2_ns)
+        return PPCP_ERR_INVALID;   /* a reply sent before it arrived is a bug, not a clock */
+    p->reply_t2_ns      = t2_ns;
+    p->reply_t3_ns      = t3_ns;
+    p->has_reply_stamps = true;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_peer_sync_set_zero_residence(ppcp_peer *p, bool on)
+{
+    if (p == NULL)
+        return PPCP_ERR_INVALID;
+    p->zero_residence = on;
+    return PPCP_OK;
+}
+
+bool ppcp_peer_sync_zero_residence(const ppcp_peer *p)
+{
+    return (p != NULL) && p->zero_residence;
+}
+
 ppcp_result ppcp_peer_sync_observe(ppcp_peer *p, const char *local_tb, int64_t t1,
                                    int64_t t2, int64_t t3, int64_t t4)
 {
@@ -2293,6 +2401,29 @@ static ppcp_result peer_on_session_open(ppcp_peer *p, const ppcp_msg *m)
     return peer_queue(p, PPCP_CHANNEL_CONTROL, &r);
 }
 
+/* MSG 4.3 — the answer to a `session_resume` is `session_joined`, exactly as
+ * it is to a `session_open` (the sequence of MSG §12).  The Session did not
+ * end, so nothing here re-opens one: this peer already holds it, or it does
+ * not and the resume is for a Session it never knew, which is the embedding's
+ * to refuse through the verdict it reads on the event. */
+static ppcp_result peer_on_session_resume(ppcp_peer *p, const ppcp_msg *m)
+{
+    const ppcp_body_session_resume *b = &m->body.session_resume;
+    ppcp_msg    r;
+    ppcp_result rc;
+
+    rc = ppcp_msg_init(&r, PPCP_MT_SESSION_JOINED, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    r.body.session_joined.session_id = b->session_id;
+    r.body.session_joined.peer_id    = p->peer_id;
+    r.body.session_joined.verdict    = PPCP_JOINED;
+    rc = ppcp_msg_set_reply_to(&r, m->env.msg_id);
+    if (rc != PPCP_OK)
+        return rc;
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &r);
+}
+
 static ppcp_result peer_on_stream_open(ppcp_peer *p, const ppcp_msg *m)
 {
     const ppcp_stream *s = &m->body.stream_open.stream;
@@ -2335,6 +2466,8 @@ static ppcp_result peer_on_sync_probe(ppcp_peer *p, const ppcp_msg *m)
     ppcp_msg     r;
     ppcp_result  rc;
     const char  *resp_tb;
+    int64_t      supplied_t3 = 0;
+    bool         have_supplied_t3 = false;
 
     /* 6.1b — `t2` and `t3` are in a timebase the responder DECLARED.  A peer
      * that was given none has no honest answer, and inventing one is exactly
@@ -2370,6 +2503,21 @@ static ppcp_result peer_on_sync_probe(ppcp_peer *p, const ppcp_msg *m)
             return rc;
     }
 
+    /* 6.1c, F-D6-2 — `t2` as close to RECEPTION as the implementation allows.
+     * A clock read here is a read at DECODE time, which is later by however
+     * long the bytes sat in a buffer; an embedding that stamped the recv() can
+     * say so.  The supplied pair is for the peer's DEFAULT timebase: where E2
+     * moved the answer onto another declared clock the numbers would be in the
+     * wrong frame, so they are ignored rather than reinterpreted. */
+    if (p->has_reply_stamps) {
+        p->has_reply_stamps = false;
+        if (resp_tb == p->sync_tb.v) {
+            t2.ns = p->reply_t2_ns;
+            supplied_t3 = p->reply_t3_ns;
+            have_supplied_t3 = true;
+        }
+    }
+
     rc = ppcp_msg_init(&r, PPCP_MT_SYNC_REPLY, 1);
     if (rc != PPCP_OK)
         return rc;
@@ -2378,9 +2526,21 @@ static ppcp_result peer_on_sync_probe(ppcp_peer *p, const ppcp_msg *m)
     r.body.sync_reply.t2        = t2;
     /* 6.1c: `t3` as close to transmission as this implementation allows, and on
      * the SAME timebase as `t2` (6.1b). */
-    rc = ppcp_clock_read(&p->clock, resp_tb, &t3);
-    if (rc != PPCP_OK)
-        return rc;
+    if (have_supplied_t3) {
+        t3 = t2;
+        t3.ns = supplied_t3;
+    } else {
+        rc = ppcp_clock_read(&p->clock, resp_tb, &t3);
+        if (rc != PPCP_OK)
+            return rc;
+    }
+    /* 6.1c's escape, made expressible: "a responder that cannot distinguish
+     * them sets `t3 == t2` and, by doing so, DECLARES that the residence time
+     * is included in the measurement rather than removed from it."  That is a
+     * statement about the implementation, so it is a standing setting and not
+     * an accident of two clock reads landing on the same nanosecond. */
+    if (p->zero_residence)
+        t3 = t2;
     r.body.sync_reply.t3 = t3;
     rc = ppcp_msg_set_reply_to(&r, m->env.msg_id);
     if (rc != PPCP_OK)
@@ -2503,6 +2663,7 @@ static void peer_handle(ppcp_peer *p, uint8_t channel, const ppcp_msg *m)
     case PPCP_MT_HELLO_ACCEPT: rc = peer_on_hello_accept(p, m); break;
     case PPCP_MT_DECLARE:      rc = peer_on_declare(p, m); break;
     case PPCP_MT_SESSION_OPEN: rc = peer_on_session_open(p, m); break;
+    case PPCP_MT_SESSION_RESUME: rc = peer_on_session_resume(p, m); break;
     case PPCP_MT_STREAM_OPEN:  rc = peer_on_stream_open(p, m); break;
     case PPCP_MT_STREAM_CLOSE:
         /* 5.1d: either peer may close a Stream, so the engine removes it

@@ -580,12 +580,49 @@ static void test_liveness(void)
         rig_peer_free(&solo);
     }
 
-    TEST("7.4b — a peer with no health source refuses rather than inventing `nominal`");
+    TEST("F-H5-3 / 2.2.2 — Live with no health source is refused at construction");
     {
+        /* The profile is a promise about behaviour, and with no health source
+         * this engine cannot keep this one: every `heartbeat` would be answered
+         * `profile_not_supported`, §7.4 would never run and the link would
+         * never go live.  Nothing said so until a heartbeat came back refused,
+         * which cost an hour and two wrongly raised defects in S3. */
+        ppcp_peer_config bad;
+        void            *mem = malloc(ppcp_peer_sizeof());
+        ppcp_peer       *np  = NULL;
+        rig_clock        c;
+        memset(&c, 0, sizeof(c));
+        rig_add(&c, "tb:dev", 0, 0.0);
+        memset(&bad, 0, sizeof(bad));
+        bad.role          = PPCP_ROLE_CAPTURE;
+        bad.peer_id       = "peer:nohealth";
+        bad.profiles      = prof;                 /* includes Live */
+        bad.profile_count = 4;
+        bad.clock         = rig_interface(&c);
+        bad.sync_timebase = "tb:dev";
+        bad.health_report = NULL;
+        CHECK(mem != NULL);
+        CHECK_EQ_I(ppcp_peer_new(mem, ppcp_peer_sizeof(), &bad, &np), PPCP_ERR_INVALID);
+        /* The same peer with a health source is accepted; nothing else moved. */
+        bad.health_report = health_ok;
+        CHECK_EQ_I(ppcp_peer_new(mem, ppcp_peer_sizeof(), &bad, &np), PPCP_OK);
+        ppcp_peer_free(np);
+        free(mem);
+    }
+
+    TEST("7.4b / C3 — a peer that never declared Live refuses rather than inventing `nominal`");
+    {
+        /* Not a defect in the peer: a `heartbeat` reaching a peer whose
+         * declaration does not confer Live is answered `profile_not_supported`,
+         * which MSG §10 makes non-fatal.  This is the honest shape of the case
+         * the check above replaced — the refusal is about the DECLARATION, not
+         * about a missing callback. */
+        static const char *const noLive[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_CAPTURE,
+                                              PPCP_PROFILE_MINT };
         rig_peer mute;
         memset(&mute, 0, sizeof(mute));
         rig_add(&mute.clock, "tb:dev", 0, 0.0);
-        rig_peer_new(&mute, PPCP_ROLE_CAPTURE, "peer:mute", prof, 4, "tb:dev", false);
+        rig_peer_new(&mute, PPCP_ROLE_CAPTURE, "peer:mute", noLive, 3, "tb:dev", false);
         (void)ppcp_peer_liveness_pump(host.p, t + 10 * beat);
         pump(host.p, mute.p, PPCP_CHANNEL_CONTROL);
         {
@@ -722,10 +759,151 @@ static void test_sync_remote_half(void)
     rig_peer_free(&device);
 }
 
+/* ============================== MSG 4.3 and 6.1c — F-D6-1 and F-D6-2 */
+
+static void test_resume_and_stamps(void)
+{
+    static const char *const prof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_CAPTURE,
+                                        PPCP_PROFILE_LIVE, PPCP_PROFILE_MINT };
+    static const char *const hprof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_LIVE,
+                                         PPCP_PROFILE_ARBITRATE };
+    rig_peer      host, device;
+    ppcp_session  s;
+    ppcp_id       minted[2];
+    ppcp_pending_capture pend[1];
+    uint8_t       dv[PPCP_SHA256_BYTES];
+    ppcp_event    ev;
+
+    memset(&host, 0, sizeof(host));
+    rig_add(&host.clock, "tb:host", 0, 0.0);
+    rig_peer_new(&host, PPCP_ROLE_HOST, "peer:host", hprof, 3, "tb:host", true);
+    memset(&device, 0, sizeof(device));
+    rig_add(&device.clock, "tb:dev", 0, 0.0);
+    rig_peer_new(&device, PPCP_ROLE_CAPTURE, "peer:dev", prof, 4, "tb:dev", true);
+
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:resume", "tb:host",
+                                        PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
+                                        PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_sync_add_timebase(device.p, "tb:dev", NULL), PPCP_OK);
+
+    TEST("MSG 4.3a / F-D6-1 — a reconnecting peer originates `session_resume`");
+    CHECK_EQ_I(ppcp_id_set_z(&minted[0], "shot:offline-1"), PPCP_OK);
+    CHECK_EQ_I(ppcp_id_set_z(&minted[1], "shot:offline-2"), PPCP_OK);
+    memset(&pend[0], 0, sizeof(pend[0]));
+    CHECK_EQ_I(ppcp_id_set_z(&pend[0].capture_id, "cap:7"), PPCP_OK);
+    memset(dv, 0xA5, sizeof(dv));
+    CHECK_EQ_I(ppcp_digest_set(&pend[0].digest, dv), PPCP_OK);
+    pend[0].bytes           = 4000000;
+    pend[0].has_acked_index = true;
+    pend[0].acked_index     = 41;      /* MSG §12's own example */
+    CHECK_EQ_I(ppcp_peer_session_resume(device.p, &s, minted, 2, pend, 1), PPCP_OK);
+
+    /* The Session did not end, so the resuming peer is in it — and reads its
+     * own parameters back, which F-H5-2 made true on the originating path. */
+    CHECK(ppcp_peer_session_id(device.p) != NULL);
+    CHECK(ppcp_peer_session_params(device.p) != NULL);
+    CHECK(ppcp_peer_session_params(device.p)->has_arbitration);
+    CHECK(!ppcp_peer_zero_host(device.p));
+
+    TEST("4.3b — the burst is ARMED by the resume, not left to the embedding");
+    {
+        size_t probes = 0;
+        (void)ppcp_peer_sync_pump(device.p, device.clock.now_ns, &probes);
+        CHECK_EQ_I(probes, 1);
+    }
+
+    TEST("MSG §12 — the host answers `session_joined`, and reads the outage back");
+    pump(device.p, host.p, PPCP_CHANNEL_CONTROL);
+    {
+        bool saw = false;
+        while (ppcp_peer_next_event(host.p, &ev) == PPCP_OK) {
+            if (ev.kind == PPCP_EVENT_SESSION_RESUME && ev.msg != NULL) {
+                const ppcp_body_session_resume *b = &ev.msg->body.session_resume;
+                saw = true;
+                CHECK_EQ_I(b->minted_shot_count, 2);
+                CHECK(ppcp_cbor_key_is(b->minted_shots[1].v, b->minted_shots[1].len,
+                                       "shot:offline-2"));
+                CHECK_EQ_I(b->pending_count, 1);
+                CHECK(b->pending[0].has_acked_index);
+                CHECK_EQ_I(b->pending[0].acked_index, 41);
+                CHECK(ppcp_cbor_key_is(b->peer_id.v, b->peer_id.len, "peer:dev"));
+            }
+        }
+        CHECK(saw);
+    }
+    pump(host.p, device.p, PPCP_CHANNEL_CONTROL);
+    {
+        bool joined = false;
+        while (ppcp_peer_next_event(device.p, &ev) == PPCP_OK)
+            if (ev.kind == PPCP_EVENT_SESSION_JOINED && ev.msg != NULL &&
+                ev.msg->body.session_joined.verdict == PPCP_JOINED)
+                joined = true;
+        CHECK(joined);
+    }
+
+    TEST("4.3a — a list past PPCP_MAX_MINTED_SHOTS is refused, not truncated");
+    CHECK_EQ_I(ppcp_peer_session_resume(device.p, &s, minted,
+                                        PPCP_MAX_MINTED_SHOTS + 1, NULL, 0),
+               PPCP_ERR_LIMIT);
+
+    TEST("6.1c / F-D6-2 — the responder stamps t2/t3 near the socket");
+    {
+        /* The host probes; the device answers with stamps the embedding took
+         * rather than with two clock reads at decode and build time. */
+        const int64_t t2 = 4242000000, t3 = 4242000300;
+        bool          seen = false;
+        CHECK_EQ_I(ppcp_peer_sync_add_timebase(host.p, "tb:host", NULL), PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_sync_reply_stamps(device.p, t2, t3), PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_sync_probe(host.p, "tb:host"), PPCP_OK);
+        pump(host.p, device.p, PPCP_CHANNEL_CONTROL);
+        pump(device.p, host.p, PPCP_CHANNEL_CONTROL);
+        while (ppcp_peer_next_event(host.p, &ev) == PPCP_OK) {
+            if (ev.msg != NULL && ev.msg->type == PPCP_MT_SYNC_REPLY) {
+                seen = true;
+                CHECK_EQ_I(ev.msg->body.sync_reply.t2.ns, t2);
+                CHECK_EQ_I(ev.msg->body.sync_reply.t3.ns, t3);
+                CHECK(ppcp_id_equal(&ev.msg->body.sync_reply.t2.tb,
+                                    &ev.msg->body.sync_reply.t3.tb));  /* 6.1b */
+            }
+        }
+        CHECK(seen);
+        drop_events(device.p);
+    }
+
+    TEST("6.1c — `t3 == t2` is a DECLARATION a responder can make, not a coincidence");
+    {
+        bool seen = false;
+        CHECK(!ppcp_peer_sync_zero_residence(device.p));
+        CHECK_EQ_I(ppcp_peer_sync_set_zero_residence(device.p, true), PPCP_OK);
+        CHECK(ppcp_peer_sync_zero_residence(device.p));
+        /* Supplied stamps that DO differ are overridden: the declaration is
+         * about what this implementation can distinguish, and it says it
+         * cannot. */
+        CHECK_EQ_I(ppcp_peer_sync_reply_stamps(device.p, 5000000000, 5000009999), PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_sync_probe(host.p, "tb:host"), PPCP_OK);
+        pump(host.p, device.p, PPCP_CHANNEL_CONTROL);
+        pump(device.p, host.p, PPCP_CHANNEL_CONTROL);
+        while (ppcp_peer_next_event(host.p, &ev) == PPCP_OK) {
+            if (ev.msg != NULL && ev.msg->type == PPCP_MT_SYNC_REPLY) {
+                seen = true;
+                CHECK_EQ_I(ev.msg->body.sync_reply.t3.ns, ev.msg->body.sync_reply.t2.ns);
+                CHECK_EQ_I(ev.msg->body.sync_reply.t2.ns, 5000000000);
+            }
+        }
+        CHECK(seen);
+    }
+    /* A reply sent before it arrived is a bug, not a clock. */
+    CHECK_EQ_I(ppcp_peer_sync_reply_stamps(device.p, 100, 99), PPCP_ERR_INVALID);
+
+    rig_peer_free(&host);
+    rig_peer_free(&device);
+}
+
 int main(void)
 {
     test_sync();
     test_sync_remote_half();
     test_liveness();
+    test_resume_and_stamps();
     TEST_MAIN_END();
 }

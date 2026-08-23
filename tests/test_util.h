@@ -105,6 +105,19 @@ PPCP_TEST_UNUSED static size_t ppcp_unhex(const char *hex, unsigned char *out, s
  * the loops peer.h and bundle.h document, written once.  A test that CARES
  * about the events drains them itself; these are for the tests that do not. */
 #ifdef PPCP_PEER_H
+/* F-H5-3: a peer declaring Live must have a health source — ppcp_peer_new()
+ * refuses without one, because with no health source every `heartbeat` is
+ * answered `profile_not_supported` and CORE §7.4 never runs.  This is the
+ * smallest honest one: a peer that is fine and says so. */
+PPCP_TEST_UNUSED static ppcp_result ppcp_test_health(void *ctx, ppcp_health *out)
+{
+    (void)ctx;
+    memset(out, 0, sizeof(*out));
+    out->thermal            = PPCP_THERMAL_NOMINAL;
+    out->storage_free_bytes = 1024u * 1024u * 1024u;
+    return PPCP_OK;
+}
+
 PPCP_TEST_UNUSED static size_t ppcp_test_drain_events(ppcp_peer *p)
 {
     ppcp_event e;

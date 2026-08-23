@@ -252,6 +252,11 @@ typedef struct mint_pending {
     bool           answered;     /* a `shot` referenced it */
     bool           minted;
     bool           declined;     /* the promotion policy said no (I32) */
+    /* F-D5-1 — the Shot this Candidate became, kept so the embedding can read
+     * back what a pump minted instead of decoding its own queued frames.  The
+     * arbiter has always had ppcp_arbiter_shot_at(); this is its twin. */
+    ppcp_shot      shot;
+    size_t         mint_order;   /* 0-based, in mint order */
 } mint_pending;
 
 struct ppcp_mint {
@@ -429,7 +434,9 @@ ppcp_result ppcp_mint_pump(ppcp_mint *m, int64_t now_ref_ns, size_t *out_minted)
          * without waiting for a payload. */
         if (ppcp_peer_shot(m->p, &sh) != PPCP_OK)
             continue;
-        e->minted = true;
+        e->minted     = true;
+        e->shot       = sh;
+        e->mint_order = m->minted;
         m->minted++;
         made++;
     }
@@ -453,6 +460,29 @@ size_t ppcp_mint_pending_count(const ppcp_mint *m)
 size_t ppcp_mint_minted_count(const ppcp_mint *m)
 {
     return (m == NULL) ? 0 : m->minted;
+}
+
+const ppcp_shot *ppcp_mint_shot_at(const ppcp_mint *m, size_t index)
+{
+    size_t i;
+    if (m == NULL || index >= m->minted)
+        return NULL;
+    for (i = 0; i < PPCP_MINT_MAX_PENDING; i++)
+        if (m->pend[i].in_use && m->pend[i].minted && m->pend[i].mint_order == index)
+            return &m->pend[i].shot;
+    return NULL;
+}
+
+const ppcp_shot *ppcp_mint_shot_for(const ppcp_mint *m, const ppcp_id *candidate_id)
+{
+    size_t i;
+    if (m == NULL || candidate_id == NULL)
+        return NULL;
+    for (i = 0; i < PPCP_MINT_MAX_PENDING; i++)
+        if (m->pend[i].in_use && m->pend[i].minted &&
+            ppcp_id_equal(&m->pend[i].c.id, candidate_id))
+            return &m->pend[i].shot;
+    return NULL;
 }
 
 size_t ppcp_mint_retained_count(const ppcp_mint *m)

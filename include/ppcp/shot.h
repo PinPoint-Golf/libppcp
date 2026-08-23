@@ -192,6 +192,21 @@ PPCP_API ppcp_result ppcp_mint_pump(ppcp_mint *m, int64_t now_ref_ns, size_t *ou
 
 PPCP_API size_t ppcp_mint_pending_count(const ppcp_mint *m);
 PPCP_API size_t ppcp_mint_minted_count(const ppcp_mint *m);
+
+/* The Shots this engine minted, in mint order — `index` runs 0 ..
+ * ppcp_mint_minted_count()-1 and NULL is past the end.  The twin of
+ * ppcp_arbiter_shot_at() below, and it was missing: F-D5-1 found
+ * PinPointCapture decoding its OWN queued frames through drain_peek to learn
+ * what a pump had just minted, because the pump reported only how many.
+ *
+ * Read-only, and `t0` has no setter anywhere in this library — I7 by surface
+ * as well as by behaviour.  Valid until the next ppcp_mint_pump(). */
+PPCP_API const ppcp_shot *ppcp_mint_shot_at(const ppcp_mint *m, size_t index);
+/* The Shot a particular Candidate of this peer's became, or NULL if it has not
+ * been minted — answered by a host (8.2i), declined by the promotion policy
+ * (I32), or still inside its deadline. */
+PPCP_API const ppcp_shot *ppcp_mint_shot_for(const ppcp_mint *m,
+                                             const ppcp_id *candidate_id);
 /* Candidates held with no Shot referencing them — declined by policy, answered
  * by nobody, or inexpressible in `timebase_ref` (8.2i1).  I8: they are still
  * evidence, and a consumer may re-derive t0 later with a better clock. */

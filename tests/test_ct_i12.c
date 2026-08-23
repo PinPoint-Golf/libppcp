@@ -72,6 +72,8 @@ static ppcp_peer *new_sink(void **storage)
     cfg.profiles      = all;
     cfg.profile_count = 8;
     cfg.listener      = true;
+    /* F-H5-3: Live is refused without one, and every rig here declares Live. */
+    cfg.health_report = ppcp_test_health;
     if (ppcp_peer_new(mem, ppcp_peer_sizeof(), &cfg, &p) != PPCP_OK) abort();
     *storage = mem;
     return p;

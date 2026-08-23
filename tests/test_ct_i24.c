@@ -46,6 +46,8 @@ static ppcp_peer *make_peer(void **storage, ppcp_role role, const char *id,
     cfg.versions      = versions;
     cfg.version_count = nver;
     cfg.min_version   = min_version;
+    /* F-H5-3: Live is refused without one, and every rig here declares Live. */
+    cfg.health_report = ppcp_test_health;
 
     mem = malloc(ppcp_peer_sizeof());
     if (mem == NULL)

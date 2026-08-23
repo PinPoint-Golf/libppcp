@@ -176,7 +176,17 @@ typedef struct ppcp_peer_config {
     /* MSG 5.4 / CORE 7.4b — what `heartbeat_ack` carries.  A callback because
      * the library has no thermometer, no battery and no filesystem, and
      * because reporting degradation rather than silently accepting worse data
-     * is the only reason the message exists. */
+     * is the only reason the message exists.
+     *
+     * ⚠ REQUIRED WHERE `profiles` INCLUDES Live, AND ppcp_peer_new() REFUSES
+     * WITHOUT IT (F-H5-3).  It is the precondition for liveness: with no health
+     * source every `heartbeat` is answered `error`/`profile_not_supported`
+     * (C3), so CORE §7.4 never runs, the link never goes live, `link_lost` is
+     * never reached and the zero-host regime of 8.3g is never entered.  None of
+     * that used to be visible until a heartbeat came back refused — an hour and
+     * two wrongly raised defects in session S3.  A peer with nothing to report
+     * declares no Live; one that declares Live reports something, even if that
+     * is `thermal: nominal` and nothing else. */
     ppcp_health_fn health_report;
 
     /* 6.1b — the DEFAULT timebase this peer stamps `t2`/`t3` on when it ANSWERS
@@ -392,6 +402,32 @@ PPCP_API ppcp_result ppcp_peer_declare(ppcp_peer *p, const ppcp_peer_desc *self)
  * structural.  A peer that is not `role: host` may still originate the
  * hostless form — CORE 4.1b requires it to record one in its bundle. */
 PPCP_API ppcp_result ppcp_peer_session_open(ppcp_peer *p, const ppcp_session *s);
+
+/* MSG 4.3a — a peer RECONNECTING to a Session it was previously joined to
+ * sends `session_resume`, not `session_open`.  The Session did not end, so the
+ * engine adopts `s` locally exactly as ppcp_peer_session_open() does and the
+ * host answers `session_joined`.
+ *
+ * `minted_shots` are the Shots this peer minted while the link was down (8.3f,
+ * 4.3c — not renumbered, `authority` stays `device`); `pending` are the
+ * Captures whose payload has not finished, each with what the receiver had
+ * acknowledged, so a transfer resumes rather than restarts.  Either list may be
+ * empty.  PPCP_ERR_LIMIT past PPCP_MAX_MINTED_SHOTS or PPCP_MAX_PENDING.
+ *
+ * ⚠ 4.3b — a synchronisation burst runs BEFORE any queued payload resumes: the
+ * relation drifted while the link was down, about 1.2 ms per minute at 20 ppm.
+ * That is a MUST an embedding could forget, so this function ARMS the burst
+ * itself (the equivalent of ppcp_peer_sync_trigger(p, PPCP_SYNC_ON_CONNECT))
+ * on every registered timebase.  The embedding still has to pump.
+ *
+ * F-D6-1: this was the one message PinPointCapture built as a raw `ppcp_msg`,
+ * for a clause MSG 4.3a makes a MUST. */
+PPCP_API ppcp_result ppcp_peer_session_resume(ppcp_peer *p, const ppcp_session *s,
+                                              const ppcp_id *minted_shots,
+                                              size_t minted_shot_count,
+                                              const ppcp_pending_capture *pending,
+                                              size_t pending_count);
+
 PPCP_API ppcp_result ppcp_peer_session_state(ppcp_peer *p, ppcp_session_state state,
                                              ppcp_completeness completeness);
 PPCP_API ppcp_result ppcp_peer_session_close(ppcp_peer *p, const char *reason);
@@ -532,6 +568,32 @@ PPCP_API const ppcp_sync_estimator *ppcp_peer_sync_estimator_for_pair(const ppcp
 PPCP_API ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb);
 PPCP_API ppcp_result ppcp_peer_sync_probe_to(ppcp_peer *p, const char *local_tb,
                                              const char *remote_tb);
+
+/* ---------------------------------------- 6.1c on the RESPONDER side (F-D6-2)
+ *
+ * `t2` is "as close to reception as the implementation allows" and `t3` "as
+ * close to transmission".  This engine reads its clock while DECODING the
+ * probe, which is later than reception by however long the bytes sat in a
+ * buffer, and again while building the reply, which is earlier than
+ * transmission.  An embedding that can do better says so here.
+ *
+ * Call ppcp_peer_sync_reply_stamps() immediately BEFORE the ppcp_peer_feed()
+ * carrying the probe, with the instants in the timebase this peer answers on
+ * (`sync_timebase`).  They apply to the next probe answered and are then
+ * forgotten, so a call that turns out to carry no probe costs nothing.  Where
+ * erratum E2 moved the answer onto a different declared clock the supplied
+ * numbers would be in the wrong frame and are ignored rather than
+ * reinterpreted.
+ *
+ * ppcp_peer_sync_set_zero_residence() is 6.1c's escape made expressible: a
+ * responder that cannot distinguish reception from transmission sets `t3 ==
+ * t2` and BY DOING SO declares that residence time is included in the
+ * measurement rather than removed from it.  That is a standing property of the
+ * implementation — not two clock reads that happened to agree — so it is a
+ * setting, and it overrides supplied stamps. */
+PPCP_API ppcp_result ppcp_peer_sync_reply_stamps(ppcp_peer *p, int64_t t2_ns, int64_t t3_ns);
+PPCP_API ppcp_result ppcp_peer_sync_set_zero_residence(ppcp_peer *p, bool on);
+PPCP_API bool        ppcp_peer_sync_zero_residence(const ppcp_peer *p);
 
 /* 6.1c — an embedding that can stamp closer to the socket than a clock read at
  * decode time supplies the four timestamps itself.  The automatic path (a
