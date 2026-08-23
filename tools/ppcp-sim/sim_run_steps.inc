@@ -583,6 +583,12 @@ static void sim_tick(sim *s)
              * no function in this library that composes two relations (I18). */
             if (ppcp_peer_publish_relations(s->p, &published) == PPCP_OK)
                 s->c.relations_tx += (int64_t)published;
+            /* 8.2d1 / E29 again — this peer's OWN estimator just produced a
+             * relation, which is the other way the set changes (6.3d makes them
+             * two).  A host whose burst converges after the first Candidates
+             * arrived reaches E29 here and not through `relation_update`. */
+            if (published > 0 && s->arb != NULL)
+                s->c.reconsidered += (int64_t)ppcp_arbiter_reconsider(s->arb);
             s->last_publish_ns = now;
         }
     }

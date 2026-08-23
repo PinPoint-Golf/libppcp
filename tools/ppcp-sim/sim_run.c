@@ -603,6 +603,14 @@ static void handle_event(sim *s, const ppcp_event *e)
 
     case PPCP_EVENT_RELATION_UPDATE:
         s->c.relations_rx++;
+        /* 8.2d1 / erratum E29 (F-S5-6) — the relation set just changed, so the
+         * Candidates excluded for want of one are reconsidered.  The library
+         * owns no event loop and cannot call itself; THIS is the call site
+         * every embedding is expected to have, and until F-S5-6 the simulator
+         * did not have it either — which left a host that never reconsidered
+         * indistinguishable, through `ppcp-conform`, from one that did. */
+        if (s->arb != NULL)
+            s->c.reconsidered += (int64_t)ppcp_arbiter_reconsider(s->arb);
         break;
 
     case PPCP_EVENT_HEARTBEAT:
@@ -764,7 +772,7 @@ static int64_t counter_value(const sim_counter *c, const char *name)
     ROW(frames_rx); ROW(frames_tx); ROW(declares_rx);
     ROW(candidates_rx); ROW(candidates_tx);
     ROW(shots_rx); ROW(shots_tx); ROW(minted_shots_rx);
-    ROW(capture_requests_tx); ROW(capture_requests_rx);
+    ROW(capture_requests_tx); ROW(capture_requests_rx); ROW(reconsidered);
     ROW(imported_frames_rx); ROW(live_ref_rebound);
     ROW(shot_candidates_max); ROW(t0_revisions);
     ROW(captures_rx); ROW(captures_unique); ROW(captures_duplicate);

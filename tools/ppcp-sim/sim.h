@@ -171,6 +171,11 @@ typedef struct sim_counter {
      * CORE 4.1a and I16 make impossible.  The second is a violation counter
      * whose value should never be anything but zero. */
     int64_t capture_requests_tx, capture_requests_rx;
+    /* F-S5-6 / erratum E29 — Candidates re-admitted to arbitration by
+     * ppcp_arbiter_reconsider() once the relation they were excluded for want
+     * of arrived.  Counted so the call is observable at all: an erratum a
+     * conformance tool cannot see is an erratum nothing tests. */
+    int64_t reconsidered;
     int64_t imported_frames_rx;
     int64_t live_ref_rebound;
     int64_t shot_candidates_max;
