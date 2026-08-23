@@ -136,11 +136,16 @@ Every frame payload is a CBOR map carrying these reserved keys, with the message
 | `session_id` | tstr | 0..1 | Session context. Absent before the session exists. |
 
 - **(5a) MUST NOT** A message body use `type`, `msg_id`, `reply_to` or `session_id` as a field name for any other purpose.
+- **(5a1) MUST** *Erratum E6, 23 August 2026.* Where a message body names the Session — `session_open`, `session_joined`, `session_resume`, `session_state`, `session_close`, `session_offer`, `session_accept` and `session_manifest` all list a `session_id` field in [`PPCP-MSG`](ppcp-messages.md) — that field **is** the envelope's `session_id` and is written **once**, in the envelope position of the same flat map. A body MUST NOT emit a second `session_id` key, which [4d](#4-primitive-types) makes `malformed` anyway, and a body decoder reads the value back out of the envelope. 5a forbids a body using a reserved name *for any other purpose*; using it for the envelope's own purpose is not another purpose, and eight of the forty-five messages depend on that reading.
+
+5a1 is written down because the two documents read together said something impossible. `PPCP-MSG` lists `session_id` in eight bodies; 5a reserves the name; the envelope and the body share one CBOR map; and 4d makes a duplicate key malformed. An implementation obeying all four could not encode `session_open` at all. Hoisting is the only reading that keeps every clause true, and it costs nothing on the wire (`libppcp`, session S2).
 - **(5b) MUST** A response carries `reply_to`. A request that receives no response within the sender's timeout is the sender's problem; PPCP defines no retransmission ([`PPCP-CORE` §3](ppcp-core.md#3-transport-contract) T1 makes it unnecessary).
 - **(5c) MUST** `msg_id` is per-sender. Two peers may use the same `msg_id` concurrently; `reply_to` is interpreted against the recipient's own outgoing sequence.
 - **(5d) MUST** A receiver that cannot decode a payload responds `error` / `malformed` with `reply_to` where it could recover `msg_id`, and without it otherwise. It does not close the transport.
 
 ### 5.1 Worked example
+
+*Erratum E5, 23 August 2026 — re-emitted in deterministic key order. As first written the example ordered its keys `type`, `msg_id`, `probe_seq`, `timebase_id`, `t1`, and its `Instant` `tb` before `ns`. That is a **legal** encoding — [4e](#4-primitive-types) is a SHOULD — but it is not RFC 8949 §4.2.1 order, so an encoder honouring 4e could not reproduce the one worked example in the document: `"t1"` encodes `62 74 31` and `"type"` encodes `64 74 79 70 65`, and `0x62` sorts before `0x64`. The message, the field values and the byte count are unchanged; only the order moved (finding by `libppcp`, session S1).*
 
 A `sync_probe` on the control channel: `probe_seq` 3, `msg_id` 7, timebase `tb:device`, `t1` = 1 723 000 000 000 ns.
 
@@ -150,8 +155,14 @@ frame header
   00                             channel 0 (control)
   00 00 00                       flags, reserved
 
-payload (CBOR, 87 bytes)
+payload (CBOR, 87 bytes, deterministic per 4e)
   a5                             map(5)
+  62 74 31                       "t1"
+  a2                             map(2)
+  62 6e 73                       "ns"
+  1b 00 00 01 91 2a cd 8e 00     1723000000000
+  62 74 62                       "tb"
+  69 74 62 3a 64 65 76 69 63 65  "tb:device"
   64 74 79 70 65                 "type"
   6a 73 79 6e 63 5f 70 72 6f 62 65    "sync_probe"
   66 6d 73 67 5f 69 64           "msg_id"
@@ -160,15 +171,12 @@ payload (CBOR, 87 bytes)
   03                             3
   6b 74 69 6d 65 62 61 73 65 5f 69 64    "timebase_id"
   69 74 62 3a 64 65 76 69 63 65  "tb:device"
-  62 74 31                       "t1"
-  a2                             map(2)
-  62 74 62                       "tb"
-  69 74 62 3a 64 65 76 69 63 65  "tb:device"
-  62 6e 73                       "ns"
-  1b 00 00 01 91 2a cd 8e 00     1723000000000
 ```
 
 Ninety-five bytes on the wire for the highest-frequency control message in the protocol. A 20-exchange burst per timebase is under 4 KB.
+
+- **(5.1a)** The reserved keys of [§5](#5-message-envelope) and the body's own keys sort into **one** sequence, because they are one flat map. `t1` genuinely precedes `type`; an encoder that writes the envelope first and the body afterwards cannot produce deterministic output, which is why this example is worth transcribing exactly.
+- **(5.1b)** A decoder MUST accept **any** key order (4b, 4d): 4e binds encoders and is a SHOULD, so a peer that reproduces the pre-erratum ordering is conformant and is decoded normally.
 
 ---
 
@@ -181,6 +189,10 @@ Ninety-five bytes on the wire for the highest-frequency control message in the p
 - **(6d) MUST** A receiver verifies each chunk digest on arrival and the whole-payload digest at `payload_end`. A mismatch is `payload_abort` / `malformed`; the transfer may be retried from `payload_resume`.
 - **(6e) MUST** Content addressing is over the **payload bytes**, never over the CBOR encoding of the enclosing message, so a re-encode does not change a Capture's identity.
 - **(6f) SHOULD** `chunk_bytes` is 262144. It MUST NOT exceed 4194304.
+- **(6g) MUST** *Erratum E7, 23 August 2026.* `payload_begin` carries **`container`** — an IANA media type, as a text string, e.g. `"video/quicktime"`, `"audio/wav"`, `"application/octet-stream"` — **whenever the payload bytes are a container-framed file**. It is absent only where the bytes are raw samples fully described by the Stream's `CaptureProfile` ([`PPCP-CORE` §5.7](ppcp-core.md#57-captureprofile)), and a receiver that meets an absent `container` on a container-framed payload MUST NOT guess: it stores the bytes under the Capture's identity and reports the container as unknown.
+- **(6h) MUST NOT** A receiver derive a container from `format.codec`, from `Stream.kind`, from `Capture.bytes`, or from sniffing the first chunk. `codec` is a codec — H.264 is carried in QuickTime, in fragmented MP4 and in Annex B, and the three are different files.
+
+6g exists because nothing in this document said what the bytes **are**. `payload_begin` carried `bytes`, `digest` and `chunk_bytes`; `format.codec` is three hops away on the Source's profile and answers a different question; and a receiver writing a clip to disk had to choose a file extension from nothing. Every implementation would have chosen the same one, correctly, for its own counterpart — which is [§2.1](#21-binding-streams-to-a-link)'s failure again, one layer up (finding by PinPointStudio, session S2).
 
 Digest-based identity is what makes re-import a no-op rather than a duplicate. Users connect twice.
 
@@ -204,7 +216,9 @@ A bundle is a Session serialised. It is not a distinct entity and not a distinct
 - **(7a) MUST** The frame sequence is byte-identical in form to a live session's, including the `channel` byte in every header.
 - **(7b) MUST** Frames appear in the order they would have been sent, and the ordering rules of [§2d](#2-channels) apply as they do live: control frames for a Capture may precede its payload frames arbitrarily, and MUST for the manifest.
 - **(7c) MUST** `session_manifest` appears before any `payload_*` frame ([`PPCP-MSG` §9.2a](ppcp-messages.md#92-session_manifest)), so an interrupted read still yields an analysable session.
-- **(7d) MUST** A truncated final frame means the bundle is incomplete. The reader treats the Session as `completeness: partial` **only if the bundle itself did not assert otherwise**, and never upgrades a partial Session to complete on the strength of what happened to be present (I10).
+- **(7d) MUST** A truncated final frame means the bundle is **truncated**. Completeness is a separate question, asserted by the owner and never inferred (I10): the reader reports `Session.completeness` **as the bundle asserted it**, and where the bundle asserted nothing the Session is `unknown` — not `partial`. It never upgrades a `partial` or `unknown` Session to `complete` on the strength of what happened to be present.
+- **(7d1) MUST** *Erratum E8, 23 August 2026.* A reader reports the **assertion** and the **truncation** as two facts, not one. There are three completeness states in this protocol ([`PPCP-MSG` §4.4](ppcp-messages.md#44-session_state-context_change-session_close)) and 7d as first written named only two, so an unasserted, untruncated bundle was neither `complete` nor `partial` and an implementation had to invent the answer. `unknown` is what I10 requires — completeness is asserted, never inferred — and keeping truncation separate is what makes [CT-I36](ppcp-conformance.md#3-the-invariant-test-matrix) (c) and (d) distinguishable, since they are the same bytes with a different assertion (finding by `libppcp`, session S2).
+- **(7h) MUST** *Erratum E9, 23 August 2026.* A bundle carries a **`declare`** frame from the peer that owns the Session's data **before any frame naming a Capture, Stream, Shot or Candidate**. [`PPCP-CORE` §8.5c](ppcp-core.md#85-reconciliation) scopes Capture identity by the minting peer's `Peer.id`, and a bundle states that nowhere else: a file of bare `capture_announce` frames is unattributable, and therefore un-deduplicable on re-import, which is exactly what I34 exists to prevent. This sits alongside [7c](#7-bundle-container)'s ordering rule and is checked the same way (finding by PinPointStudio, session S2).
 - **(7g) MUST NOT** A bundle contain a `link_bind` frame ([§2.1e](#21-binding-streams-to-a-link)). A reader that meets one ignores it (I13).
 - **(7e) MUST NOT** A bundle contain a trailing index, footer or table of contents in `ppcp/1.0`. Random access is deliberately not supported at v1; adding it is a MINOR change that appends a frame type, not a container change.
 - **(7f) MUST** A bundle reader accepts a bundle whose `minor` exceeds its own, ignoring frames it does not understand (I13).

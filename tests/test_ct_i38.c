@@ -337,6 +337,36 @@ static void test_preview_live_only(void)
     }
 }
 
+/* ENC 7h (erratum E9): a bundle carries `declare` from the owning peer before
+ * any frame naming a Capture, Stream, Shot or Candidate — otherwise the file is
+ * unattributable, and Capture identity (8.5c, I34) has no minting peer to be
+ * scoped by.  The minimum that satisfies it: one peer, one timebase, no
+ * Sources (MSG 3.3d permits the empty list). */
+static void append_declare(ppcp_bundle_writer *w, uint8_t *out, size_t cap,
+                           size_t *used, uint64_t msg_id)
+{
+    static const char *const prof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_CAPTURE,
+                                        PPCP_PROFILE_OFFLINE };
+    ppcp_id        profiles[3];
+    ppcp_timebase  tb;
+    ppcp_peer_desc pd;
+    ppcp_msg       m;
+    size_t         i, n = 0;
+
+    for (i = 0; i < 3; i++)
+        CHECK_EQ_I(ppcp_id_set_z(&profiles[i], prof[i]), PPCP_OK);
+    CHECK_EQ_I(ppcp_timebase_make(&tb, "tb:dev", strlen("tb:dev"), PPCP_TB_CONTINUOUS,
+                                  true, 1000), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_desc_make(&pd, "peer:dev", PPCP_ROLE_CAPTURE, "1.0",
+                                   profiles, 3, &tb, 1), PPCP_OK);
+    CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_DECLARE, msg_id), PPCP_OK);
+    m.body.declare.generation = 1;
+    m.body.declare.peer       = pd;
+    CHECK_EQ_I(ppcp_bundle_writer_append_msg(w, PPCP_CHANNEL_CONTROL, &m, out + *used,
+                                             cap - *used, &n), PPCP_OK);
+    *used += n;
+}
+
 static void test_preview_never_in_a_bundle(void)
 {
     void               *wm = NULL;
@@ -353,6 +383,16 @@ static void test_preview_never_in_a_bundle(void)
     CHECK_EQ_I(ppcp_bundle_writer_new(wm, ppcp_bundle_writer_sizeof(), &w), PPCP_OK);
     CHECK_EQ_I(ppcp_bundle_writer_begin(w, out, sizeof(out), &n), PPCP_OK);
     used += n;
+
+    TEST("ENC 7h — a Stream frame before `declare` is refused");
+    CHECK_EQ_I(ppcp_stream_make(&st, "st:pre", "sess:1", "src:1",
+                                PPCP_STREAM_KIND_METADATA, "cp:1", "tb:dev",
+                                PPCP_CONTINUOUS, &at), PPCP_OK);
+    CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_STREAM_OPEN, 1), PPCP_OK);
+    m.body.stream_open.stream = st;
+    CHECK_EQ_I(ppcp_bundle_writer_append_msg(w, PPCP_CHANNEL_CONTROL, &m, out + used,
+                                             sizeof(out) - used, &n), PPCP_ERR_INVALID);
+    append_declare(w, out, sizeof(out), &used, 1);
 
     TEST("5.11j — a preview Stream may be recorded; its Captures may not");
     CHECK_EQ_I(ppcp_stream_make(&st, "st:prev", "sess:1", "src:1",

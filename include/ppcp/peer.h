@@ -495,6 +495,19 @@ PPCP_API ppcp_result ppcp_peer_payload_begin(ppcp_peer *p, uint8_t channel,
                                              const ppcp_digest *digest,
                                              uint32_t chunk_bytes,
                                              const ppcp_achieved_frames *frames);
+/* ENC 6g / MSG 8.3h (erratum E15) — the same, naming the payload's CONTAINER.
+ * `container` is an IANA media type ("video/quicktime", "audio/wav") and is
+ * REQUIRED whenever the bytes are a container-framed file; a receiver may not
+ * infer one from `format.codec`, from `Stream.kind` or by sniffing (6h).  Pass
+ * NULL only for raw samples the Stream's profile describes in full — which is
+ * what ppcp_peer_payload_begin() above does, and why a peer sending a clip
+ * should call THIS one. */
+PPCP_API ppcp_result ppcp_peer_payload_begin_as(ppcp_peer *p, uint8_t channel,
+                                                const char *capture_id, uint64_t bytes,
+                                                const ppcp_digest *digest,
+                                                uint32_t chunk_bytes,
+                                                const char *container,
+                                                const ppcp_achieved_frames *frames);
 PPCP_API ppcp_result ppcp_peer_payload_chunk(ppcp_peer *p, uint8_t channel,
                                              const char *capture_id, uint32_t index,
                                              uint32_t chunk_bytes,

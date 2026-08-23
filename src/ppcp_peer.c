@@ -1426,6 +1426,15 @@ ppcp_result ppcp_peer_payload_begin(ppcp_peer *p, uint8_t channel, const char *c
                                     uint32_t chunk_bytes,
                                     const ppcp_achieved_frames *frames)
 {
+    return ppcp_peer_payload_begin_as(p, channel, capture_id, bytes, digest,
+                                      chunk_bytes, NULL, frames);
+}
+
+ppcp_result ppcp_peer_payload_begin_as(ppcp_peer *p, uint8_t channel, const char *capture_id,
+                                       uint64_t bytes, const ppcp_digest *digest,
+                                       uint32_t chunk_bytes, const char *container,
+                                       const ppcp_achieved_frames *frames)
+{
     ppcp_msg    m;
     ppcp_result rc;
 
@@ -1437,6 +1446,15 @@ ppcp_result ppcp_peer_payload_begin(ppcp_peer *p, uint8_t channel, const char *c
     rc = ppcp_id_set_z(&m.body.payload_begin.capture_id, capture_id);
     if (rc != PPCP_OK)
         return rc;
+    /* ENC 6g (E15): what the bytes ARE.  Absent is a statement — raw samples —
+     * and not a shrug, so the engine records it exactly as the caller gave it
+     * and never substitutes a default. */
+    if (container != NULL) {
+        rc = ppcp_id_set_z(&m.body.payload_begin.container, container);
+        if (rc != PPCP_OK)
+            return rc;
+        m.body.payload_begin.has_container = true;
+    }
     m.body.payload_begin.bytes       = bytes;
     m.body.payload_begin.digest      = *digest;   /* 8.1e: present by here */
     m.body.payload_begin.chunk_bytes = chunk_bytes;

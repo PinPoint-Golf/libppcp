@@ -465,7 +465,7 @@ capture_committed { capture_id, digest: Digest }
 
 ```
 payload_begin  { capture_id, bytes: uint64, digest: Digest, chunk_bytes: uint32,
-                 achieved_frames: AchievedFrames }
+                 container: string, achieved_frames: AchievedFrames }
 payload_chunk  { capture_id, index: uint32, offset: uint64, data: bytes, digest: Digest }
 payload_ack    { capture_id, index: uint32 }
 payload_end    { capture_id, digest: Digest }
@@ -479,6 +479,7 @@ payload_resume { capture_id, from_index: uint32 }
 - **(8.3d) MUST** Resumption restarts from the chunk after the last acknowledged index, not from the beginning.
 - **(8.3e) MUST NOT** A receiver treat the absence of payload as `completeness: absent`. Completeness is asserted by the owner (I10).
 - **(8.3f) SHOULD** `chunk_bytes` is 262144 (256 KiB). It MUST NOT exceed 4 MiB.
+- **(8.3h) MUST** *Erratum E7, 23 August 2026.* `payload_begin.container` is the IANA media type of the payload bytes and is present whenever they are a container-framed file ([`PPCP-ENC` 6g](ppcp-encoding.md#6-bulk-transfer)). A receiver MUST NOT infer a container from `format.codec`, from `Stream.kind` or by sniffing (6h). Absent means the bytes are raw samples the Stream's profile describes in full.
 - **(8.3g) MUST** `payload_begin` for a camera Capture carries `achieved_frames`, including the per-frame exposure the canonical-instant conversion depends on (I17). Any per-frame array whose value was constant across the Capture MAY be sent as a single scalar ([`PPCP-CORE` §5.8f](ppcp-core.md#58-capability)) — under a locked exposure and locked focus that collapses three of the four series to one value each.
 
 ---

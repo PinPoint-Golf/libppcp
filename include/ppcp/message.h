@@ -421,6 +421,14 @@ typedef struct ppcp_body_payload_begin {
     uint64_t             bytes;
     ppcp_digest          digest;     /* 8.1e: MUST be present by payload_begin */
     uint32_t             chunk_bytes;
+    /* ENC 6g / MSG 8.3h (erratum E15): the IANA media type of the payload
+     * bytes — "video/quicktime", "audio/wav".  Present whenever the bytes are a
+     * container-framed file; absent only for raw samples the Stream's profile
+     * describes in full.  ENC 6h forbids inferring it from `format.codec`, from
+     * `Stream.kind` or by sniffing: H.264 lives in QuickTime, in fragmented MP4
+     * and in Annex B, and those are three different files. */
+    bool                 has_container;
+    ppcp_id              container;
     bool                 has_achieved_frames;   /* 8.3g: a camera Capture carries it */
     ppcp_achieved_frames achieved_frames;
 } ppcp_body_payload_begin;

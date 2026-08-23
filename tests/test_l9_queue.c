@@ -208,6 +208,30 @@ static void build_bundle(made_bundle *b)
     if (ppcp_msg_set_session_id(&m, "sess:stored") != PPCP_OK) abort();
     append(b, w, PPCP_CHANNEL_CONTROL, &m);
 
+    /* ENC 7h (erratum E9): `declare` before any frame naming a Stream or a
+     * Capture.  8.5c scopes Capture identity by the minting peer's `Peer.id`,
+     * and a bundle states that nowhere else — so without this the file the
+     * importer replays is unattributable and un-deduplicable (I34). */
+    {
+        static const char *const prof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_CAPTURE,
+                                            PPCP_PROFILE_MINT, PPCP_PROFILE_OFFLINE };
+        ppcp_id        profiles[4];
+        ppcp_timebase  tb;
+        ppcp_peer_desc pd;
+        size_t         i;
+        for (i = 0; i < 4; i++)
+            if (ppcp_id_set_z(&profiles[i], prof[i]) != PPCP_OK) abort();
+        if (ppcp_timebase_make(&tb, "tb:dev", strlen("tb:dev"), PPCP_TB_CONTINUOUS,
+                               true, 1000) != PPCP_OK) abort();
+        if (ppcp_peer_desc_make(&pd, "peer:dev", PPCP_ROLE_CAPTURE, "1.0",
+                                profiles, 4, &tb, 1) != PPCP_OK) abort();
+        if (ppcp_msg_init(&m, PPCP_MT_DECLARE, mid++) != PPCP_OK) abort();
+        m.body.declare.generation = 1;
+        m.body.declare.peer       = pd;
+        if (ppcp_msg_set_session_id(&m, "sess:stored") != PPCP_OK) abort();
+        append(b, w, PPCP_CHANNEL_CONTROL, &m);
+    }
+
     {
         ppcp_instant opened;
         if (ppcp_instant_make_z(&opened, "tb:dev", 0) != PPCP_OK) abort();

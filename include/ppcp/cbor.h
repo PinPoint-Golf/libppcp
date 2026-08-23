@@ -57,10 +57,11 @@ PPCP_API ppcp_cbor_limits ppcp_cbor_limits_for_channel(uint8_t channel);
  * duplicate key impossible to emit rather than merely forbidden (ENC 4d).
  *
  * PPCP_CBOR_ORDER_LITERAL emits keys in the order written and rejects only
- * exact duplicates.  It exists for two reasons and no others: reproducing the
- * worked example of ENC §5.1, whose key order is not deterministic (see the
- * note in envelope.h), and re-emitting a foreign peer's map without reordering
- * it.  The RV payload encoder never offers it — RV 4.3a is a MUST. */
+ * exact duplicates.  It exists for two reasons and no others: emitting the
+ * PRE-ERRATUM ordering of the ENC §5.1 worked example, which erratum E13
+ * re-emitted deterministically but 5.1b keeps legal on receipt (see the note in
+ * envelope.h), and re-emitting a foreign peer's map without reordering it.  The
+ * RV payload encoder never offers it — RV 4.3a is a MUST. */
 typedef enum ppcp_cbor_order {
     PPCP_CBOR_ORDER_DETERMINISTIC = 0,
     PPCP_CBOR_ORDER_LITERAL

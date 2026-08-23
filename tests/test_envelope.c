@@ -9,12 +9,25 @@
 #include "test_util.h"
 
 /* The 95 bytes of ENC §5.1, transcribed from the document: an 8-byte frame
- * header and 87 bytes of CBOR. */
+ * header and 87 bytes of CBOR.
+ *
+ * ⚠ ERRATUM E13 (23 August 2026).  The example was re-emitted in RFC 8949
+ * §4.2.1 deterministic key order, which is what ENC 4e asks an encoder for and
+ * what the pre-erratum listing could not be produced by: "t1" encodes 62 74 31
+ * and "type" encodes 64 74 79 70 65, so 0x62 sorts first — and "ns" sorts
+ * before "tb" inside the Instant, one level down.  Same message, same values,
+ * same 87 bytes; only the order moved. */
 static const char ENC_5_1_HEX[] =
     "00 00 00 57"                       /* payload_len = 87 */
     "00"                                /* channel 0 */
     "00 00 00"                          /* flags, reserved */
     "a5"                                /* map(5) */
+    "62 74 31"                          /* "t1" */
+    "a2"                                /* map(2) */
+    "62 6e 73"                          /* "ns" */
+    "1b 00 00 01 91 2a cd 8e 00"        /* 1723000000000 */
+    "62 74 62"                          /* "tb" */
+    "69 74 62 3a 64 65 76 69 63 65"     /* "tb:device" */
     "64 74 79 70 65"                    /* "type" */
     "6a 73 79 6e 63 5f 70 72 6f 62 65"  /* "sync_probe" */
     "66 6d 73 67 5f 69 64"              /* "msg_id" */
@@ -22,18 +35,32 @@ static const char ENC_5_1_HEX[] =
     "69 70 72 6f 62 65 5f 73 65 71"     /* "probe_seq" */
     "03"                                /* 3 */
     "6b 74 69 6d 65 62 61 73 65 5f 69 64" /* "timebase_id" */
-    "69 74 62 3a 64 65 76 69 63 65"     /* "tb:device" */
-    "62 74 31"                          /* "t1" */
-    "a2"                                /* map(2) */
-    "62 74 62"                          /* "tb" */
-    "69 74 62 3a 64 65 76 69 63 65"     /* "tb:device" */
-    "62 6e 73"                          /* "ns" */
-    "1b 00 00 01 91 2a cd 8e 00";       /* 1723000000000 */
+    "69 74 62 3a 64 65 76 69 63 65";    /* "tb:device" */
 
-/* The body of the §5.1 sync_probe, written in the document's own key order.
- * ⚠ That order is not RFC 8949 §4.2.1 deterministic — "t1" sorts before
- * "type" — so this body is written through the LITERAL writer.  The same
- * message written deterministically is asserted separately below. */
+/* The example AS IT READ BEFORE E13.  Still a legal encoding — 4e is a SHOULD,
+ * and ENC 5.1b requires a decoder to accept any key order — so it stays under
+ * test: a peer that emits this ordering is conformant and must decode to the
+ * same five fields.  It is what ppcp_message_encode_literal() exists for. */
+static const char ENC_5_1_PRE_E13_HEX[] =
+    "00 00 00 57" "00" "00 00 00"
+    "a5"
+    "64 74 79 70 65"
+    "6a 73 79 6e 63 5f 70 72 6f 62 65"
+    "66 6d 73 67 5f 69 64"
+    "07"
+    "69 70 72 6f 62 65 5f 73 65 71"
+    "03"
+    "6b 74 69 6d 65 62 61 73 65 5f 69 64"
+    "69 74 62 3a 64 65 76 69 63 65"
+    "62 74 31"
+    "a2"
+    "62 74 62"
+    "69 74 62 3a 64 65 76 69 63 65"
+    "62 6e 73"
+    "1b 00 00 01 91 2a cd 8e 00";
+
+/* The body of the §5.1 sync_probe in the PRE-E13 key order, written through the
+ * LITERAL writer because a 4e-honouring encoder cannot produce it. */
 static ppcp_result probe_body_literal(ppcp_cbor_writer *w, ppcp_envelope_writer *ew,
                                       void *ctx)
 {
@@ -85,12 +112,14 @@ static void test_enc_5_1_worked_example(void)
     size_t        got_len = 0;
     ppcp_envelope e;
 
-    TEST("ENC 5.1 worked example");
+    TEST("ENC 5.1 worked example (erratum E13: deterministic order)");
     CHECK_EQ_I(want_len, 95);
 
+    /* The point of E13: the ORDINARY encoder — the one honouring 4e — now
+     * reproduces the document's only worked example byte for byte. */
     CHECK_EQ_I(ppcp_envelope_init(&e, "sync_probe", 7), PPCP_OK);
-    CHECK_EQ_I(ppcp_message_encode_literal(got, sizeof(got), PPCP_CHANNEL_CONTROL,
-                                           &e, 3, probe_body_literal, NULL, &got_len),
+    CHECK_EQ_I(ppcp_message_encode(got, sizeof(got), PPCP_CHANNEL_CONTROL,
+                                   &e, 3, probe_body_deterministic, NULL, &got_len),
                PPCP_OK);
     CHECK_BYTES(got, got_len, want, want_len);
 
@@ -131,6 +160,8 @@ static void test_enc_5_1_decodes(void)
 
 static void test_deterministic_form_of_the_same_message(void)
 {
+    unsigned char want[128];
+    size_t        want_len = ppcp_unhex(ENC_5_1_PRE_E13_HEX, want, sizeof(want));
     unsigned char got[128];
     size_t        got_len = 0;
     ppcp_envelope e;
@@ -138,15 +169,15 @@ static void test_deterministic_form_of_the_same_message(void)
     const uint8_t    *payload = NULL;
     ppcp_envelope     back;
 
-    /* ⚠ Specification defect, recorded in the claim file: the §5.1 example is
-     * a legal encoding (ENC 4e is a SHOULD) but it is not deterministic, so
-     * the deterministic form of the same message is a different byte string
-     * with the same content. */
-    TEST("the deterministic encoding of the same message decodes identically");
+    /* ENC 5.1b: 4e binds ENCODERS and is a SHOULD, so the pre-E13 ordering is
+     * still legal on the wire and a decoder accepts it.  The literal writer
+     * exists to produce it, and this is what keeps that path honest. */
+    TEST("the pre-E13 ordering of the same message is still legal and decodes identically");
     CHECK_EQ_I(ppcp_envelope_init(&e, "sync_probe", 7), PPCP_OK);
-    CHECK_EQ_I(ppcp_message_encode(got, sizeof(got), PPCP_CHANNEL_CONTROL, &e, 3,
-                                   probe_body_deterministic, NULL, &got_len),
+    CHECK_EQ_I(ppcp_message_encode_literal(got, sizeof(got), PPCP_CHANNEL_CONTROL, &e, 3,
+                                           probe_body_literal, NULL, &got_len),
                PPCP_OK);
+    CHECK_BYTES(got, got_len, want, want_len);
     /* Same field count, same values, same total length — only the order moved. */
     CHECK_EQ_I(got_len, 95);
     CHECK_EQ_I(ppcp_frame_read(got, got_len, &h, &payload, NULL), PPCP_OK);
@@ -156,8 +187,15 @@ static void test_deterministic_form_of_the_same_message(void)
                PPCP_OK);
     CHECK(strcmp(back.type, "sync_probe") == 0);
     CHECK_EQ_I(back.msg_id, 7);
-    /* The first key really is "t1", not "type". */
-    CHECK_EQ_I(payload[1], 0x62);
+    /* Its first key is "type" (0x64); the document's is now "t1" (0x62). */
+    CHECK_EQ_I(payload[1], 0x64);
+    {
+        unsigned char det[128];
+        size_t        det_len = ppcp_unhex(ENC_5_1_HEX, det, sizeof(det));
+        CHECK_EQ_I(det_len, want_len);
+        CHECK(memcmp(det, want, det_len) != 0);   /* different bytes, one message */
+        CHECK_EQ_I(det[9], 0x62);
+    }
 }
 
 static ppcp_result body_none(ppcp_cbor_writer *w, ppcp_envelope_writer *ew, void *ctx)

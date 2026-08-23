@@ -1132,6 +1132,9 @@ static ppcp_result dec_capture(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_msg *m)
         f[n++] = ppcp_rf("bytes", PPCP_F_UINT, &b->bytes, &s_bytes);
         f[n++] = ppcp_rf_sub("digest", digest_r, &b->digest, NULL, &s_dig);
         f[n++] = ppcp_rf("chunk_bytes", PPCP_F_UINT, &chunk, &s_chunk);
+        /* ENC 6g (E15): optional on the wire, because a raw-sample payload has
+         * no container to name. */
+        f[n++] = ppcp_rf("container", PPCP_F_ID, &b->container, &b->has_container);
         f[n++] = ppcp_rf_sub("achieved_frames", af_r, &b->achieved_frames, a,
                              &b->has_achieved_frames);
         rc = ppcp_rec_read(r, f, n);
@@ -1768,6 +1771,11 @@ static ppcp_result enc_capture(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
         f[n++] = ppcp_wf_uint("bytes", b->bytes);
         f[n++] = ppcp_wf_sub("digest", digest_w, &b->digest);
         f[n++] = ppcp_wf_uint("chunk_bytes", b->chunk_bytes);
+        /* ENC 6g / MSG 8.3h (E15): what the bytes ARE.  A receiver writing a
+         * clip to disk had no honest way to choose a file extension before
+         * this, and 6h forbids the guesses it would otherwise have made. */
+        if (b->has_container)
+            f[n++] = ppcp_wf_id("container", &b->container);
         /* 8.3g / ENC 6a1 / I30: the per-frame series belong on THIS channel,
          * with the frames they describe, and never on control. */
         if (b->has_achieved_frames)

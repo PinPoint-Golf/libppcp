@@ -9,13 +9,18 @@
  *
  * ⚠ On reproducing the worked example of ENC §5.1.
  *
- * The example's key order is `type`, `msg_id`, `probe_seq`, `timebase_id`,
- * `t1`.  That is NOT RFC 8949 §4.2.1 deterministic order, which would put `t1`
- * first: encoded, "t1" is 62 74 31 and "type" is 64 74 79 70 65, so 0x62 sorts
- * before 0x64.  ENC 4e makes deterministic encoding a SHOULD rather than a
- * MUST, so the example is a legal encoding — but an encoder that honours 4e
- * cannot produce it.  That is why the envelope writer has two modes, and it is
- * reported as a specification defect in docs/conformance/claim-libppcp.md.
+ * ERRATUM E13 (23 August 2026) settled this.  As first written the example
+ * ordered its keys `type`, `msg_id`, `probe_seq`, `timebase_id`, `t1` — NOT RFC
+ * 8949 §4.2.1 order, which puts `t1` first: encoded, "t1" is 62 74 31 and
+ * "type" is 64 74 79 70 65, so 0x62 sorts before 0x64.  ENC 4e makes
+ * deterministic encoding a SHOULD, so that ordering is legal and a decoder must
+ * accept it (5.1b) — but a 4e-honouring encoder could not produce the
+ * document's own example.  §5.1 is now re-emitted deterministically and
+ * ppcp_message_encode() reproduces it byte for byte.
+ *
+ * ppcp_message_encode_literal() therefore survives for one reason: emitting the
+ * pre-erratum ordering, so the decoder is still tested against a peer that
+ * writes its envelope first and its body afterwards.
  *
  * The deterministic mode is why body fields are written through
  * ppcp_envelope_before(): the reserved keys and the body keys sort into one

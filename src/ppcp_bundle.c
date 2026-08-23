@@ -26,6 +26,7 @@ struct ppcp_bundle_writer {
     bool     begun;
     bool     finished;
     bool     has_manifest;    /* ENC 7c */
+    bool     has_declare;     /* ENC 7h (erratum E9) */
     bool     saw_session_open;
     bool     hostless;        /* CORE 4.1d / 7.3b */
     size_t   frame_count;
@@ -87,6 +88,39 @@ static ppcp_result writer_admit(ppcp_bundle_writer *w, ppcp_msg_type t,
                                 const uint8_t *payload, uint32_t payload_len,
                                 uint8_t channel)
 {
+    /* ENC 7h (erratum E9): a bundle carries `declare` from the owning peer
+     * BEFORE any frame naming a Capture, Stream, Shot or Candidate.  CORE 8.5c
+     * scopes Capture identity by the minting peer's `Peer.id` and a bundle
+     * states that nowhere else, so a file of bare `capture_announce` frames is
+     * unattributable — and therefore un-deduplicable on re-import, which is the
+     * failure I34 exists to prevent. */
+    switch (t) {
+    case PPCP_MT_DECLARE:
+        w->has_declare = true;
+        break;
+    case PPCP_MT_STREAM_OPEN:
+    case PPCP_MT_STREAM_CLOSE:
+    case PPCP_MT_CANDIDATE:
+    case PPCP_MT_SHOT:
+    case PPCP_MT_SHOT_LINK:
+    case PPCP_MT_CAPTURE_REQUEST:
+    case PPCP_MT_CAPTURE_ANNOUNCE:
+    case PPCP_MT_CAPTURE_UPDATE:
+    case PPCP_MT_CAPTURE_COMMITTED:
+    case PPCP_MT_SESSION_MANIFEST:
+    case PPCP_MT_PAYLOAD_BEGIN:
+    case PPCP_MT_PAYLOAD_CHUNK:
+    case PPCP_MT_PAYLOAD_ACK:
+    case PPCP_MT_PAYLOAD_END:
+    case PPCP_MT_PAYLOAD_ABORT:
+    case PPCP_MT_PAYLOAD_RESUME:
+        if (!w->has_declare)
+            return PPCP_ERR_INVALID;
+        break;
+    default:
+        break;
+    }
+
     switch (t) {
     case PPCP_MT_LINK_BIND:
         /* ENC 7g / 2.1e: a file has one stream and its channels are the header
