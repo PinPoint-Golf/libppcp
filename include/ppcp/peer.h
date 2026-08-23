@@ -356,10 +356,29 @@ typedef struct ppcp_event {
      * storage. */
     const ppcp_msg *msg;
     ppcp_result     status;
+    /* True when this frame belongs to an IMPORTED Session rather than the live
+     * one — a bundle replayed onto the live link under MSG §9.1.  An embedding
+     * MUST NOT feed such a frame to the live Session's arbiter, and MUST NOT
+     * convert its instants with the live Session's `timebase_ref`: the imported
+     * Session has its own, readable through
+     * ppcp_peer_imported_timebase_ref().  See F-S5-3 — a host that ignored this
+     * arbitrated two Sessions as one and expressed every subsequent `t0` in the
+     * exporting device's clock. */
+    bool            imported;
 } ppcp_event;
 
 /* PPCP_ERR_NOT_FOUND when the queue is empty. */
 PPCP_API ppcp_result ppcp_peer_next_event(ppcp_peer *p, ppcp_event *out);
+
+/* The IMPORTED Session, where one has been replayed onto this link (MSG §9.1).
+ * NULL where none has.  The live Session's own id, `timebase_ref` and
+ * parameters are unaffected by an import and stay readable through
+ * ppcp_peer_session_id() and ppcp_peer_session_params(): CORE 4.1a and I16 make
+ * `timebase_ref` immutable for the life of a Session, and an offered Session is
+ * a different Session. */
+PPCP_API const ppcp_id *ppcp_peer_imported_session_id(const ppcp_peer *p);
+PPCP_API const ppcp_id *ppcp_peer_imported_timebase_ref(const ppcp_peer *p);
+PPCP_API const ppcp_body_session_open *ppcp_peer_imported_session_params(const ppcp_peer *p);
 
 /* How many events are waiting, and how many the queue holds.  The capacity is
  * PPCP_PEER_EVENT_QUEUE; it is a function too so a Swift or C++ caller that

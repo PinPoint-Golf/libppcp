@@ -169,13 +169,30 @@ static const cf_row rows[] = {
  * counter is zero, and `ppcp-sim` refuses the frame on its own account if one
  * arrives). */
 
+/* ⚠ THE COUNTERPART IS A MINTING CAPTURE PEER, AND HAS TO BE.
+ *
+ * This row used to run `reference-host` against the peer under test.  For a
+ * peer under test that is itself a host — PinPointStudio, which declares
+ * Arbitrate and not Mint and is exactly who this row is for — CORE 5.2b and MSG
+ * 3.2c make that `role_conflict`, which is FATAL: the row died at `hello` and
+ * asserted nothing.  A capture peer that mints on its own authority is the
+ * counterpart the negative half needs, because it puts a device-authority
+ * `shot` on the wire for the peer under test to parse (C1) without conferring
+ * anything on it.
+ *
+ * And the assertion is `minted_shots_rx`, not `shots_rx`.  A host that declares
+ * Arbitrate may legitimately send `shot` — the catalogue binds it to the SET
+ * Mint / Arbitrate — and under 8.2k it re-sends the DEVICE's Shot with
+ * `issued_by`, `t0` and `authority` unchanged, so `shots_rx` is expected to be
+ * non-zero here.  What Mint confers is issuing on one's OWN authority, and that
+ * is the counter. */
 { "CT-I6", "I6", "Mint", "injected", CF_NEGATIVE,
   "mint", "any",
-  "host", "reference-host.json", "reference-host",
-  "violations=0,shots_rx=0",
-  "reference-capture.json", "nominating-capture", "violations=0", "capture", 6000,
-  "A peer that does not declare Mint parses `shot` and never originates one "
-  "(8.3d): issuing a Shot is the Mint profile's." },
+  "capture", "reference-capture.json", "nominating-capture",
+  "violations=0,minted_shots_rx=0",
+  "arbiter-no-detect.json", "arbiter-no-detect", "violations=0", "host", 6000,
+  "A peer that does not declare Mint parses a device-authority `shot` and never "
+  "issues one on its own authority (8.3d), whatever else it may send." },
 
 { "CT-I20n", "I20", "Arbitrate", "injected", CF_NEGATIVE,
   "arbitrate", "any",

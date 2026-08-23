@@ -153,6 +153,20 @@ typedef struct sim_counter {
     int64_t declares_rx;
     int64_t candidates_rx, candidates_tx;
     int64_t shots_rx, shots_tx;
+    /* Shots received that the SENDER minted on its own authority: `authority:
+     * device` AND `issued_by` equal to the counterpart's own `Peer.id`.  That
+     * is the Mint-conferred act, and it is the only counter a negative Mint row
+     * can assert on — `shots_rx` counts a host's 8.2k attach too, which
+     * re-sends the DEVICE's Shot with the device's `issued_by` and `authority`
+     * unchanged (CT-I35, 5.13d). */
+    int64_t minted_shots_rx;
+    /* F-S5-3 — frames that belong to an IMPORTED Session (a bundle replayed
+     * onto a live link, MSG §9.1) rather than to the live one, and the number of
+     * times the LIVE Session's `timebase_ref` changed after it opened, which
+     * CORE 4.1a and I16 make impossible.  The second is a violation counter
+     * whose value should never be anything but zero. */
+    int64_t imported_frames_rx;
+    int64_t live_ref_rebound;
     int64_t shot_candidates_max;
     int64_t t0_revisions;
     int64_t captures_rx, captures_unique, captures_duplicate;

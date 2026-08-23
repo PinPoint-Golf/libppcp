@@ -190,6 +190,11 @@ typedef struct sim {
     bool    declared_self;
     bool    counterpart_declared;
     bool    joined;
+    /* F-S5-3: the live Session's ref as it was when the Session opened.  A
+     * replayed bundle used to rebind it silently. */
+    bool    live_ref_seen;
+    ppcp_id live_session_id;
+    ppcp_id live_timebase_ref;
     bool    script_started;
     int     step;
     int64_t next_step_ns;
@@ -407,7 +412,17 @@ static bool pump_rx(sim *s, uint8_t ch)
     if (got == 0) {
         c->open = false;
     } else if (got < 0) {
-        if (!(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        /* ECONNRESET is the OTHER peer exiting at its own `--run-ms`, which is
+         * the same deadline this one has: whichever process reaches it first
+         * resets the other's socket and the loser reported a protocol
+         * violation.  It made CT-I18 and CT-S5 fail roughly one run in three
+         * under load and never when run alone, which is the shape of a harness
+         * race rather than of a defect — so a reset is an orderly end of run,
+         * and the channel closes.  A reset BEFORE the run has done its work is
+         * still caught, by the --expect counters that then come up short. */
+        if (errno == ECONNRESET || errno == EPIPE) {
+            c->open = false;
+        } else if (!(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
             sim_violation("read on channel %u failed: %s", (unsigned)ch, strerror(errno));
             return false;
         }
@@ -474,6 +489,13 @@ static void note_shot(sim *s, const ppcp_shot *sh)
         sim_violation("I20 violated: Shot `%s` carries `authority: host` from a peer "
                       "declaring role %s", sh->id.v, ppcp_role_str(cp->role));
     }
+
+    /* 8.3d / CT-I6: minting is the Mint profile's, and the observable act is a
+     * Shot the SENDER issued on its own authority.  A host attaching under 8.2k
+     * re-sends the device's Shot with `issued_by` unchanged, so it is not one. */
+    if (cp != NULL && sh->authority == PPCP_AUTHORITY_DEVICE &&
+        ppcp_id_equal(&sh->issued_by, &cp->id))
+        s->c.minted_shots_rx++;
 
     for (i = 0; i < s->shot_count; i++) {
         if (ppcp_id_equal(&s->shots[i].id, &sh->id)) {
@@ -667,8 +689,38 @@ static void handle_event(sim *s, const ppcp_event *e)
 static void drain_events(sim *s)
 {
     ppcp_event e;
-    while (ppcp_peer_next_event(s->p, &e) == PPCP_OK)
+    while (ppcp_peer_next_event(s->p, &e) == PPCP_OK) {
+        if (e.imported)
+            s->c.imported_frames_rx++;
         handle_event(s, &e);
+    }
+    /* F-S5-3 / CORE 4.1a / I16 — `timebase_ref` is immutable for the life of a
+     * Session, and a Session offered over the live link (MSG §9.1) is a
+     * DIFFERENT Session.  Checked after every drain, from outside the engine,
+     * because the failure it catches is silent: the host went on issuing Shots
+     * with `t0` in the exporting device's clock and nothing on the wire said
+     * the reference had moved. */
+    {
+        const ppcp_id *sid = ppcp_peer_session_id(s->p);
+        const ppcp_id *ref = ppcp_peer_timebase_ref(s->p);
+        if (sid != NULL && ref != NULL) {
+            if (!s->live_ref_seen) {
+                s->live_ref_seen     = true;
+                s->live_session_id   = *sid;
+                s->live_timebase_ref = *ref;
+            } else if (!ppcp_id_equal(&s->live_session_id, sid) ||
+                       !ppcp_id_equal(&s->live_timebase_ref, ref)) {
+                s->c.live_ref_rebound++;
+                sim_violation("I16 violated: the live Session was rebound from "
+                              "`%s`/`%s` to `%s`/`%s` — an offered Session is a "
+                              "different Session (4.1a, F-S5-3)",
+                              s->live_session_id.v, s->live_timebase_ref.v,
+                              sid->v, ref->v);
+                s->live_session_id   = *sid;
+                s->live_timebase_ref = *ref;
+            }
+        }
+    }
 }
 
 #include "sim_run_steps.inc"
@@ -680,7 +732,9 @@ static int64_t counter_value(const sim_counter *c, const char *name)
 #define ROW(n) if (strcmp(name, #n) == 0) return c->n
     ROW(frames_rx); ROW(frames_tx); ROW(declares_rx);
     ROW(candidates_rx); ROW(candidates_tx);
-    ROW(shots_rx); ROW(shots_tx); ROW(shot_candidates_max); ROW(t0_revisions);
+    ROW(shots_rx); ROW(shots_tx); ROW(minted_shots_rx);
+    ROW(imported_frames_rx); ROW(live_ref_rebound);
+    ROW(shot_candidates_max); ROW(t0_revisions);
     ROW(captures_rx); ROW(captures_unique); ROW(captures_duplicate);
     ROW(payload_frames_rx);
     ROW(relations_rx); ROW(relations_tx);

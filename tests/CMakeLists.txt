@@ -134,6 +134,27 @@ if(TARGET ppcp-sim)
         "offers_tx=1,accepts_rx=1,replays=1,violations=0"
         4000)
 
+    # F-S5-3 — an offered Session replayed onto a LIVE link is a SECOND Session,
+    # and the live one's `timebase_ref` is immutable for its whole life (CORE
+    # 4.1a, I16).  Before the fix the engine's immutability guard fired only
+    # when the incoming `session_id` MATCHED, so a replay rebound the live
+    # `session_id`, `timebase_ref` and `session_params` silently: on the real
+    # PinPointStudio-to-PinPointCapture pair every subsequent `shot` carried
+    # `t0` in the exporting device's clock while the live Session declared
+    # another, and the host's arbiter grouped two Sessions' Candidates as one.
+    #
+    # `live_ref_rebound` is checked by the counterpart after every event drain
+    # and is a violation as well as a counter, so this row fails loudly rather
+    # than by an unmet expectation.  `imported_frames_rx` asserts the replay
+    # really did arrive — a row that passes because nothing happened is worse
+    # than one that fails.
+    ppcp_pair_row(F-S5-3-sockets-offer-during-live-session
+        reference-host.json reference-host
+        "live_ref_rebound=0,imported_frames_rx>=1,offers_rx=1,violations=0"
+        reference-capture.json offer-session
+        "live_ref_rebound=0,replays=1,violations=0"
+        4000)
+
     # I18 — relations are MEASURED, never composed.  Three declared timebases
     # produce three probe sequences at each end, and `relations_composed`
     # counts held relations spanning two clocks of one peer, which is the only
@@ -203,6 +224,24 @@ if(TARGET ppcp-sim)
         reference-capture.json reference-capture
         "shots_rx>=1,violations=0"
         5000)
+
+    # CT-I6's negative half (CONF 1d), over sockets.  ppcp-conform's row used to
+    # pick `reference-host` as the counterpart, and for a peer under test that is
+    # ITSELF a host — which is exactly who a negative Mint row is for — CORE 5.2b
+    # and MSG 3.2c make that `role_conflict`, fatal, so the row died at `hello`
+    # and asserted nothing (found by PinPointStudio, S4).  A minting capture peer
+    # is the counterpart it needs.
+    #
+    # The assertion is `minted_shots_rx`, not `shots_rx`: a host declaring
+    # Arbitrate may legitimately send `shot` — the catalogue binds it to the SET
+    # Mint / Arbitrate — and 8.2k has it re-send the DEVICE's Shot unchanged.
+    # What Mint confers is issuing on one's own authority.
+    ppcp_pair_row(CT-I6-sockets
+        arbiter-no-detect.json arbiter-no-detect
+        "minted_shots_rx=0,issued=1,violations=0"
+        reference-capture.json nominating-capture
+        "minted_shots_rx=0,violations=0"
+        6000)
 
     # S6 assertions 2 and 3 — an observer declaring Core + Live originates no
     # `candidate` and no `shot`, and answers a request whose behaviour it does

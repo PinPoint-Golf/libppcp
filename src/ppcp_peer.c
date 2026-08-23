@@ -123,6 +123,25 @@ struct ppcp_peer {
     bool                   has_session_params;
     ppcp_body_session_open session_params;
 
+    /* F-S5-3 — THE IMPORTED SESSION.  MSG §9.1 has a peer offer a stored
+     * Session and replay its bundle onto the LIVE link, so the same socket
+     * carries two Sessions: the live one and the imported one, each with its
+     * own `session_id` and its own `timebase_ref`.  The engine holds the second
+     * separately and NEVER lets it touch the first — CORE 4.1a/I16 make
+     * `timebase_ref` immutable for the life of a Session, and a replayed
+     * `session_open` naming a different Session is not that Session speaking.
+     *
+     * Found by the S5 PinPointStudio-to-PinPointCapture pair over TLS: the
+     * immutability guard fired only when the ids MATCHED, so a replay silently
+     * rebound the live `timebase_ref` to the device's own clock, every
+     * subsequent `t0` was expressed in a timebase the live Session had not
+     * declared, and the host's arbiter grouped two Sessions' Candidates as
+     * one. */
+    bool                   has_import;
+    ppcp_id                import_session_id;
+    ppcp_id                import_timebase_ref;
+    ppcp_body_session_open import_params;
+
     /* this peer's own declaration, reduced to what I26 needs (5.12a, 7.1a) */
     struct { ppcp_id source_id; ppcp_id timebase_id; } own_sources[PPCP_PEER_MAX_OWN_SOURCES];
     size_t   own_source_count;
@@ -773,6 +792,21 @@ uint64_t ppcp_peer_events_dropped(const ppcp_peer *p)
     return (p == NULL) ? 0 : p->ev_dropped;
 }
 
+const ppcp_id *ppcp_peer_imported_session_id(const ppcp_peer *p)
+{
+    return (p != NULL && p->has_import) ? &p->import_session_id : NULL;
+}
+
+const ppcp_id *ppcp_peer_imported_timebase_ref(const ppcp_peer *p)
+{
+    return (p != NULL && p->has_import) ? &p->import_timebase_ref : NULL;
+}
+
+const ppcp_body_session_open *ppcp_peer_imported_session_params(const ppcp_peer *p)
+{
+    return (p != NULL && p->has_import) ? &p->import_params : NULL;
+}
+
 ppcp_result ppcp_peer_next_event(ppcp_peer *p, ppcp_event *out)
 {
     if (p == NULL || out == NULL)
@@ -783,6 +817,15 @@ ppcp_result ppcp_peer_next_event(ppcp_peer *p, ppcp_event *out)
     out->status  = p->ev_status[p->ev_head];
     out->channel = p->ev_channel[p->ev_head];
     out->msg     = &p->ev_msg[p->ev_head];
+    /* F-S5-3 — which Session this frame belongs to.  A replayed bundle's frames
+     * carry the IMPORTED `session_id` in the envelope, and an embedding that
+     * feeds them to a live arbiter arbitrates two Sessions as one.  The engine
+     * knows which id is which, so it says so rather than leaving every
+     * embedding to compare ids it was never told to keep. */
+    out->imported = p->has_import &&
+                    p->ev_msg[p->ev_head].env.has_session_id &&
+                    ppcp_id_equal(&p->ev_msg[p->ev_head].env.session_id,
+                                  &p->import_session_id);
     p->ev_head  = (p->ev_head + 1) % PPCP_PEER_EVENT_QUEUE;
     p->ev_count--;
     return PPCP_OK;
@@ -2396,6 +2439,34 @@ static ppcp_result peer_on_session_open(ppcp_peer *p, const ppcp_msg *m)
         (void)ppcp_peer_error(p, PPCP_CHANNEL_CONTROL, PPCP_ERRCODE_MALFORMED,
                               "timebase_ref is immutable", true, m->env.msg_id);
         return PPCP_ERR_MALFORMED;
+    }
+
+    /* F-S5-3.  A `session_open` naming a DIFFERENT Session while a live one is
+     * open is a replayed bundle arriving over the live link (MSG §9.1), not the
+     * live Session re-opening.  It is recorded as the IMPORTED Session and the
+     * live one is left exactly as it was: `session_id`, `timebase_ref`,
+     * `session_params` and `state` are the live Session's for its whole life
+     * (4.1a, I16), and rebinding them here is what made a host express every
+     * subsequent `t0` in the exporting device's clock.
+     *
+     * It is answered `session_joined` as any `session_open` is — the importer
+     * did join the offered Session, in the only sense that matters to an
+     * exporter waiting to replay. */
+    if (p->has_session && !ppcp_id_equal(&p->session_id, &b->session_id)) {
+        p->has_import          = true;
+        p->import_session_id   = b->session_id;
+        p->import_timebase_ref = b->timebase_ref;
+        p->import_params       = *b;
+        rc = ppcp_msg_init(&r, PPCP_MT_SESSION_JOINED, 1);
+        if (rc != PPCP_OK)
+            return rc;
+        r.body.session_joined.session_id = b->session_id;
+        r.body.session_joined.peer_id    = p->peer_id;
+        r.body.session_joined.verdict    = PPCP_JOINED;
+        rc = ppcp_msg_set_reply_to(&r, m->env.msg_id);
+        if (rc != PPCP_OK)
+            return rc;
+        return peer_queue(p, PPCP_CHANNEL_CONTROL, &r);
     }
 
     p->has_session  = true;
