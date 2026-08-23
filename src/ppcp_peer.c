@@ -962,6 +962,15 @@ ppcp_result ppcp_peer_session_open(ppcp_peer *p, const ppcp_session *s)
     p->session_id   = s->id;
     p->timebase_ref = s->timebase_ref;
     p->state        = PPCP_PEER_JOINED;
+    /* F-H5-2 / F-D6-3.  The parameters were recorded on the RECEIVING path
+     * only, so the peer that originated `session_open` could not read back its
+     * own `timebase_ref`, `coincidence_window_ns` or `issue_hold_ns` (8.2b,
+     * 8.2h) and kept a second, drifting copy; and ppcp_peer_zero_host() fell
+     * through to the link state because `has_session_params` was false, so
+     * CORE 4.1b's hostless case worked only because absent parameters read as
+     * zero.  One Session, one record, whichever end opened it. */
+    p->session_params     = m.body.session_open;
+    p->has_session_params = true;
     return PPCP_OK;
 }
 
@@ -1808,9 +1817,15 @@ bool ppcp_peer_zero_host(const ppcp_peer *p)
         return false;
     /* 4.1d / 5.10e — a `session_open` with neither arbitration parameter IS
      * the statement that the Session has no host.  That is the first entry
-     * condition; the second is a host that has stopped answering (8.3g). */
-    if (p->has_session_params && !p->session_params.has_arbitration)
-        return true;
+     * condition; the second is a host that has stopped answering (8.3g).
+     *
+     * F-D6-3: this is now derived from the PARAMETERS on both paths and never
+     * from which end opened the Session.  Before S4 the originator had no
+     * parameters recorded, so a device opening the hostless form of 4.1b fell
+     * through to `link_state` and read as zero-host only by accident. */
+    if (p->has_session_params)
+        return !p->session_params.has_arbitration ||
+               p->link_state == PPCP_LINK_LOST;
     return p->link_state == PPCP_LINK_LOST;
 }
 

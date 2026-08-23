@@ -563,9 +563,16 @@ PPCP_API uint32_t        ppcp_peer_missed_heartbeats(const ppcp_peer *p);
  * what ppcp_peer_session_params() below exists to let a test assert. */
 PPCP_API bool ppcp_peer_zero_host(const ppcp_peer *p);
 
-/* The Session parameters as they arrived in `session_open`, or NULL before
- * one.  I16 and 8.3g: `timebase_ref`, `coincidence_window_ns` and
- * `issue_hold_ns` are what they were, whatever the link is doing. */
+/* The Session parameters of the open Session, or NULL before one.  I16 and
+ * 8.3g: `timebase_ref`, `coincidence_window_ns` and `issue_hold_ns` are what
+ * they were, whatever the link is doing.
+ *
+ * ⚠ EITHER END.  Before S4 this was recorded on the RECEIVING path only, so
+ * the peer that ORIGINATED `session_open` — every host, and every device
+ * opening the hostless Session of CORE 4.1b — read NULL here and kept a second
+ * copy of its own parameters that drifted (F-H5-2, F-D6-3, plan §9).  It is
+ * now set by ppcp_peer_session_open() and ppcp_peer_session_resume() as well,
+ * and it is what ppcp_peer_zero_host() is derived from. */
 PPCP_API const ppcp_body_session_open *ppcp_peer_session_params(const ppcp_peer *p);
 
 /* -------------------------------- MSG §9.1–9.2 — offering a stored Session

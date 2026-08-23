@@ -338,6 +338,16 @@ static void test_zero_host(void)
     TEST("CT-S4 (1) / 4.1d — a hostless Session carries NEITHER arbitration parameter");
     CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:solo", "tb:dev"), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(d.p, &s), PPCP_OK);
+    /* F-H5-2 / F-D6-3 — the ORIGINATOR reads its own parameters back.  Until
+     * S4 it did not: `has_session_params` was set on the receiving path only,
+     * so the swap below was the only way to assert 4.1b's hostless form and
+     * ppcp_peer_zero_host() was true here by accident rather than by the
+     * absence of the arbitration parameters.  Both ends, one record. */
+    CHECK(ppcp_peer_session_params(d.p) != NULL);
+    CHECK(!ppcp_peer_session_params(d.p)->has_arbitration);
+    CHECK(ppcp_cbor_key_is(ppcp_peer_session_params(d.p)->timebase_ref.v,
+                           ppcp_peer_session_params(d.p)->timebase_ref.len, "tb:dev"));
+    CHECK(ppcp_peer_zero_host(d.p));
     /* The engine learns the Session from the frame, exactly as it would from a
      * bundle read — which is what makes "a file is a transport" true. */
     {
@@ -461,24 +471,19 @@ static void test_hosted_pair(void)
     pump(dev.p, host.p, PPCP_CHANNEL_CONTROL);
     drop_events(host.p);
     drop_events(dev.p);
-    /* The host's own arbiter needs the Session parameters, and a peer learns
-     * them from a `session_open` FRAME rather than from having composed one —
-     * which is the same path a bundle read takes.  So a second host engine of
-     * the same identity reads the frame this one emitted. */
-    {
-        uint8_t buf[8192];
-        size_t  n = 0, consumed = 0;
-        rig     h2;
-        rig_new(&h2, PPCP_ROLE_HOST, "peer:host", "tb:host", hprof, 5);
-        CHECK_EQ_I(ppcp_peer_session_open(host.p, &s), PPCP_OK);
-        CHECK_EQ_I(ppcp_peer_drain(host.p, PPCP_CHANNEL_CONTROL, buf, sizeof(buf), &n),
-                   PPCP_OK);
-        CHECK_EQ_I(ppcp_peer_feed(h2.p, PPCP_CHANNEL_CONTROL, buf, n, &consumed), PPCP_OK);
-        rig_free(&host);
-        host = h2;
-    }
+    /* F-H5-2 — the host's own arbiter needs the Session parameters, and until
+     * S4 a peer learned them from a `session_open` FRAME and not from having
+     * composed one.  This block used to stand up a SECOND host engine of the
+     * same identity and feed it the frame the first had emitted, purely to get
+     * the parameters back; that was the defect, written down as a workaround.
+     * The host that opened the Session reads them directly now. */
     CHECK(ppcp_peer_session_params(host.p) != NULL);
     CHECK(ppcp_peer_session_params(host.p)->has_arbitration);
+    CHECK_EQ_I(ppcp_peer_session_params(host.p)->coincidence_window_ns,
+               PPCP_DEFAULT_COINCIDENCE_WINDOW_NS);
+    CHECK_EQ_I(ppcp_peer_session_params(host.p)->issue_hold_ns,
+               PPCP_DEFAULT_ISSUE_HOLD_NS);
+    CHECK(!ppcp_peer_zero_host(host.p));
 
     TEST("I4 — the host's own Candidates need no relation: identity is not a relation");
     CHECK(am != NULL);
