@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-22 — Session 3, wave 2: `libppcp` L13 landed — the synthetic peer, and the *paired* rows re-run over real sockets |
+| Last updated | 2026-08-23 — Session 3 closed |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -22,56 +22,56 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | Test | Invariant | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
 | CT-I1 | I1 | Core | static | L1, L2 | pass | — | — |
-| CT-I2 | I2 | Core | fixture | L8, D4 | — | — | — |
+| CT-I2 | I2 | Core | fixture | L8, D4 | — | — | pass |
 | CT-I3 | I3 | Core | static | L2, L4 | pass | — | — |
 | CT-I4 | I4 | Core | static | L2, D2 | pass | — | pass |
 | CT-I5 | I5 | Capture | paired | L6 | impl | — | — |
-| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | pass | — | — |
-| CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | pass | — | — |
-| CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | — | — |
+| CT-I6 | I6 | Mint, Arbitrate | static | L4, L10, H5, D5 | pass | — | pass |
+| CT-I7 | I7 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass | — |
+| CT-I8 | I8 | Mint, Arbitrate | paired | L10, H5, D5 | pass | pass | pass (own half) |
 | CT-I9 | I9 | Core | static | L4, L10 | pass | — | — |
-| CT-I10 | I10 | Capture | paired | L7, D4 | — | — | — |
-| CT-I11 | I11 | Capture | fixture | L7, D4 | — | — | — |
+| CT-I10 | I10 | Capture | paired | L7, D4 | — | — | pass |
+| CT-I11 | I11 | Capture | fixture | L7, D4 | — | — | pass |
 | CT-I12 | I12 | Capture | fixture | L8, H3, D3 | pass | pass | pass |
 | CT-I13 | I13 | Core | fixture | L1 | impl | — | — |
 | CT-I14 | I14 | Core | static | L6, H2 | pass | pass | — |
 | CT-I15 | I15 | Offline | fixture | L8, H3 | — | impl | — |
 | CT-I16 | I16 | Offline | paired | L8, H3 | impl | impl | — |
-| CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | — |
-| CT-I18 | I18 | Core | paired | L9, H5, D6 | pass | — | — |
+| CT-I17 | I17 | Capture | injected | L3 → CT-S1 | pass | — | impl |
+| CT-I18 | I18 | Core | paired | L9, H5, D6 | pass | pass (negative half) | pass (own half) |
 | CT-I19 | I19 | Core | injected | L4 → CT-S3 | — | pass | pass |
-| CT-I20 | I20 | Arbitrate | paired | L6, H5 | pass | — | — |
-| CT-I21 | I21 | Live | paired | L9, H5, D6 | pass | — | — |
+| CT-I20 | I20 | Arbitrate | paired | L6, H5 | pass | pass | — |
+| CT-I21 | I21 | Live | paired | L9, H5, D6 | pass | pass | pass (own half) |
 | CT-I22 | I22 | Capture | static | L4, D2 | impl | — | pass |
-| CT-I23 | I23 | Mint | injected | L10 → CT-S4 | pass | — | — |
+| CT-I23 | I23 | Mint | injected | L10 → CT-S4 | pass | — | pass (own half) |
 | CT-I24 | I24 | Core | injected | L6, L13 → CT-S6 | pass | — | — |
 | CT-I25 | I25 | Offline | static | L4 | — | — | — |
-| CT-I26 | I26 | Detect | static | L4, L10, D5 | pass | — | — |
-| CT-I27 | I27 | Capture | static | L4, D4 | — | — | — |
+| CT-I26 | I26 | Detect | static | L4, L10, D5 | pass | — | pass |
+| CT-I27 | I27 | Capture | static | L4, D4 | — | — | pass |
 | CT-I28 | I28 | Capture | static | L4, D2 | — | — | pass |
-| CT-I29 | I29 | Detect | static | L4, L10, D5 | pass | — | — |
-| CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | — |
-| CT-I31 | I31 | Capture | static | L4, D2 | impl | — | — |
-| CT-I32 | I32 | Mint | injected | L10, D5 | pass | — | — |
-| CT-I33 | I33 | Detect | injected | L10, D5 | pass | — | — |
+| CT-I29 | I29 | Detect | static | L4, L10, D5 | pass | — | pass |
+| CT-I30 | I30 | Capture | paired | L7, D4 | impl | — | pass |
+| CT-I31 | I31 | Capture | static | L4, D2 | impl | — | pass |
+| CT-I32 | I32 | Mint | injected | L10, D5 | pass | — | impl |
+| CT-I33 | I33 | Detect | injected | L10, D5 | pass | — | pass (own half) |
 | CT-I34 | I34 | Offline | fixture | L8, H3, D3 | pass | pass | pass |
-| CT-I35 | I35 | Arbitrate | injected | L10, H5 | pass | — | — |
-| CT-I36 | I36 | Capture | fixture | L7, L8, D4 | impl | — | — |
-| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | — | — |
-| CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | — | — |
-| CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | — |
+| CT-I35 | I35 | Arbitrate | injected | L10, H5 | pass | impl | — |
+| CT-I36 | I36 | Capture | fixture | L7, L8, D4 | impl | — | pass |
+| CT-I36a | I36 | Capture | paired | L7, H4, D4 | impl | pass | pass |
+| CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | pass | pass |
+| CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | pass (own half) |
 
 ## 2. Silent-failure tests — `CONF` §4
 
 | Test | Invariants | Profile | Method | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
 |---|---|---|---|---|---|---|---|
-| CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | — | — |
+| CT-S1 | I17, I22 | Capture | injected | L3, H4, D4 | pass | impl | impl (6 pass) |
 | CT-S2 | I22 | Capture | **rig** | — | rig | rig | rig |
 | CT-S3 | I19 | Core | injected | L13, H2, D2 | — | impl | — |
-| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | impl |
-| CT-S5 | I18 | Core | paired | L9, H5, D6 | pass | — | — |
+| CT-S4 | I20, I23 | Mint | injected | L10, L13, D3, D5, D6 | pass | — | impl (1,2,3,5 pass; 6 blocked: D9; 7 impl) |
+| CT-S5 | I18 | Core | paired | L9, H5, D6 | pass | impl | blocked: D9 |
 | CT-S6 | I24 | Core | injected | L5, L6, L13 | pass | — | — |
-| CT-S7 | I31 | Capture | injected | L13, D2 | — | — | impl |
+| CT-S7 | I31 | Capture | injected | L13, D2 | — | — | impl (1–3 pass; 4 blocked: ppcp-sim via D9) |
 
 ## 3. Interoperability pairings — `CONF` §5a
 

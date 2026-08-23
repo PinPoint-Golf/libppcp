@@ -295,7 +295,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Spec | `CORE` §5.11, §5.11.2, §6.1; REQ-HOST-1 |
 | Unlocks | CT-S1 on the host path, CT-I36a (host as consumer) |
 | Depends | L6, L7 |
-| Status | ☐ |
+| Status | ☑ done — S3 (`ea31994`). `ctest --test-dir build/ppcp-tests -R ppcp_video_input_test`. CT-I36a host pass; CT-S1 host impl (assertion 4 is `capture_request`, H5). Clips leave as `clipReady(PpcpClip)`, not `videoFrameReady` — arrival stamping would destroy the canonical instant. App target unverified |
 
 ### H5 — Live session: sync, heartbeat, arm, arbitration bridge
 
@@ -305,7 +305,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Spec | `CORE` §6.3, §7, §8.1–8.2, §8.4, §8.5f |
 | Unlocks | CT-I7, CT-I8, CT-I18, CT-I20, CT-I21, CT-I35, CT-S5 (host), interop rows 1, 5, 6, 7, 8 |
 | Depends | L9, L10 |
-| Status | ☐ |
+| Status | ☑ done — S3 (`17e192a`…`53fca4b`). `ctest --test-dir build/ppcp-tests` 10/10. CT-I7/I8/I20/I21 pass, CT-I18 negative half, CT-I35/CT-S5 impl (no RTT distribution in-process). Offer list in-screen under DEVICES (`PpcpOfferList.qml`, `ppcpOffers`). **Nothing constructs a `PpcpHostPeer` yet** — `registerPpcpPeer`, `setTimebaseOffsetNs`, `clipReady` joins have no caller (S4 H6/H8; `clipReady` blocked on host item 2). `tof_correction` never sent (unmeasured). App target unverified |
 
 ### H6 — Rendezvous, host side
 
@@ -324,7 +324,7 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 | Deliverable | Receive `annotation` from a device and persist losslessly against the Shot; send host-authored lines/planes back with `stream_id` naming the view; supersession by the library; nothing in Analysis reads an Annotation (I37 — asserted by the absence of an include). |
 | Depends | L11 |
 | Unlocks | CT-I37 (host) |
-| Status | ☐ |
+| Status | ☑ done — S3 (`ppcp_annotation_store`, `ppcp_annotation_test`). CT-I37 host pass; I37 asserted by grep of src/Analysis |
 
 ### H8 — Conformance claim
 
@@ -387,7 +387,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §5.8, §5.11, §5.14, §5.15, §7.3, §8.4 |
 | Unlocks | CT-I2, CT-I10, CT-I11, CT-I17, CT-I27, CT-I30, CT-I36, CT-I36a, CT-S1 (device) |
 | Depends | L3, L7, D2 |
-| Status | ☐ |
+| Status | ☑ done — S3 (`30478bb`…`86b6d62`). `make test-core`. CT-I2/I10/I11/I27/I30/I31/I36/I36a pass (own halves), CT-S1(6), CT-S7(3). **No ring buffer pre-existed** — REQ-BUF-1 was only a requirement; built in CaptureCore. `RingBufferRecorder` AVAssetWriter wiring has never run on a real camera |
 
 ### D5 — Detect and Mint
 
@@ -397,7 +397,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §5.12, §8.1, §8.2i–j, §8.3; `MSG` §7 |
 | Unlocks | CT-I6, CT-I8, CT-I23/CT-S4 (2, 3, 5, 6), CT-I26, CT-I29, CT-I32, CT-I33 |
 | Depends | L10, D4 |
-| Status | ☐ |
+| Status | ☑ done — S3 (`49e7ece`, `f8f9657`). CT-I6/I26/I29 pass; CT-I8/I23/I33 own half; CT-I32 impl. `MicrophoneOnsetSource` never run on a real microphone |
 
 ### D6 — Live link: sync, heartbeat, transfer queue, zero-host regime
 
@@ -407,7 +407,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Spec | `CORE` §6.3, §7.4, §8.3f–h, §5.14g; `MSG` §4.3, §5.4, §6, §8 |
 | Unlocks | CT-I18 (device), CT-I21, CT-I38, CT-S4 assertion 7, CT-S5 (device), interop rows 1, 7, 8, 9 |
 | Depends | L9, L10, D1, D3 |
-| Status | ☐ |
+| Status | ☑ done — S3 (`…125296b`). `make test-core` 145/145, `make test-app` 23/23. CT-I18/I21/I38 own half; CT-S4 (1,2,3,5) pass; listener on `ppcp_link_binder` (F-D3-3 closed). Offers stored sessions on connect, replays via `ppcp_bundle_replay`. CT-S5/S4(6)/interop 1,7,8,9 blocked on D9 (sim speaks plaintext or TLS1.3 psk_ke; device can do neither). **`AppModel` does not compose `DetectAndMint`/`SessionOfferService`/`PreviewProducer` yet** |
 
 ### D7 — Rendezvous, device side
 
@@ -426,7 +426,7 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 | Deliverable | Device-authored annotations (a stub drawing is enough) sent with `stream_id` for view-specific kinds, coalesced while dragging (5.18i); host annotations received and stored opaque; `nav_anchor` as `device_advisory` from the impact fiducial, never persisted as phase data. |
 | Depends | L11 |
 | Unlocks | CT-I37 (device) |
-| Status | ☐ |
+| Status | ☑ done — S3. CT-I37 device pass |
 
 ### D9 — Conformance harness mode and claim
 
@@ -449,7 +449,7 @@ Each session runs one agent per repo in parallel. A session ends when every agen
 |---|---|---|---|---|
 | **S1 — foundations** | L0, L1, L2, L3; **L12** (pulled forward — it has no dependency on the peer engine and both apps need its API for transport work); stub `include/ppcp/ppcp.h` listing every planned public symbol with a one-line contract, so H and D can code against it | H0 *(needs L0 — sequence inside the session: H starts on H1 while L0 lands)*, H1 | D0 *(same)*, D1 | `ctest` green in `libppcp`; ENC §5.1 and CORE §6.1.1 examples reproduce; RV §10 vectors reproduce; both transports complete a loopback TLS-PSK handshake with the §10 `K_tls` and report the negotiated mode |
 | **S2 — the bundle path** ☑ closed 22 Aug (after a crash and recovery run — §9) | L4, L5, L6, L7, L8 | H2, H3 | D2, D3 | A hostless bundle written by `libppcp` tests imports into PinPointStudio idempotently; PinPointCapture writes a bundle from its real declaration on a simulator and `libppcp` reads it back; CT-I1/3/4/13/22/27/28/29/31 passing in `libppcp` |
-| **S3 — the live path** (started 22 Aug; wave 1 = L9–L11 ∥ H4 ∥ D4, wave 2 = L13 ∥ H5, H7 ∥ D5, D6, D8) | L9, L10, L11, L13 (+ **L9 queue** from §9: drain partial-write, `session_manifest` originator, link-binder channel from header, Swift note on `ppcp_msg`; and **offline session offer** — `session_offer`/`session_accept`/`session_manifest` as peer originators plus bundle replay onto a live link, so a connected device can offer its stored sessions) | H4, H5 (+ the **offer list** UI: sessions a connected device offers, chosen in-app), H7 | D4, D5, D6 (+ **offering stored bundles** on connect), D8 | `ppcp-sim` ↔ `libppcp` full session; PinPointStudio establishes a session with `ppcp-sim` over H1 and arbitrates; PinPointCapture (simulator) establishes with `ppcp-sim` over D1, nominates and mints; CT-S1, S3, S4, S5, S6, S7 passing in `libppcp` |
+| **S3 — the live path** ☑ closed 23 Aug ( wave 1 = L9–L11 ∥ H4 ∥ D4, wave 2 = L13 ∥ H5, H7 ∥ D5, D6, D8) | L9, L10, L11, L13 (+ **L9 queue** from §9: drain partial-write, `session_manifest` originator, link-binder channel from header, Swift note on `ppcp_msg`; and **offline session offer** — `session_offer`/`session_accept`/`session_manifest` as peer originators plus bundle replay onto a live link, so a connected device can offer its stored sessions) | H4, H5 (+ the **offer list** UI: sessions a connected device offers, chosen in-app), H7 | D4, D5, D6 (+ **offering stored bundles** on connect), D8 | `ppcp-sim` ↔ `libppcp` full session; PinPointStudio establishes a session with `ppcp-sim` over H1 and arbitrates; PinPointCapture (simulator) establishes with `ppcp-sim` over D1, nominates and mints; CT-S1, S3, S4, S5, S6, S7 passing in `libppcp` |
 | **S4 — conformance and rendezvous** | L14, L15, L16 | H6, H8 | D7, D9 | All three claim files exist and every matrix cell is one of *passing*, *n/a by profile*, *blocked: rig*, or has a named blocker |
 | **S5 — interoperability and freeze** | L17; run every non-rig interop row in `CONF` §5 with the real pairs (PinPointStudio ↔ `ppcp-sim` as a foreign host; PinPointCapture no-host → bundle → PinPointStudio; PinPointStudio ↔ PinPointCapture on the simulator over loopback) | fixes from interop | fixes from interop | Freeze-readiness report written; errata in the specification; remaining open rows are rig or product decisions |
 
@@ -533,6 +533,20 @@ Append-only. Newest last.
 | 2026-08-22 | L (S3) | **F-L13-2: the `psk_ke`-only mode was a false pass twice, and both looked like the host refusal RT-4 is trying to observe.** (i) OpenSSL's client always advertises `psk_dhe_ke`, and forcing an empty group list makes the LOCAL stack refuse to build a ClientHello ("no suitable groups") — nothing reached the wire and the tool reported success. (ii) With the ClientHello hand-built, the first server answer was `missing_extension` for the absent `signature_algorithms`, a refusal about the wrong thing, reported the same way | **Tool defect, fixed.** `tools/ppcp-sim/sim_tls.c` now builds the ClientHello byte by byte and computes the PSK binder with the library's own HKDF-SHA256 and HMAC-SHA256 (RFC 8446 §4.2.11.2, §7.1), so the tool has no dependency and neither does the library. The mode is validated in BOTH directions by `RT-4-psk-ke-only-refused` and `RT-4-psk-ke-only-accepted-is-a-failure` against `openssl s_server`, with and without `-allow_no_dhe_kex`. The second row is also what proves the binder is right — a wrong binder yields an alert, not a ServerHello carrying `pre_shared_key`. **The general lesson is worth keeping**: a negative-conformance tool that can only ever report "refused" is not evidence, because it reports refused for a malformed offer too |
 | 2026-08-22 | L (S3) | **`CONF` §2c is met, and the part of it that is not.** `ppcp-sim` presents a declaration different from the implementer's own — a different `timing.convention`, a `global` geometry, `provenance: measured` with a non-zero offset, `unrelated` relations, three clocks, a foreign profile set — and the eight paired rows now run against it over sockets | Recorded rather than assumed: **both ends are still `libppcp`.** The foreignness is in the DECLARATION, not in the implementation, so `CONF` 5c stays open and a bug shared by both ends of a link is still invisible. What changed is that a hardcoded convention, an assumed-zero offset, a composed relation or a missing profile check now has something to disagree with. `ppcp-sim` refuses a run on four checks that exist only because there are two ends: a revised `t0` (I7), a message originated by a peer whose declared profiles do not confer it (I24), `authority: host` from a peer declaring `role: capture` (I20), and a held relation spanning two clocks of one peer (I18) |
 | 2026-08-22 | L (S3) | **The `late-host` scenario needed retuning before it exercised 8.2k at all.** With the host's arbitration delayed by 2 s and the device's mint deadline at `issue_hold_ns + heartbeat_interval_ms` = 1.2 s after the Candidate's instant, the two landed 70 ms apart and the host won the race — so the run looked like a normal arbitration and asserted nothing about I35 | Not a defect in anything; recorded because it is the shape of an interoperability test that passes for the wrong reason. The delay is now 3 s and the run shows what I35 is about: the device mints, the host attaches rather than issuing a second Shot, `issued` stays 0. Anyone writing IOP-8 against a real host in S5 needs the same margin |
+| 2026-08-23 | orchestrator (S3) | **Session S3 closed.** Wave 1: L9–L11, H4, D4. Wave 2: L13, H5+H7 (+ offer list), D5+D6+D8 (+ stored-session offers). The session hit its usage limit mid-wave-2; every agent had been told to commit after each green step and the cut-off lost nothing | All three repos on `main`. **L15 queue** assembled below. S4 next: L14, L15, L16; H6, H8; D7, D9 — with the two **composition gaps** first: nothing constructs `PpcpHostPeer` in PinPointStudio, and `AppModel` does not compose `DetectAndMint`/`SessionOfferService`/`PreviewProducer` in PinPointCapture |
+| 2026-08-23 | plan | **D4's premise was wrong**: PinPointCapture had no fragment ring buffer; REQ-BUF-1 was a requirement only | Built in `CaptureCore` (`FragmentRing`, extraction, coverage). `RingBufferRecorder`'s AVAssetWriter segment delivery has never run on a real camera (simulator has no 150 fps camera) — **user to exercise on a phone** |
+| 2026-08-23 | L (S3) | **F-L13-1 — `ppcp_peer_feed()` consumes unboundedly many frames per call and the 4-deep event ring drops the OLDEST event silently** on overflow. One socket read carrying a replayed bundle lost `capture_announce`. Both apps now feed one frame per call and drain between; PinPointStudio carries a test that goes red when this is fixed. D adds: `ppcp_bundle_reader_feed` drains the sink's answers but not its events, so a bundle replayed into a live peer overflows the same way | **L15**: feed stops when the queue is full and reports what it took, or a dropped-event counter; and the reader feed path must surface events |
+| 2026-08-23 | L (S3) | `ppcp-sim`'s `psk_ke`-only mode was a false pass twice (OpenSSL refused locally; then a missing `signature_algorithms`). Now hand-built on the library's HKDF/HMAC and proven both ways against `openssl s_server` | Lesson recorded: a negative-conformance tool that can only say "refused" is not evidence. `CONF` 2c met; 5c (a foreign *implementation*) stays open until S5's real pairs |
+| 2026-08-23 | H (S3) | **F-H5-2 — `ppcp_peer_session_params()` is NULL on the peer that originated `session_open`**; a host cannot read back `timebase_ref`, `coincidence_window_ns`, `issue_hold_ns` (8.2b, 8.2h) and keeps a drifting second copy. D finds the same root (**F-D6-3**): `has_session_params` not set on the originating path, so `ppcp_peer_zero_host()` is false for CORE 4.1b's hostless case — minting works only because absent parameters read as zero | **L15**: set session params on origination; `zero_host` derived from the absence of arbitration parameters, not from the path |
+| 2026-08-23 | H (S3) | **F-H5-1 — the remote half of I21 is unreachable**: a responder answers with its single `sync_timebase` and estimators key on the local timebase, so a host cannot probe two clocks of one device | **L15**: per-timebase responder (`sync_probe.timebase_id` echoed), estimator keyed on (local, remote) |
+| 2026-08-23 | H (S3) | **F-H5-3** — `health_report` is a precondition for liveness: without it every `heartbeat` is answered `profile_not_supported` and §7.4 never runs. Cost an hour and two wrongly-raised defects | **L15**: document in `peer.h`; consider refusing `ppcp_peer_init` with Live declared and no `health_report` |
+| 2026-08-23 | H (S3) | `tof_correction` is never sent by the host: 8.1d wants it and this host does not measure microphone-to-ball distance | Nothing invented. **Product question**: a host-side distance setting, or hosts nominate without ToF |
+| 2026-08-23 | D (S3) | **F-D5-1** — `ppcp_mint_pump` gives no way to learn which Shots it minted (the arbiter has `ppcp_arbiter_shot_at`); D decodes its own queued frames via `drain_peek` | **L15**: `ppcp_mint_shot_at` |
+| 2026-08-23 | D (S3) | **F-D6-1 — no `ppcp_peer_session_resume()`** for a message MSG 4.3a makes a MUST; it is the only `ppcp_msg` the device builds by hand, and one of the large arms | **L15**: originator |
+| 2026-08-23 | D (S3) | **F-D6-2** — the sync responder cannot stamp `t2`/`t3` near the socket, and 6.1c's escape (`t3 == t2` as a declaration) is not expressible | **L15**: `ppcp_peer_sync_reply_stamps(t2, t3)` or a callback at the responder |
+| 2026-08-23 | D (S3) | **F-D6-4** — `ppcp-sim` speaks plaintext or TLS 1.3 `psk_ke`; the device can reach neither (Network.framework: TLS 1.2 PSK only, RV 5.4b1). CT-S5 device, CT-S4(6), interop 1/7/8/9 are blocked on **D9's `direct` path**, not on libppcp | D9 first in S4-D |
+| 2026-08-23 | D (S3) | libppcp's F-D4-1 fix correctly broke a device fixture (`segment` on a `shot_windowed` Stream, wrong since D3) — the engine had not checked | Fixture corrected; recorded as evidence the fix works |
+| 2026-08-23 | H, D (S3) | Both apps' `ppcp-sim` use was limited: H's sandbox refused a binary outside its repo; D cannot speak its TLS. Rows against the sim are libppcp's only this session | S4: `ppcp-conform` (L14) drives the apps from outside through their real transports (A11), which is the intended route |
 
 ---
 
