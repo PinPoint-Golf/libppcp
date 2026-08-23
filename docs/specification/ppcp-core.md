@@ -1309,6 +1309,17 @@ The corollary for a mobile team: the protocol layer is not Swift or Kotlin. It i
 
 ---
 
+## Errata after revision 9
+
+*Changes made after the specification was approved, during implementation. Each is normative and each names the finding that produced it.*
+
+| # | Clause | Change |
+|---|---|---|
+| **E1** | [`PPCP-ENC` §2.1](ppcp-encoding.md#21-binding-streams-to-a-link) | **Added, 22 August 2026.** A link is bound by an explicit `link_bind` first frame carrying a dialler-minted `link_id`. Two implementations had invented two different implicit rules for associating a peer's connections, each correct against itself and neither able to meet the other. |
+| **E2** | [`PPCP-MSG` 6.1g](ppcp-messages.md#61-sync_probe--sync_reply) | **Added, 23 August 2026.** Where `sync_probe.timebase_id` names a timebase the **responder** declared, the responder stamps `t2`/`t3` on that timebase. Without it a peer with one clock could not measure two clocks of one counterpart — 6.1d addressed the prober's clocks and 6.1b left the responder's to the responder — so I21's remote half was unreachable (F-H5-1, PinPointStudio, S3). |
+
+---
+
 ## Annex B — Open issues
 
 Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared stable.

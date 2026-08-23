@@ -179,11 +179,16 @@ typedef struct ppcp_peer_config {
      * is the only reason the message exists. */
     ppcp_health_fn health_report;
 
-    /* 6.1b — the timebase this peer stamps `t2`/`t3` on when it ANSWERS a
-     * `sync_probe`: whichever clock its network stack timestamps with.  It
+    /* 6.1b — the DEFAULT timebase this peer stamps `t2`/`t3` on when it ANSWERS
+     * a `sync_probe`: whichever clock its network stack timestamps with.  It
      * MUST be one of the peer's declared timebases.  NULL means this peer does
      * not answer probes, and one arriving is answered
-     * `error`/`profile_not_supported` rather than with a fabricated instant. */
+     * `error`/`profile_not_supported` rather than with a fabricated instant.
+     *
+     * Erratum E2 (F-H5-1): where a probe's `timebase_id` names a timebase this
+     * peer DECLARED, it answers on that one instead and this is the fallback.
+     * That is what makes a device's second clock reachable from a host with
+     * one — see ppcp_peer_sync_add_target() below. */
     const char *sync_timebase;
 } ppcp_peer_config;
 
@@ -483,19 +488,50 @@ PPCP_API const ppcp_transfer_table *ppcp_peer_transfers(const ppcp_peer *p);
  * prober does not know which clock a responder stamps on until it says so.
  */
 
-/* PPCP_ERR_LIMIT past PPCP_PEER_MAX_SYNC; PPCP_ERR_INVALID for a timebase
- * already registered.  `remote_tb` may be NULL. */
+/* PPCP_ERR_LIMIT past PPCP_PEER_MAX_SYNC; PPCP_ERR_INVALID for a PAIR already
+ * registered.  `remote_tb` may be NULL and is then learned from the first
+ * `sync_reply` (6.1b). */
 PPCP_API ppcp_result ppcp_peer_sync_add_timebase(ppcp_peer *p, const char *local_tb,
                                                  const char *remote_tb);
+
+/* ⚠ THE REMOTE HALF OF I21 (F-H5-1, erratum E2).
+ *
+ * 6.1d gives the PROBER a sequence per local clock, and 6.1b lets the RESPONDER
+ * answer on whichever declared clock it chose.  Between them a host with one
+ * clock had no way to measure a device's camera clock and its audio clock
+ * separately — every reply came back stamped on the device's single chosen
+ * timebase — so I21's remote half was unreachable from the host side.
+ *
+ * A target names the responder's clock in `sync_probe.timebase_id`.  A
+ * responder that declares that timebase answers on it; one that does not
+ * answers on its default, and the prober sees a `t2.tb` that is not the one it
+ * asked for.  Sequences are keyed on the PAIR, so
+ *
+ *     ppcp_peer_sync_add_target(host, "tb:host", "tb:dev-camera");
+ *     ppcp_peer_sync_add_target(host, "tb:host", "tb:dev-audio");
+ *
+ * is two sequences, two estimators and two directly-declared relations — which
+ * is I21 and 5.4.1a, with nothing composed (I18). */
+PPCP_API ppcp_result ppcp_peer_sync_add_target(ppcp_peer *p, const char *local_tb,
+                                               const char *remote_tb);
+
 PPCP_API size_t ppcp_peer_sync_count(const ppcp_peer *p);
 PPCP_API const ppcp_sync_estimator *ppcp_peer_sync_estimator_at(const ppcp_peer *p,
                                                                 size_t index);
+/* The first sequence on `local_tb`, whatever it probes — the single-remote
+ * case.  Use the pair form where a local clock probes two remote ones. */
 PPCP_API const ppcp_sync_estimator *ppcp_peer_sync_estimator_for(const ppcp_peer *p,
                                                                  const char *local_tb);
+PPCP_API const ppcp_sync_estimator *ppcp_peer_sync_estimator_for_pair(const ppcp_peer *p,
+                                                                      const char *local_tb,
+                                                                      const char *remote_tb);
 
 /* Queues one `sync_probe` on `local_tb`, reading `t1` from the embedding's
- * clock.  `probe_seq` runs per timebase, so two sequences never collide. */
+ * clock.  `probe_seq` runs per sequence, so two never collide.  The `_to` form
+ * names the pair, for a local clock that probes more than one remote. */
 PPCP_API ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb);
+PPCP_API ppcp_result ppcp_peer_sync_probe_to(ppcp_peer *p, const char *local_tb,
+                                             const char *remote_tb);
 
 /* 6.1c — an embedding that can stamp closer to the socket than a clock read at
  * decode time supplies the four timestamps itself.  The automatic path (a
@@ -503,6 +539,9 @@ PPCP_API ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb);
  * convenient one; this is the accurate one, and both feed the same estimator. */
 PPCP_API ppcp_result ppcp_peer_sync_observe(ppcp_peer *p, const char *local_tb,
                                             int64_t t1, int64_t t2, int64_t t3, int64_t t4);
+PPCP_API ppcp_result ppcp_peer_sync_observe_to(ppcp_peer *p, const char *local_tb,
+                                               const char *remote_tb, int64_t t1,
+                                               int64_t t2, int64_t t3, int64_t t4);
 
 /* 6.3c — a burst of PPCP_SYNC_BURST exchanges on every registered timebase.
  * Driven by the embedding's events because the library has neither a network

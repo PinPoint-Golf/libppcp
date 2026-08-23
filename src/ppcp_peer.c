@@ -54,8 +54,18 @@ typedef struct tx_queue {
     size_t  off;
 } tx_queue;
 
-/* One local timebase's probe sequence and burst schedule. */
+/* One probe sequence's schedule.  A sequence is keyed on the PAIR (local
+ * timebase, remote timebase), not on the local one alone: F-H5-1 found that
+ * keying on the local timebase made I21's remote half unreachable — a host with
+ * one clock could not probe a device's camera clock and its audio clock
+ * separately, because the second registration collided with the first. */
 typedef struct sync_sched {
+    /* True when this sequence names the REMOTE timebase in `sync_probe`'s
+     * `timebase_id` — the peer is selecting which of the responder's clocks to
+     * measure (erratum E2).  False is 6.1d's plain case: the field names this
+     * peer's own local timebase and the responder answers on whichever clock
+     * it chose. */
+    bool     probe_remote;
     uint64_t probe_seq;
     uint32_t burst_left;
     int64_t  next_due_ns;
@@ -1482,19 +1492,60 @@ const ppcp_transfer_table *ppcp_peer_transfers(const ppcp_peer *p)
  * a relation that was not measured (I18, 5.4c).
  */
 
+static bool id_is(const ppcp_id *id, const char *s, size_t len)
+{
+    return id != NULL && id->len == len && memcmp(id->v, s, len) == 0;
+}
+
+/* The first sequence on this LOCAL timebase, whatever it is probing.  This is
+ * the single-remote case and it is what ppcp_peer_sync_probe() and the older
+ * accessors mean. */
 static size_t peer_sync_find(const ppcp_peer *p, const char *tb, size_t tb_len)
 {
     size_t i;
     for (i = 0; i < p->sync_count; i++) {
-        const ppcp_id *l = ppcp_sync_estimator_local_tb(&p->sync[i]);
-        if (l != NULL && l->len == tb_len && memcmp(l->v, tb, tb_len) == 0)
+        if (id_is(ppcp_sync_estimator_local_tb(&p->sync[i]), tb, tb_len))
             return i;
     }
     return p->sync_count;
 }
 
-ppcp_result ppcp_peer_sync_add_timebase(ppcp_peer *p, const char *local_tb,
-                                        const char *remote_tb)
+/* F-H5-1 — the sequence for the PAIR.  `remote` NULL means "the one with no
+ * remote yet", which is what a registration that has not seen a reply is. */
+static size_t peer_sync_find_pair(const ppcp_peer *p, const char *local, size_t local_len,
+                                  const char *remote, size_t remote_len)
+{
+    size_t i;
+    for (i = 0; i < p->sync_count; i++) {
+        const ppcp_id *r;
+        if (!id_is(ppcp_sync_estimator_local_tb(&p->sync[i]), local, local_len))
+            continue;
+        r = ppcp_sync_estimator_remote_tb(&p->sync[i]);
+        if (remote == NULL) {
+            if (r == NULL || r->len == 0)
+                return i;
+        } else if (id_is(r, remote, remote_len)) {
+            return i;
+        }
+    }
+    return p->sync_count;
+}
+
+/* Which sequence a `sync_reply` belongs to.  6.1a echoes `t1` with its `tb`,
+ * which names the local half; `t2.tb` names the remote half (6.1b).  An exact
+ * pair wins; a sequence that has not yet learned its remote timebase takes it
+ * otherwise, which is how the FIRST reply of a plain 6.1d exchange lands. */
+static size_t peer_sync_find_for_reply(const ppcp_peer *p, const ppcp_body_sync_reply *b)
+{
+    size_t i = peer_sync_find_pair(p, b->t1.tb.v, b->t1.tb.len,
+                                   b->t2.tb.v, b->t2.tb.len);
+    if (i != p->sync_count)
+        return i;
+    return peer_sync_find_pair(p, b->t1.tb.v, b->t1.tb.len, NULL, 0);
+}
+
+static ppcp_result peer_sync_add(ppcp_peer *p, const char *local_tb,
+                                 const char *remote_tb, bool probe_remote)
 {
     ppcp_sync_estimator *e = NULL;
     ppcp_result          rc;
@@ -1502,11 +1553,18 @@ ppcp_result ppcp_peer_sync_add_timebase(ppcp_peer *p, const char *local_tb,
 
     if (p == NULL || local_tb == NULL)
         return PPCP_ERR_INVALID;
+    if (probe_remote && (remote_tb == NULL || *remote_tb == '\0'))
+        return PPCP_ERR_INVALID;   /* naming nothing is not naming a clock */
     n = strlen(local_tb);
     if (n == 0)
         return PPCP_ERR_INVALID;
-    if (peer_sync_find(p, local_tb, n) != p->sync_count)
-        return PPCP_ERR_INVALID;              /* one sequence per timebase, not two */
+    /* One sequence per PAIR (F-H5-1).  Registering the same local timebase
+     * twice against the same remote — or twice with no remote named — is still
+     * refused; registering it against two DIFFERENT remote clocks is the whole
+     * point, and used to be impossible. */
+    if (peer_sync_find_pair(p, local_tb, n, remote_tb,
+                            (remote_tb == NULL) ? 0 : strlen(remote_tb)) != p->sync_count)
+        return PPCP_ERR_INVALID;
     if (p->sync_count == PPCP_PEER_MAX_SYNC)
         return PPCP_ERR_LIMIT;
 
@@ -1515,11 +1573,24 @@ ppcp_result ppcp_peer_sync_add_timebase(ppcp_peer *p, const char *local_tb,
     if (rc != PPCP_OK)
         return rc;
     memset(&p->sched[p->sync_count], 0, sizeof(p->sched[0]));
+    p->sched[p->sync_count].probe_remote = probe_remote;
     /* Due immediately, so a maintenance probe goes out on the first pump even
      * if the embedding never triggers a burst. */
     p->sched[p->sync_count].next_due_ns = INT64_MIN;
     p->sync_count++;
     return PPCP_OK;
+}
+
+ppcp_result ppcp_peer_sync_add_timebase(ppcp_peer *p, const char *local_tb,
+                                        const char *remote_tb)
+{
+    return peer_sync_add(p, local_tb, remote_tb, false);
+}
+
+ppcp_result ppcp_peer_sync_add_target(ppcp_peer *p, const char *local_tb,
+                                      const char *remote_tb)
+{
+    return peer_sync_add(p, local_tb, remote_tb, true);
 }
 
 size_t ppcp_peer_sync_count(const ppcp_peer *p)
@@ -1544,6 +1615,18 @@ const ppcp_sync_estimator *ppcp_peer_sync_estimator_for(const ppcp_peer *p,
     return (i == p->sync_count) ? NULL : &p->sync[i];
 }
 
+const ppcp_sync_estimator *ppcp_peer_sync_estimator_for_pair(const ppcp_peer *p,
+                                                             const char *local_tb,
+                                                             const char *remote_tb)
+{
+    size_t i;
+    if (p == NULL || local_tb == NULL)
+        return NULL;
+    i = peer_sync_find_pair(p, local_tb, strlen(local_tb), remote_tb,
+                            (remote_tb == NULL) ? 0 : strlen(remote_tb));
+    return (i == p->sync_count) ? NULL : &p->sync[i];
+}
+
 ppcp_relation_set *ppcp_peer_relations(ppcp_peer *p)
 {
     return (p == NULL) ? NULL : &p->relations;
@@ -1558,21 +1641,18 @@ static void peer_sync_remember(sync_sched *sc, uint64_t seq, int64_t t1_ns)
     sc->out_next = (sc->out_next + 1u) % n;
 }
 
-ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb)
+static ppcp_result peer_sync_probe_at(ppcp_peer *p, size_t i)
 {
-    ppcp_instant t1;
-    ppcp_msg     m;
-    ppcp_result  rc;
-    size_t       i;
+    const ppcp_id *local = ppcp_sync_estimator_local_tb(&p->sync[i]);
+    ppcp_instant   t1;
+    ppcp_msg       m;
+    ppcp_result    rc;
 
-    if (p == NULL || local_tb == NULL)
+    if (local == NULL || local->len == 0)
         return PPCP_ERR_INVALID;
-    i = peer_sync_find(p, local_tb, strlen(local_tb));
-    if (i == p->sync_count)
-        return PPCP_ERR_NOT_FOUND;
     /* 6.3a: the prober's own clock, in the timebase it is probing for.  There
      * is no "now" in this library that does not name a timebase (I1). */
-    rc = ppcp_clock_read(&p->clock, local_tb, &t1);
+    rc = ppcp_clock_read(&p->clock, local->v, &t1);
     if (rc != PPCP_OK)
         return rc;
 
@@ -1580,15 +1660,49 @@ ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb)
     if (rc != PPCP_OK)
         return rc;
     m.body.sync_probe.probe_seq = ++p->sched[i].probe_seq;
-    rc = ppcp_id_set_z(&m.body.sync_probe.timebase_id, local_tb);
-    if (rc != PPCP_OK)
-        return rc;
+    /* 6.1d — `timebase_id` is this peer's own local clock, one sequence per
+     * clock.  Erratum E2 (F-H5-1): a peer that wants a NAMED clock of the
+     * responder's names it here instead, and a responder that declares it
+     * answers on it.  Which of the two this sequence is was fixed at
+     * registration, so the field never changes meaning mid-sequence. */
+    if (p->sched[i].probe_remote) {
+        const ppcp_id *remote = ppcp_sync_estimator_remote_tb(&p->sync[i]);
+        if (remote == NULL || remote->len == 0)
+            return PPCP_ERR_INVALID;
+        m.body.sync_probe.timebase_id = *remote;
+    } else {
+        m.body.sync_probe.timebase_id = *local;
+    }
     m.body.sync_probe.t1 = t1;
     rc = peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
     if (rc != PPCP_OK)
         return rc;
     peer_sync_remember(&p->sched[i], m.body.sync_probe.probe_seq, t1.ns);
     return PPCP_OK;
+}
+
+ppcp_result ppcp_peer_sync_probe(ppcp_peer *p, const char *local_tb)
+{
+    size_t i;
+    if (p == NULL || local_tb == NULL)
+        return PPCP_ERR_INVALID;
+    i = peer_sync_find(p, local_tb, strlen(local_tb));
+    if (i == p->sync_count)
+        return PPCP_ERR_NOT_FOUND;
+    return peer_sync_probe_at(p, i);
+}
+
+ppcp_result ppcp_peer_sync_probe_to(ppcp_peer *p, const char *local_tb,
+                                    const char *remote_tb)
+{
+    size_t i;
+    if (p == NULL || local_tb == NULL)
+        return PPCP_ERR_INVALID;
+    i = peer_sync_find_pair(p, local_tb, strlen(local_tb), remote_tb,
+                            (remote_tb == NULL) ? 0 : strlen(remote_tb));
+    if (i == p->sync_count)
+        return PPCP_ERR_NOT_FOUND;
+    return peer_sync_probe_at(p, i);
 }
 
 ppcp_result ppcp_peer_sync_observe(ppcp_peer *p, const char *local_tb, int64_t t1,
@@ -1598,6 +1712,20 @@ ppcp_result ppcp_peer_sync_observe(ppcp_peer *p, const char *local_tb, int64_t t
     if (p == NULL || local_tb == NULL)
         return PPCP_ERR_INVALID;
     i = peer_sync_find(p, local_tb, strlen(local_tb));
+    if (i == p->sync_count)
+        return PPCP_ERR_NOT_FOUND;
+    return ppcp_sync_estimator_observe(&p->sync[i], t1, t2, t3, t4);
+}
+
+ppcp_result ppcp_peer_sync_observe_to(ppcp_peer *p, const char *local_tb,
+                                      const char *remote_tb, int64_t t1, int64_t t2,
+                                      int64_t t3, int64_t t4)
+{
+    size_t i;
+    if (p == NULL || local_tb == NULL)
+        return PPCP_ERR_INVALID;
+    i = peer_sync_find_pair(p, local_tb, strlen(local_tb), remote_tb,
+                            (remote_tb == NULL) ? 0 : strlen(remote_tb));
     if (i == p->sync_count)
         return PPCP_ERR_NOT_FOUND;
     return ppcp_sync_estimator_observe(&p->sync[i], t1, t2, t3, t4);
@@ -1635,7 +1763,9 @@ ppcp_result ppcp_peer_sync_pump(ppcp_peer *p, int64_t now_ns, size_t *out_probes
         int64_t        gap;
         if (tb == NULL || now_ns < p->sched[i].next_due_ns)
             continue;
-        if (ppcp_peer_sync_probe(p, tb->v) != PPCP_OK)
+        /* By INDEX, not by local timebase name: two sequences can share a
+         * local clock and probe two different remote ones (F-H5-1). */
+        if (peer_sync_probe_at(p, i) != PPCP_OK)
             continue;
         sent++;
         if (p->sched[i].burst_left > 0) {
@@ -2204,6 +2334,7 @@ static ppcp_result peer_on_sync_probe(ppcp_peer *p, const ppcp_msg *m)
     ppcp_instant t2, t3;
     ppcp_msg     r;
     ppcp_result  rc;
+    const char  *resp_tb;
 
     /* 6.1b — `t2` and `t3` are in a timebase the responder DECLARED.  A peer
      * that was given none has no honest answer, and inventing one is exactly
@@ -2213,9 +2344,31 @@ static ppcp_result peer_on_sync_probe(ppcp_peer *p, const ppcp_msg *m)
                               "no sync timebase declared", true, m->env.msg_id);
         return PPCP_ERR_INVALID;
     }
-    rc = ppcp_clock_read(&p->clock, p->sync_tb.v, &t2);
-    if (rc != PPCP_OK)
-        return rc;
+
+    /* Erratum E2, F-H5-1 — THE REMOTE HALF OF I21.
+     *
+     * 6.1d has the prober set `timebase_id` per LOCAL clock, and 6.1b lets the
+     * responder answer on whichever clock it likes.  Between them there is no
+     * way for a host with one clock to measure a device's camera clock and its
+     * audio clock separately: every probe comes back stamped on the responder's
+     * single chosen timebase, so I21's remote half is unreachable and CT-I21
+     * could only ever be written from the multi-clock side.
+     *
+     * So: where `timebase_id` names a timebase THIS peer declared, this peer
+     * answers on it.  6.1a and 6.1b both still hold — `t1` is echoed unchanged,
+     * `t2` and `t3` share one declared responder timebase — and a responder
+     * that does not implement this answers on its default, which the prober
+     * sees as a `t2.tb` that is not the one it asked for.  That is evidence,
+     * not breakage. */
+    resp_tb = p->sync_tb.v;
+    if (b->timebase_id.len > 0 && ppcp_peer_declares_timebase(p, &b->timebase_id) &&
+        ppcp_clock_read(&p->clock, b->timebase_id.v, &t2) == PPCP_OK) {
+        resp_tb = b->timebase_id.v;
+    } else {
+        rc = ppcp_clock_read(&p->clock, resp_tb, &t2);
+        if (rc != PPCP_OK)
+            return rc;
+    }
 
     rc = ppcp_msg_init(&r, PPCP_MT_SYNC_REPLY, 1);
     if (rc != PPCP_OK)
@@ -2223,7 +2376,9 @@ static ppcp_result peer_on_sync_probe(ppcp_peer *p, const ppcp_msg *m)
     r.body.sync_reply.probe_seq = b->probe_seq;
     r.body.sync_reply.t1        = b->t1;      /* 6.1a: echoed unmodified, `tb` included */
     r.body.sync_reply.t2        = t2;
-    rc = ppcp_clock_read(&p->clock, p->sync_tb.v, &t3);
+    /* 6.1c: `t3` as close to transmission as this implementation allows, and on
+     * the SAME timebase as `t2` (6.1b). */
+    rc = ppcp_clock_read(&p->clock, resp_tb, &t3);
     if (rc != PPCP_OK)
         return rc;
     r.body.sync_reply.t3 = t3;
@@ -2241,14 +2396,15 @@ static ppcp_result peer_on_sync_reply(ppcp_peer *p, const ppcp_msg *m)
     size_t       i, j, n;
     bool         matched = false;
 
-    i = peer_sync_find(p, b->t1.tb.v, b->t1.tb.len);
-    if (i == p->sync_count)
-        return PPCP_OK;    /* a reply for a timebase this peer is not probing */
-
     /* 6.1b — one responder timebase for both stamps.  Two would make the
-     * exchange unusable and the relation meaningless. */
+     * exchange unusable and the relation meaningless.  Checked before the
+     * lookup because the lookup now uses `t2.tb`. */
     if (!ppcp_id_equal(&b->t2.tb, &b->t3.tb))
         return PPCP_ERR_MALFORMED;
+
+    i = peer_sync_find_for_reply(p, b);
+    if (i == p->sync_count)
+        return PPCP_OK;    /* a reply for a pair this peer is not probing */
 
     /* 6.1a — the echo is the one we sent, or it is not our exchange. */
     n = sizeof(p->sched[i].out) / sizeof(p->sched[i].out[0]);

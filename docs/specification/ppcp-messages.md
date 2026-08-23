@@ -323,6 +323,8 @@ heartbeat_ack  { seq: uint,
 
 ### 6.1 `sync_probe` / `sync_reply`
 
+*Erratum E2, 23 August 2026 — clause 6.1g added after the third implementation session. 6.1d gives the **prober** one sequence per local timebase and 6.1b lets the **responder** answer on whichever declared timebase it chose. Between them there was no way for a peer with one clock to measure two clocks of one counterpart: every reply came back stamped on the responder's single chosen timebase, so I21's remote half was unreachable and CT-I21 could only ever be asserted from the multi-clock side (finding F-H5-1, PinPointStudio, session S3).*
+
 ```
 sync_probe { probe_seq: uint, timebase_id: Id, t1: Instant }
 sync_reply { probe_seq: uint, t1: Instant, t2: Instant, t3: Instant }
@@ -336,6 +338,7 @@ Four timestamps: `t1` the probe's send instant in the prober's timebase; `t2` an
 - **(6.1d) MUST** A multi-timebase peer runs a separate probe sequence per timebase, setting `timebase_id` accordingly, and declares each relation directly (I21, I18).
 - **(6.1e) MUST** A burst is 10–20 exchanges, performed on connect, after a network change and after a thermal event.
 - **(6.1f) MUST** The resulting estimate is published in a `relation_update` and is filtered, never stepped.
+- **(6.1g) MUST** Where `sync_probe.timebase_id` names a timebase the **responder** declared, the responder stamps `t2` and `t3` on that timebase. Where it names anything else — which is 6.1d's ordinary case, the prober's own clock — the responder stamps on a declared timebase of its own choosing, as before. A prober selecting a responder's clock this way runs one sequence per **pair** of timebases and declares each resulting relation directly; nothing is composed (I18). A responder that does not implement this answers on its own choice, and the prober sees a `t2.tb` that is not the one it asked for: the exchange is still valid for the pair it actually measured, and the prober learns which clock it got rather than being told it got the one it wanted.
 
 The estimator is not mandated. Minimum-RTT filtering is RECOMMENDED because it estimates offset from the tightness of the latency distribution's left tail, which is what makes a USB tunnel converge faster than congested 2.4 GHz WiFi. What is mandated is that offset **and** rate are estimated and that both sigmas are declared.
 

@@ -612,9 +612,120 @@ static void test_liveness(void)
     rig_peer_free(&device);
 }
 
+/* ======================================= CT-I21, the REMOTE half (F-H5-1, E2)
+ *
+ * CT-I21 was previously asserted only against a peer with several clocks of
+ * its OWN.  The other half — one clock probing two clocks of one counterpart —
+ * was unreachable: 6.1d gives the prober a sequence per local timebase and
+ * 6.1b lets the responder answer on whichever declared clock it chose, so every
+ * reply came back on the device's single `sync_timebase` and the host could
+ * measure only one relation to it.  Erratum E2 makes `sync_probe.timebase_id`
+ * selectable: name a clock the responder DECLARED and it answers on that one.
+ */
+static void test_sync_remote_half(void)
+{
+    static const char *const prof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_LIVE };
+    rig_peer       host, device;
+    ppcp_timebase  tbs[2];
+    ppcp_id        dprof[2];
+    ppcp_peer_desc desc;
+    const ppcp_sync_estimator *cam, *aud;
+    ppcp_timebase_relation rc_, ra_;
+
+    memset(&host, 0, sizeof(host));
+    rig_add(&host.clock, "tb:hostA", 1000000000, 0.0);
+    rig_peer_new(&host, PPCP_ROLE_HOST, "peer:host", prof, 2, "tb:hostA", true);
+
+    /* ONE device, TWO clocks, deliberately far apart: a camera clock 12.5 ms
+     * and 20 ppm off the host's, and an audio clock 300 ms and -35 ppm off it.
+     * If the responder answered on one clock for both sequences the two
+     * relations would be indistinguishable, which is exactly what used to
+     * happen. */
+    memset(&device, 0, sizeof(device));
+    rig_add(&device.clock, "tb:devCam", 1012500000, 20.0);
+    rig_add(&device.clock, "tb:devAud", 1300000000, -35.0);
+    rig_peer_new(&device, PPCP_ROLE_CAPTURE, "peer:dev", prof, 2, "tb:devCam", true);
+
+    /* 6.1b — the responder answers only on a timebase it DECLARED, so the
+     * declaration is what makes the second clock addressable at all. */
+    if (ppcp_timebase_make(&tbs[0], "tb:devCam", 9, PPCP_TB_CONTINUOUS, true, 1000) != PPCP_OK)
+        abort();
+    if (ppcp_timebase_make(&tbs[1], "tb:devAud", 9, PPCP_TB_CONTINUOUS, true, 1000) != PPCP_OK)
+        abort();
+    if (ppcp_id_set_z(&dprof[0], PPCP_PROFILE_CORE) != PPCP_OK) abort();
+    if (ppcp_id_set_z(&dprof[1], PPCP_PROFILE_LIVE) != PPCP_OK) abort();
+    if (ppcp_peer_desc_make(&desc, "peer:dev", PPCP_ROLE_CAPTURE, "1.0",
+                            dprof, 2, tbs, 2) != PPCP_OK) abort();
+    CHECK_EQ_I(ppcp_peer_declare(device.p, &desc), PPCP_OK);
+    pump(device.p, host.p, PPCP_CHANNEL_CONTROL);
+    drop_events(host.p);
+
+    TEST("CT-I21 (remote) / E2 — one local clock, a sequence per REMOTE clock");
+    CHECK_EQ_I(ppcp_peer_sync_add_target(host.p, "tb:hostA", "tb:devCam"), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_sync_add_target(host.p, "tb:hostA", "tb:devAud"), PPCP_OK);
+    CHECK_EQ_I(ppcp_peer_sync_count(host.p), 2);
+    /* The PAIR is the key: the same pair twice is still not a second
+     * measurement, and a target naming no remote clock is not a target. */
+    CHECK_EQ_I(ppcp_peer_sync_add_target(host.p, "tb:hostA", "tb:devCam"), PPCP_ERR_INVALID);
+    CHECK_EQ_I(ppcp_peer_sync_add_target(host.p, "tb:hostA", NULL), PPCP_ERR_INVALID);
+
+    TEST("6.3c — the burst runs both sequences, and both go out on the wire");
+    CHECK_EQ_I(ppcp_peer_sync_trigger(host.p, PPCP_SYNC_ON_CONNECT), PPCP_OK);
+    {
+        size_t probes = 0;
+        (void)ppcp_peer_sync_pump(host.p, host.clock.now_ns, &probes);
+        CHECK_EQ_I(probes, 2);
+        CHECK_EQ_I(count_probes(host.p, PPCP_CHANNEL_CONTROL), 2);
+    }
+    advance(&host, &device, RIG_LEG_NS);
+    pump(host.p, device.p, PPCP_CHANNEL_CONTROL);
+    advance(&host, &device, RIG_LEG_NS);
+    pump(device.p, host.p, PPCP_CHANNEL_CONTROL);
+    drop_events(host.p);
+    drop_events(device.p);
+
+    TEST("6.1b — each reply came back on the clock the probe named");
+    cam = ppcp_peer_sync_estimator_for_pair(host.p, "tb:hostA", "tb:devCam");
+    aud = ppcp_peer_sync_estimator_for_pair(host.p, "tb:hostA", "tb:devAud");
+    CHECK(cam != NULL && aud != NULL);
+    CHECK(cam != aud);
+    CHECK_EQ_I(ppcp_sync_estimator_count(cam), 1);
+    CHECK_EQ_I(ppcp_sync_estimator_count(aud), 1);
+
+    TEST("I21 / 5.4.1a — two relations, MEASURED, not one measured and one composed");
+    exchange(&host, &device, 40, 2000000000);
+    cam = ppcp_peer_sync_estimator_for_pair(host.p, "tb:hostA", "tb:devCam");
+    aud = ppcp_peer_sync_estimator_for_pair(host.p, "tb:hostA", "tb:devAud");
+    CHECK_EQ_I(ppcp_sync_estimator_relation(cam, &rc_), PPCP_OK);
+    CHECK_EQ_I(ppcp_sync_estimator_relation(aud, &ra_), PPCP_OK);
+    CHECK(ppcp_cbor_key_is(rc_.from.v, rc_.from.len, "tb:hostA"));
+    CHECK(ppcp_cbor_key_is(rc_.to.v, rc_.to.len, "tb:devCam"));
+    CHECK(ppcp_cbor_key_is(ra_.from.v, ra_.from.len, "tb:hostA"));
+    CHECK(ppcp_cbor_key_is(ra_.to.v, ra_.to.len, "tb:devAud"));
+    CHECK_EQ_I(rc_.method, PPCP_RELM_ESTIMATED_ONLINE);
+    CHECK_EQ_I(ra_.method, PPCP_RELM_ESTIMATED_ONLINE);
+    /* The two clocks were injected 287.5 ms apart and 55 ppm apart, and the
+     * two relations recover both — which they could not do if one responder
+     * timebase had answered both sequences. */
+    CHECK(rc_.skew_ppm > 15.0 && rc_.skew_ppm < 25.0);
+    CHECK(ra_.skew_ppm > -40.0 && ra_.skew_ppm < -30.0);
+    CHECK(ra_.offset_ns - rc_.offset_ns > 250000000);
+
+    TEST("6.1f — both are published in ONE relation_update, neither composed");
+    {
+        size_t n = 0;
+        CHECK_EQ_I(ppcp_peer_publish_relations(host.p, &n), PPCP_OK);
+        CHECK_EQ_I(n, 2);
+    }
+
+    rig_peer_free(&host);
+    rig_peer_free(&device);
+}
+
 int main(void)
 {
     test_sync();
+    test_sync_remote_half();
     test_liveness();
     TEST_MAIN_END();
 }
