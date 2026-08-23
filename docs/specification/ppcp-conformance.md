@@ -53,6 +53,8 @@ Build order matters here: each of these is needed to test the layer above it, an
 
 Thirty-eight invariants, thirty-nine tests — I36 carries two, because the coverage rule and the preview-shedding rule fail in different ways. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
 
+*Erratum E19, 23 August 2026.* **`CT-I36a` is the second test of I36. There is no invariant I36a**, and the identifier is a test identifier that happens to be formed from an invariant's. It is spelled that way because test identifiers are quoted by number across three implementations and a conformance matrix, and renaming one costs more than saying what it means (F-D4-4, PinPointCapture, session S3).
+
 | Test | Invariant | Profile | Method | Assertion |
 |---|---|---|---|---|
 | **CT-I1** | I1 | Core | static | No timestamp is encodable without a `tb`. Attempt to emit an `Instant` with a missing or empty `tb` and assert the encoder refuses. Decode a stream containing one and assert `malformed`. |
@@ -118,7 +120,7 @@ The conversion spans two entities and, for the default mobile path, three inputs
 5. A rolling-shutter profile's row-`r` instants match [`PPCP-CORE` §6.2d](ppcp-core.md#62-rolling-shutter) under **both** `top_to_bottom` and `bottom_to_top`, including the `R == 1` case.
 6. **The scalar form and an equivalent constant array produce identical canonical instants.** The shipping application locks exposure, so the scalar path is the one the product uses; a conversion test that exercises only the varying-exposure path does not test what ships.
 
-Assertion 2 is the whole test. The other four are why it is worth writing carefully.
+Assertion 2 is the whole test. The other **five** are why it is worth writing carefully. *(Erratum E19: this said "the other four" over six assertions — assertion 6 was added with the scalar form and the count was not.)*
 
 ### 4.2 CT-S2 — `nominal_frame_start` on the real device
 
@@ -152,7 +154,7 @@ Never exercised in a studio, and it is what v1 ships.
 
 **Assertions.**
 
-1. A session with no `host` runs end to end: declare, stream open, arm, candidates, shots, captures, bundle write, bundle read.
+1. A session with no `host` runs end to end: declare, stream open, **readiness**, candidates, shots, captures, bundle write, bundle read. *(Erratum E19, 23 August 2026: this assertion listed **`arm`**, and [`PPCP-CORE` 7.3b](ppcp-core.md#73-streams-and-capture-control) forbids a hostless bundle from containing one — `arm` is conferred by **Live** and with nobody controlling there is no command to record. The hostless peer arms itself and the bundle carries the effect, which is `readiness`. The same defect is item four of [5b1](#5-interoperability)'s own list, found by the profile-boundary audit and independently by both implementations.)*
 2. Two candidates 10 ms apart produce **either two Shots, or one Shot and one unpromoted Candidate — and both Candidates are emitted and retained with their evidence either way.** No coincidence window is applied, and no Shot carries more than one Candidate.
 3. Every Shot carries `authority: device`.
 4. The same two candidates, replayed into a session *with* a host and a 50 ms window, produce **one** Shot carrying **both** Candidates. Assertions 2 and 4 together are the test; either alone passes for the wrong reason.
@@ -217,6 +219,8 @@ Conformance to the document is necessary and not sufficient. Two implementations
 | Reference device, **no host** → bundle → reference host import | | I20, I23, I16, I9 |
 | Reference host ↔ **observer-only peer** (`Core + Live`) | | I24 |
 | Reference host ↔ peer declaring `unrelated` timebases | | I3, and that an honest degraded peer is not silently mishandled. **The host excludes and retains every Candidate; the peer mints nothing** ([`PPCP-CORE` §8.2i1](ppcp-core.md#82-arbitration)) — the pairing that found this hole is also the one that proves it closed |
+
+- **(5a1)** *Erratum E19, 23 August 2026.* **"Excludes" in the `unrelated` row means [8.2d](ppcp-core.md#82-arbitration) exclusion *or* [8.2i1](ppcp-core.md#82-arbitration) retention-without-grouping, and against a peer with no relation at all it is the second.** 8.2d excludes a Candidate whose relation is *too uncertain under host policy*, and that branch is never reached by a peer that declared `unrelated`: there is no relation to be uncertain about, the instant cannot be converted into `timebase_ref`, so the Candidate is retained un-grouped and no Shot is issued over it. Both readings satisfy the row and both are observable — no Shot, no zero offset substituted, the Candidate present and retained — and an implementer reading the row as "8.2d fires" will look for an exclusion event that never arrives (found by the S5 interoperability runs).
 | Reference host **owning its own acoustic Source** ↔ device with an acoustic Source | | I8 — two nominators of the same `basis`, both retained. A per-modality slot drops one and the failure is silent |
 | Reference host that never issues a `shot` ↔ nominating peer | | I32 — both ends agree on when the peer may mint, and the peer mints only what it would have promoted |
 | Reference host delayed past the mint deadline ↔ nominating peer | | I35 — the host attaches to the device's Shot rather than issuing a second one, and a forced collision links rather than duplicates |

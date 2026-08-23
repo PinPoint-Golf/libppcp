@@ -98,6 +98,35 @@ PPCP_API ppcp_result ppcp_rv_psk_identity_parse(const uint8_t *identity, size_t 
                                                 uint8_t rn2[PPCP_RV_RN_BYTES],
                                                 uint8_t tag[PPCP_RV_RID_BYTES]);
 
+/* 5.3a1 (erratum E21) — NO OCTET OF THE IDENTITY MAY BE 0x00.
+ *
+ * Several widely-used TLS stacks carry a PSK identity as a C string and take
+ * its length with strlen: an embedded zero truncates it, the server resolves
+ * nothing, and the handshake fails INTERMITTENTLY — one connection in sixteen,
+ * because 17 octets each have a 1-in-256 chance of being zero.  That is
+ * diagnosed at a driving range as a network fault.
+ *
+ * ppcp_rv_psk_identity_usable() answers whether a computed identity is safe.
+ * ppcp_rv_psk_identity_draw() is the one to call: give it a CSPRNG (the library
+ * owns none) and it draws `rn2` until neither it nor the resulting tag carries
+ * a zero — 1.07 draws on average — leaving `rn2` with better than 63 bits of
+ * entropy.  Nothing at the server changes: 5.3b recomputes the tag from the
+ * `rn2` it received exactly as before.
+ *
+ * ppcp_rv_psk_identity() is unchanged and does NOT reject a zero-bearing draw,
+ * because §10.2's vector must still reproduce byte for byte.  It is the wrong
+ * entry point for a live connection. */
+PPCP_API bool ppcp_rv_psk_identity_usable(const uint8_t identity[PPCP_RV_PSK_IDENTITY_BYTES]);
+
+/* Fills `out` with PPCP_RV_RN_BYTES of CSPRNG output.  Returns false if it
+ * cannot, which aborts the draw rather than falling back to anything. */
+typedef bool (*ppcp_rv_random_fn)(void *ctx, uint8_t *out, size_t len);
+
+PPCP_API ppcp_result ppcp_rv_psk_identity_draw(const uint8_t k_id[PPCP_RV_KEY_BYTES],
+                                               ppcp_rv_random_fn random_fn, void *ctx,
+                                               uint8_t rn2[PPCP_RV_RN_BYTES],
+                                               uint8_t identity[PPCP_RV_PSK_IDENTITY_BYTES]);
+
 /* ------------------------------------------------------------- the resolver */
 
 /* One held pairing: outstanding codes and persisted pairings alike (5.3b).

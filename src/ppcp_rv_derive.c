@@ -138,6 +138,45 @@ ppcp_result ppcp_rv_psk_identity(const uint8_t k_id[PPCP_RV_KEY_BYTES],
     return rc;
 }
 
+/* 5.3a1 (erratum E21).  A zero octet anywhere in the 17 makes the identity
+ * unusable through a strlen-lengthed PSK interface, and the failure it produces
+ * is intermittent rather than deterministic — which is why it survived a review
+ * and was found by a peer that dropped one connection in sixteen. */
+bool ppcp_rv_psk_identity_usable(const uint8_t identity[PPCP_RV_PSK_IDENTITY_BYTES])
+{
+    size_t i;
+    if (identity == NULL)
+        return false;
+    for (i = 0; i < PPCP_RV_PSK_IDENTITY_BYTES; i++)
+        if (identity[i] == 0u)
+            return false;
+    return true;
+}
+
+ppcp_result ppcp_rv_psk_identity_draw(const uint8_t k_id[PPCP_RV_KEY_BYTES],
+                                      ppcp_rv_random_fn random_fn, void *ctx,
+                                      uint8_t rn2[PPCP_RV_RN_BYTES],
+                                      uint8_t identity[PPCP_RV_PSK_IDENTITY_BYTES])
+{
+    /* At 6.1% rejection per draw this exceeds 64 attempts with probability
+     * around 1e-80; the bound exists so a broken CSPRNG returning a constant
+     * terminates instead of spinning. */
+    unsigned attempts;
+    if (k_id == NULL || random_fn == NULL || rn2 == NULL || identity == NULL)
+        return PPCP_ERR_INVALID;
+    for (attempts = 0; attempts < 64u; attempts++) {
+        ppcp_result rc;
+        if (!random_fn(ctx, rn2, PPCP_RV_RN_BYTES))
+            return PPCP_ERR_INVALID;
+        rc = ppcp_rv_psk_identity(k_id, rn2, identity);
+        if (rc != PPCP_OK)
+            return rc;
+        if (ppcp_rv_psk_identity_usable(identity))
+            return PPCP_OK;
+    }
+    return PPCP_ERR_INVALID;
+}
+
 ppcp_result ppcp_rv_psk_identity_parse(const uint8_t *identity, size_t len,
                                        uint8_t rn2[PPCP_RV_RN_BYTES],
                                        uint8_t tag[PPCP_RV_RID_BYTES])

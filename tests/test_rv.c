@@ -571,11 +571,93 @@ static void base64url_edges(void)
                PPCP_ERR_MALFORMED);
 }
 
+/* A deterministic stand-in for a CSPRNG, so the rejection loop of 5.3a1 is
+ * exercised rather than merely reached.  The first draw is chosen to produce a
+ * tag containing a zero byte; the counter walks on until one is clean. */
+typedef struct fake_rng { unsigned counter; unsigned draws; } fake_rng;
+
+static bool fake_random(void *ctx, uint8_t *out, size_t len)
+{
+    fake_rng *r = (fake_rng *)ctx;
+    size_t    i;
+    r->draws++;
+    for (i = 0; i < len; i++)
+        out[i] = (uint8_t)(r->counter * 37u + (unsigned)i * 11u + 1u);
+    r->counter++;
+    return true;
+}
+
+static bool refusing_random(void *ctx, uint8_t *out, size_t len)
+{
+    (void)ctx; (void)out; (void)len;
+    return false;
+}
+
+static void e21_no_zero_octet(void)
+{
+    unsigned char k_id[32];
+    unsigned char rn2[8], identity[17];
+    fake_rng      rng;
+    unsigned      trial;
+
+    ppcp_unhex(K_ID_HEX, k_id, sizeof(k_id));
+
+    TEST("5.3a1 (E21) — a drawn identity never carries a 0x00 octet");
+    for (trial = 0; trial < 500u; trial++) {
+        rng.counter = trial;
+        rng.draws   = 0;
+        CHECK_EQ_I(ppcp_rv_psk_identity_draw(k_id, fake_random, &rng, rn2, identity),
+                   PPCP_OK);
+        CHECK(ppcp_rv_psk_identity_usable(identity));
+        CHECK(rng.draws >= 1u);
+        /* The draw is still a valid 5.3a identity: same 17 octets, same tag,
+         * so 5.3b resolves it with no change at the server. */
+        {
+            unsigned char again[17];
+            CHECK_EQ_I(ppcp_rv_psk_identity(k_id, rn2, again), PPCP_OK);
+            CHECK_BYTES(again, 17, identity, 17);
+        }
+    }
+
+    TEST("5.3a1 — the rejection loop actually rejects, and usable() sees a zero");
+    {
+        unsigned char zeroed[17];
+        unsigned      rejected = 0, i;
+        memcpy(zeroed, identity, 17);
+        zeroed[9] = 0x00u;
+        CHECK(!ppcp_rv_psk_identity_usable(zeroed));
+        /* Over 500 raw draws, roughly 6% carry a zero somewhere; assert the
+         * population the erratum is about is not empty. */
+        for (i = 0; i < 500u; i++) {
+            unsigned char raw_rn2[8], raw_id[17];
+            fake_rng      r;
+            r.counter = i; r.draws = 0;
+            (void)fake_random(&r, raw_rn2, sizeof(raw_rn2));
+            CHECK_EQ_I(ppcp_rv_psk_identity(k_id, raw_rn2, raw_id), PPCP_OK);
+            if (!ppcp_rv_psk_identity_usable(raw_id))
+                rejected++;
+        }
+        CHECK(rejected > 0u);
+    }
+
+    TEST("5.3a1 — a CSPRNG that cannot answer aborts the draw, never falls back");
+    CHECK_EQ_I(ppcp_rv_psk_identity_draw(k_id, refusing_random, NULL, rn2, identity),
+               PPCP_ERR_INVALID);
+
+    TEST("RV 10.2's vector is itself free of 0x00, so E21 leaves it conformant");
+    {
+        unsigned char want[17];
+        ppcp_unhex(IDENTITY_HEX, want, sizeof(want));
+        CHECK(ppcp_rv_psk_identity_usable(want));
+    }
+}
+
 int main(void)
 {
     sha256_known_answers();
     rt1_derivation_vectors();
     rt14_identities();
+    e21_no_zero_octet();
     rt8_resolver();
     rt2_minimal_code();
     rt2_all_fields_code();
