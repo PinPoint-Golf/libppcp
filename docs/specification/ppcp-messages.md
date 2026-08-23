@@ -32,6 +32,7 @@ BCP 14 keywords are used as in [`PPCP-CORE` §2.1](ppcp-core.md#21-requirement-k
 
 - **(1a) MUST** A peer that receives a well-formed message whose behaviour it does not implement respond `error` / `profile_not_supported` if the message is a request, and ignore it if the message is an event.
 - **(1b) MUST NOT** A peer close the transport in response to an unknown message type, an unknown field, or an unimplemented behaviour.
+- **(1c) MUST** *Erratum E18, 23 August 2026.* A peer that receives a Request **answers** it, with the Response its own section names — `hello_accept`, `declare_ack`, `session_joined`, `stream_open_ack`, `heartbeat_ack`, `sync_reply` or `session_accept` — or with `error` ([§10](#10-errors)) where it cannot comply. The class table above said this in prose and no numbered clause carried it, so a peer that received `hello`, `declare`, `session_open`, `stream_open`, `heartbeat` or `sync_probe` and simply never replied was violating nothing at all: each of those seven responses was required by no normative clause anywhere in the set, and a message nothing requires is a message nothing tests. Found by the adjacent-MUST sweep of [`PPCP-CONF` 5b2](ppcp-conformance.md#5-interoperability), run over all forty-five messages in session S4.
 
 ---
 
@@ -183,7 +184,7 @@ discontinuity {
 }
 ```
 
-- **(3.7a) MUST** Emitted whenever a step is observed in one of the peer's declared timebases, whether or not `epoch_stable` predicted it.
+- **(3.7a) MUST** A peer **emits** `discontinuity` whenever a step is observed in one of its declared timebases, whether or not `epoch_stable` predicted it.
 
 ---
 
@@ -237,7 +238,7 @@ session_resume {
 
 - **(4.3a) MUST** A peer reconnecting to a session it was previously joined to sends `session_resume` rather than `session_open`.
 - **(4.3b) MUST** A synchronisation burst runs **before** any queued payload resumes ([`PPCP-CORE` §6.3c](ppcp-core.md#63-clock-synchronisation)). The relation drifted while the link was down — at 20 ppm, about 1.2 ms per minute.
-- **(4.3c) MUST** Shots minted during the outage are reconciled through `shot_link`, exactly as an offline session's would be. They are not renumbered and their `authority` stays `device` (I7, I9).
+- **(4.3c) MUST** The resuming peer **sends** a `shot_link` for every Shot minted during the outage, exactly as an offline session's would be reconciled. They are not renumbered and their `authority` stays `device` (I7, I9).
 
 ### 4.4 `session_state`, `context_change`, `session_close`
 
@@ -270,13 +271,14 @@ session_close  { session_id, reason: Kind }
 ```
 stream_open      { stream: Stream }
 stream_open_ack  { stream_id, verdict: opened | refused, reason, opened_at: Instant }
-stream_close     { stream_id, closed_at: Instant, reason: Kind }
+stream_close     { stream_id, closed_at: Instant (optional), reason: Kind }
 ```
 
 - **(5.1a) MUST** The Stream fixes `source_id`, `profile_id`, `timebase_id`, `calibration_id` and `continuity` for its lifetime (I5).
 - **(5.1b) MUST** A change to any of those closes the Stream and opens another **within the same Session**. It does not end the Session.
 - **(5.1c) MUST** In a zero-host session the capturing peer originates `stream_open` for its own Streams and records it in the bundle.
-- **(5.1d) MUST** **Either peer may originate `stream_close`** ([`PPCP-CORE` §5.11a1](ppcp-core.md#511-stream)) — the owner because it can no longer produce, the consumer because it no longer wants the data. `reason` carries `thermal_limit`, `storage_full`, `not_needed` or `calibration_changed`.
+- **(5.1d) MUST** `stream_close` is legal in **either direction** ([`PPCP-CORE` §5.11a1](ppcp-core.md#511-stream)) — from the owner because it can no longer produce, from the consumer because it no longer wants the data. Neither peer is obliged to close a Stream; what this clause settles is that a close from the consumer is not a protocol error. `reason` carries `thermal_limit`, `storage_full`, `not_needed` or `calibration_changed`.
+- **(5.1e)** *Erratum E17, 23 August 2026.* `closed_at` is **optional**, matching `Stream.closed_at` at 0..1 in [`PPCP-CORE` §5.11](ppcp-core.md#511-stream); the body sketch above carried it unmarked, which an implementer builds a validator from and reads as mandatory. It is `Instant` in **the Stream's own timebase** — the owner's clock — and 5.1d lets the **consumer** close a Stream, which the consumer has no reading of. So a consumer-originated close omits it and the owner stamps the Stream's `closed_at` itself from its own clock; an owner-originated close carries it. A receiver MUST tolerate its absence and MUST NOT substitute its own clock's reading, which would put a timestamp in a timebase it does not belong to (I1) (finding F-H4-2, PinPointStudio, session S3).
 
 ### 5.2 `arm` / `disarm` / `readiness`
 
@@ -286,7 +288,7 @@ disarm     { stream_ids: [Id] }
 readiness  { readiness: Readiness, stream_ids: [Id] }
 ```
 
-- **(5.2a) MUST** A capture peer emits `readiness` in response to `arm`, and again whenever `settled` changes.
+- **(5.2a) MUST** A capture peer emits `readiness` when it is armed, and again whenever `settled` changes.
 - **(5.2b) MUST NOT** A device state-machine name cross the wire ([`PPCP-CORE` §5.15](ppcp-core.md#515-readiness)).
 - **(5.2c) MUST** Arm and disarm cycle within one open session. Rebuilding the capture session on every arm is not required by the protocol and defeats the purpose of the readiness measurement.
 
@@ -296,7 +298,7 @@ readiness  { readiness: Readiness, stream_ids: [Id] }
 interruption { kind: Kind, interval: Interval, recovered: bool, stream_ids: [Id] }
 ```
 
-- **(5.3a) MUST** A platform interruption that costs capture — a call, an audio session interruption, backgrounding — is reported with the interval it covered. The gap it produced is additionally recorded on the affected Captures (I11).
+- **(5.3a) MUST** A capture peer **reports** a platform interruption that costs capture — a call, an audio session interruption, backgrounding — as an `interruption` carrying the interval it covered. The gap it produced is additionally recorded on the affected Captures (I11).
 
 ### 5.4 `heartbeat` / `heartbeat_ack`
 
@@ -335,9 +337,9 @@ Four timestamps: `t1` the probe's send instant in the prober's timebase; `t2` an
 - **(6.1a) MUST** `t1` in `sync_reply` echoes the probe's `t1` unmodified, including its `tb`.
 - **(6.1b) MUST** `t2` and `t3` are in the **same** responder timebase, and that timebase is one the responder declared.
 - **(6.1c) MUST** `t2` is taken as close to reception as the implementation allows, and `t3` as close to transmission. A responder that cannot distinguish them sets `t3 == t2` and, by doing so, declares that the residence time is included in the measurement rather than removed from it.
-- **(6.1d) MUST** A multi-timebase peer runs a separate probe sequence per timebase, setting `timebase_id` accordingly, and declares each relation directly (I21, I18).
+- **(6.1d) MUST** A multi-timebase peer **sends** a separate `sync_probe` sequence per timebase, setting `timebase_id` accordingly, and declares each relation directly (I21, I18).
 - **(6.1e) MUST** A burst is 10–20 exchanges, performed on connect, after a network change and after a thermal event.
-- **(6.1f) MUST** The resulting estimate is published in a `relation_update` and is filtered, never stepped.
+- **(6.1f) MUST** A peer **publishes** the resulting estimate in a `relation_update`, filtered and never stepped.
 - **(6.1g) MUST** Where `sync_probe.timebase_id` names a timebase the **responder** declared, the responder stamps `t2` and `t3` on that timebase. Where it names anything else — which is 6.1d's ordinary case, the prober's own clock — the responder stamps on a declared timebase of its own choosing, as before. A prober selecting a responder's clock this way runs one sequence per **pair** of timebases and declares each resulting relation directly; nothing is composed (I18). A responder that does not implement this answers on its own choice, and the prober sees a `t2.tb` that is not the one it asked for: the exchange is still valid for the pair it actually measured, and the prober learns which clock it got rather than being told it got the one it wanted.
 
 The estimator is not mandated. Minimum-RTT filtering is RECOMMENDED because it estimates offset from the tightness of the latency distribution's left tail, which is what makes a USB tunnel converge faster than congested 2.4 GHz WiFi. What is mandated is that offset **and** rate are estimated and that both sigmas are declared.
@@ -431,7 +433,8 @@ capture_announce {
 - **(8.1c) MUST** A Capture sets exactly one anchor key (I27): `{ shot_id }` for a clip around a Shot's `t0`, `{ candidate_id }` for the evidence window explaining a nomination, or `{ stream: true }` for a segment of a `continuous` Stream belonging to no event.
 - **(8.1f) MUST** A stream-anchored `capture_announce` carries `interval` **even when `completeness: absent`**, and the announced segments plus their gaps account for the Stream's whole open interval (I36). This is the route by which continuous attitude, sensor-arrival evidence and `preview` frames reach a consumer during capture — none of which has a Shot to hang from.
 - **(8.1h) MUST** Deliberate non-retention is announced as an **`absent` segment** with `absent_reason: not_retained`, never as a `gaps` entry ([`PPCP-CORE` §5.11c3](ppcp-core.md#5111-how-a-continuous-stream-is-carried)). `gaps` mean loss.
-- **(8.1i) MUST NOT** A `preview` Capture be announced with `transfer: pending`. Preview is live-only: what could not be delivered promptly is discarded and announced absent ([`PPCP-CORE` §5.11j](ppcp-core.md#5112-preview-streams)).
+- **(8.1i) MUST NOT** A `preview` Capture **holding payload** be announced with `transfer: pending`. Preview is live-only: what could not be delivered promptly is discarded and announced absent ([`PPCP-CORE` §5.11j](ppcp-core.md#5112-preview-streams)).
+- **(8.1i1) MUST** *Erratum E16, 23 August 2026.* A preview Capture of **`completeness: absent`** is exempt from 8.1i and carries whatever `transfer` state the owner holds it in, which for a payload-less Capture is `pending` and means nothing. 8.1i is about **queues**: `pending` is the state of a Capture waiting for bulk capacity, and 5.11j exists so the preview queue never competes with shot payload. But `pending` is also the *default* state of every announced Capture, and 5.11c3 **requires** a peer to announce the discarded preview segment as `absent` / `not_retained` — a Capture that holds no payload, has nothing to queue, and had no other transfer state to carry. As first written the two clauses made the required announcement unmakeable (finding by `libppcp`, session S2).
 - **(8.1g) SHOULD** Preview payload travels on a **bulk channel distinct** from shot payload, and is the first thing dropped under contention ([`PPCP-CORE` §5.11h–i](ppcp-core.md#5112-preview-streams)). A preview frame that arrives late is worth nothing; a clip that arrives late is worth everything.
 - **(8.1d) MUST NOT** A thumbnail exceed 64 KiB. Larger previews are Captures with their own payload.
 - **(8.1e)** `Capture.digest` MAY be absent from the announce and MUST be present by `payload_begin`. The digest covers the whole payload, so requiring it here would make the immediate message wait for the clip to be fully extracted and hashed — which is the opposite of what the message is for.
@@ -596,53 +599,65 @@ error { code: Kind, message: string, in_reply_to: uint (optional), detail: map (
 
 Forty-five messages. `R` request, `S` response, `E` event.
 
-| Message | | Channel | Profile to originate | Section |
-|---|---|---|---|---|
-| `link_bind` | E | **every**, first frame | — | [3.0](#30-link_bind) |
-| `hello` | R | control | — | [3.1](#31-hello) |
-| `hello_accept` | S | control | — | [3.2](#32-hello_accept) |
-| `declare` | R | control | Core | [3.3](#33-declare) |
-| `declare_ack` | S | control | Core | [3.4](#34-declare_ack) |
-| `relation_update` | E | control | Core | [3.5](#35-relation_update) |
-| `calibration_update` | E | control | Capture | [3.6](#36-calibration_update) |
-| `discontinuity` | E | control | Core | [3.7](#37-discontinuity) |
-| `session_open` | R | control | Core | [4.1](#41-session_open) |
-| `session_joined` | S | control | Core | [4.2](#42-session_joined) |
-| `session_resume` | R | control | Live | [4.3](#43-session_resume) |
-| `session_state` | E | control | Core | [4.4](#44-session_state-context_change-session_close) |
-| `context_change` | E | control | Core | [4.4](#44-session_state-context_change-session_close) |
-| `session_close` | E | control | Core | [4.4](#44-session_state-context_change-session_close) |
-| `stream_open` | R | control | Capture | [5.1](#51-stream_open--stream_open_ack--stream_close) |
-| `stream_open_ack` | S | control | Capture | [5.1](#51-stream_open--stream_open_ack--stream_close) |
-| `stream_close` | E | control | Capture | [5.1](#51-stream_open--stream_open_ack--stream_close) |
-| `arm` | R | control | Live | [5.2](#52-arm--disarm--readiness) |
-| `disarm` | R | control | Live | [5.2](#52-arm--disarm--readiness) |
-| `readiness` | E | control | Capture | [5.2](#52-arm--disarm--readiness) |
-| `interruption` | E | control | Capture | [5.3](#53-interruption) |
-| `heartbeat` | R | control | Live | [5.4](#54-heartbeat--heartbeat_ack) |
-| `heartbeat_ack` | S | control | Live | [5.4](#54-heartbeat--heartbeat_ack) |
-| `sync_probe` | R | control | Live | [6.1](#61-sync_probe--sync_reply) |
-| `sync_reply` | S | control | Live | [6.1](#61-sync_probe--sync_reply) |
-| `sync_residual` | E | control | Live | [6.2](#62-sync_residual) |
-| `candidate` | E | control | Detect | [7.1](#71-candidate) |
-| `shot` | E | control | Mint / Arbitrate | [7.2](#72-shot) |
-| `capture_request` | R | control | Arbitrate | [7.3](#73-capture_request) |
-| `capture_announce` | E | control | Capture | [8.1](#81-capture_announce) |
-| `capture_update` | E | control | Capture | [8.2](#82-capture_update) |
-| `capture_committed` | E | control | Capture | [8.4](#84-capture_committed) |
-| `annotation` | E | control | **Markup** | [9.0](#90-annotation) |
-| `payload_begin` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
-| `payload_chunk` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
-| `payload_ack` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
-| `payload_end` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
-| `payload_abort` | E | **bulk** | Capture | [8.3](#83-the-payload_-family) |
-| `payload_resume` | R | **bulk** | Capture | [8.3](#83-the-payload_-family) |
-| `session_offer` | R | control | Offline | [9.1](#91-session_offer--session_accept) |
-| `session_accept` | S | control | Offline | [9.1](#91-session_offer--session_accept) |
-| `session_manifest` | E | control | Offline | [9.2](#92-session_manifest) |
-| `shot_link` | E | control | **Core** | [9.3](#93-shot_link) |
-| `session_link` | E | control | Offline | [9.4](#94-session_link) |
-| `error` | R/S/E | either | — | [10](#10-errors) |
+*Erratum E18, 23 August 2026 — the **Required by** column added.* The audit of [`PPCP-CONF` 5b1](ppcp-conformance.md#5-interoperability) found that **27 of these 45 messages were required by no normative clause anywhere in the set**, and a message nothing requires is a message nothing tests. The sweep of [5b2](ppcp-conformance.md#5-interoperability) read all twenty-seven, and the answers were of three kinds.
+
+**Seven were responses nothing obliged a peer to send.** That is the one real hole the sweep found: a peer could receive `hello`, `declare`, `session_open`, `stream_open`, `heartbeat` or `sync_probe`, never reply, and violate nothing. Closed by [1c](#1-scope-and-conventions).
+
+**Eight had an obligation that existed and did not name the message** — 3.7a said "Emitted whenever a step is observed", 6.1d said a peer "runs a separate probe sequence", `ENC` 6a said a payload "is transferred as". No audit could find those and no implementer reading the catalogue would either. Each is reworded to name the message it requires, and the column cites it.
+
+**Twelve are legitimately optional**, marked **opt**, and that is a conclusion rather than an omission: `annotation` is the whole of what Markup carries, `capture_request` is a host asking rather than a peer owing, `session_offer` is a peer volunteering what it stored, and a peer with nothing to say sends no `context_change`. Three more join them — `arm`, `disarm` and `stream_close`, which the audit had counted as required through a clause that *forbids* recording them hostless ([`PPCP-CORE` 7.3b](ppcp-core.md#73-streams-and-capture-control)) and one that *permits* a close from either end (5.1d). Both are reworded so a reader and a script draw the same conclusion. **Fifteen** messages are therefore required by nothing, deliberately.
+
+The audit now asserts this table against the documents on every run: a message marked **opt** that some clause has begun to require, or a citation no clause supports any more, fails `ctest -R L16-profile-boundary`. A sweep whose answer is written down and never re-checked is the state this column exists to leave behind.
+
+The column names **the clause requiring a peer to originate the message at all**, in this document unless another is named. It is not the profile boundary — that is the column to its left, and [C3b](ppcp-core.md#222-what-a-profile-confers) warns against reading either as the profile a *responder* needs.
+
+| Message | | Channel | Profile to originate | Required by | Section |
+|---|---|---|---|---|---|
+| `link_bind` | E | **every**, first frame | — | `ENC` 2.1a | [3.0](#30-link_bind) |
+| `hello` | R | control | — | 3.1a | [3.1](#31-hello) |
+| `hello_accept` | S | control | — | 1c | [3.2](#32-hello_accept) |
+| `declare` | R | control | Core | 3.3c | [3.3](#33-declare) |
+| `declare_ack` | S | control | Core | 1c | [3.4](#34-declare_ack) |
+| `relation_update` | E | control | Core | 6.1f | [3.5](#35-relation_update) |
+| `calibration_update` | E | control | Capture | **opt** | [3.6](#36-calibration_update) |
+| `discontinuity` | E | control | Core | 3.7a | [3.7](#37-discontinuity) |
+| `session_open` | R | control | Core | 4.1b | [4.1](#41-session_open) |
+| `session_joined` | S | control | Core | 1c | [4.2](#42-session_joined) |
+| `session_resume` | R | control | Live | 4.3a | [4.3](#43-session_resume) |
+| `session_state` | E | control | Core | **opt** | [4.4](#44-session_state-context_change-session_close) |
+| `context_change` | E | control | Core | **opt** | [4.4](#44-session_state-context_change-session_close) |
+| `session_close` | E | control | Core | **opt** | [4.4](#44-session_state-context_change-session_close) |
+| `stream_open` | R | control | Capture | 5.1c | [5.1](#51-stream_open--stream_open_ack--stream_close) |
+| `stream_open_ack` | S | control | Capture | 1c | [5.1](#51-stream_open--stream_open_ack--stream_close) |
+| `stream_close` | E | control | Capture | **opt** | [5.1](#51-stream_open--stream_open_ack--stream_close) |
+| `arm` | R | control | Live | **opt** | [5.2](#52-arm--disarm--readiness) |
+| `disarm` | R | control | Live | **opt** | [5.2](#52-arm--disarm--readiness) |
+| `readiness` | E | control | Capture | 5.2a | [5.2](#52-arm--disarm--readiness) |
+| `interruption` | E | control | Capture | 5.3a | [5.3](#53-interruption) |
+| `heartbeat` | R | control | Live | 7.4a of `CORE` | [5.4](#54-heartbeat--heartbeat_ack) |
+| `heartbeat_ack` | S | control | Live | 1c | [5.4](#54-heartbeat--heartbeat_ack) |
+| `sync_probe` | R | control | Live | 6.1d | [6.1](#61-sync_probe--sync_reply) |
+| `sync_reply` | S | control | Live | 1c | [6.1](#61-sync_probe--sync_reply) |
+| `sync_residual` | E | control | Live | **opt** | [6.2](#62-sync_residual) |
+| `candidate` | E | control | Detect | 8.3b of `CORE` | [7.1](#71-candidate) |
+| `shot` | E | control | Mint / Arbitrate | 8.2h, 8.3a of `CORE` | [7.2](#72-shot) |
+| `capture_request` | R | control | Arbitrate | **opt** | [7.3](#73-capture_request) |
+| `capture_announce` | E | control | Capture | 8.1a | [8.1](#81-capture_announce) |
+| `capture_update` | E | control | Capture | **opt** | [8.2](#82-capture_update) |
+| `capture_committed` | E | control | Capture | 8.4a | [8.4](#84-capture_committed) |
+| `annotation` | E | control | **Markup** | **opt** | [9.0](#90-annotation) |
+| `payload_begin` | E | **bulk** | Capture | `ENC` 6a | [8.3](#83-the-payload_-family) |
+| `payload_chunk` | E | **bulk** | Capture | `ENC` 6a | [8.3](#83-the-payload_-family) |
+| `payload_ack` | E | **bulk** | Capture | **opt** | [8.3](#83-the-payload_-family) |
+| `payload_end` | E | **bulk** | Capture | `ENC` 6a | [8.3](#83-the-payload_-family) |
+| `payload_abort` | E | **bulk** | Capture | `ENC` 6d | [8.3](#83-the-payload_-family) |
+| `payload_resume` | R | **bulk** | Capture | **opt** | [8.3](#83-the-payload_-family) |
+| `session_offer` | R | control | Offline | **opt** | [9.1](#91-session_offer--session_accept) |
+| `session_accept` | S | control | Offline | 1c | [9.1](#91-session_offer--session_accept) |
+| `session_manifest` | E | control | Offline | `ENC` 7c | [9.2](#92-session_manifest) |
+| `shot_link` | E | control | **Core** | 4.3c | [9.3](#93-shot_link) |
+| `session_link` | E | control | Offline | **opt** | [9.4](#94-session_link) |
+| `error` | R/S/E | either | — | 1a | [10](#10-errors) |
 
 ---
 

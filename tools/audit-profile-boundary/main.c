@@ -51,6 +51,8 @@ typedef struct entry {
     bool in_spec;
     bool in_code;
     bool originated_by_a_must;
+    bool marked_opt;          /* MSG §11's "Required by" column says **opt** */
+    bool has_required_by;
 } entry;
 
 static entry  g_msg[MAX_MSGS];
@@ -188,9 +190,21 @@ static void read_spec_catalogue(const char *spec_dir)
             snprintf(e->profile, sizeof(e->profile), "-");
         else
             snprintf(e->profile, sizeof(e->profile), "%s", fields[3]);
+        /* Erratum E18 added a "Required by" column, so the section link is the
+         * LAST field rather than the fifth.  Taking it from the end keeps this
+         * working the next time a column is added — and the clause comparison
+         * silently stopped running when the column landed, which is the failure
+         * mode a gate must not have. */
+        if (n >= 6) {
+            char *req = fields[4];
+            trim(req);
+            strip_emphasis(req);
+            e->has_required_by = true;
+            e->marked_opt = (strcmp(req, "opt") == 0);
+        }
         /* `[4.3](#43-session_resume)` -> `4.3` */
         {
-            char *open = strchr(fields[4], '[');
+            char *open = strchr(fields[n - 1], '[');
             char *close = (open != NULL) ? strchr(open, ']') : NULL;
             if (open != NULL && close != NULL) {
                 size_t len = (size_t)(close - open - 1);
@@ -313,6 +327,20 @@ static const char *const origination_verbs[] = {
     " announces ", " announce ", NULL
 };
 
+/* ⚠ The verbs are matched with their surrounding spaces, so markdown emphasis
+ * hides them: `a peer **emits** \`discontinuity\`` contains " **emits** " and not
+ * " emits ".  That is not a hypothetical — it happened while erratum E18 was
+ * being written, and a freeze gate that a bold verb defeats is not a gate.  So
+ * every `*` and `_` is dropped before the line is read. */
+static void flatten_emphasis(const char *in, char *out, size_t cap)
+{
+    size_t i = 0;
+    for (; *in != '\0' && i + 1 < cap; in++)
+        if (*in != '*' && *in != '_')
+            out[i++] = *in;
+    out[i] = '\0';
+}
+
 static bool has_origination_verb(const char *line)
 {
     size_t i;
@@ -329,12 +357,16 @@ static void scan_clauses(const char *spec_dir, const char *file)
 
     while (fgets(line, sizeof(line), f) != NULL) {
         const char *p;
-        bool must = strstr(line, "MUST") != NULL;
-        bool must_not = strstr(line, "MUST NOT") != NULL;
+        static char flat[MAX_LINE];
+        bool must, must_not;
+
+        flatten_emphasis(line, flat, sizeof(flat));
+        must     = strstr(flat, "MUST") != NULL;
+        must_not = strstr(flat, "MUST NOT") != NULL;
 
         if (!must || must_not)
             continue;                       /* a prohibition confers nothing */
-        if (!has_origination_verb(line))
+        if (!has_origination_verb(flat))
             continue;
 
         /* Every backticked token that names a catalogued message. */
@@ -403,6 +435,20 @@ int main(int argc, char **argv)
         }
         if (!e->originated_by_a_must)
             never_required++;
+        /* CONF 5b2, erratum E18.  §11's "Required by" column is the sweep's
+         * recorded answer for every message; this asserts the answer still
+         * matches what the documents say.  A message marked **opt** that some
+         * clause now requires, or one left with a clause reference that no
+         * clause requires any more, is a sweep that has gone stale — which is
+         * the only way the 27 could quietly become 28 again. */
+        if (e->has_required_by && e->in_spec) {
+            if (e->marked_opt && e->originated_by_a_must)
+                fail("`%s` is marked **opt** in PPCP-MSG §11 and a MUST now requires "
+                     "originating it (5b2)", e->name);
+            if (!e->marked_opt && !e->originated_by_a_must)
+                fail("PPCP-MSG §11 cites a clause requiring `%s` and no MUST in the set "
+                     "does (5b2)", e->name);
+        }
     }
 
     if (never_required > 0) {
