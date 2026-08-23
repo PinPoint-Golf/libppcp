@@ -104,6 +104,7 @@ That is `CONF` 2a's injectable clock: an offset and a skew are simulated, never 
 | `acoustic-host` | host | IOP-6, CT-I8 | Nominates from the host's own acoustic Source alongside the device's |
 | `nominating-capture` | capture | IOP-2, IOP-5, IOP-7, IOP-8, CT-S3 (2), CT-S7 (4) | Nominates and mints and nothing else; the declaration decides what is foreign |
 | `unrelated-capture` | capture | IOP-5, 8.2i1, CT-I3 | Declares its `unrelated` relation, nominates, and mints **nothing** |
+| `requesting-host` | host | **CT-I22 (device half)**, CORE 8.4 | Arbitrates and then **asks for the clip**: a `capture_request` per issued Shot, its window in the host's own convention. Nothing originated one before, so 8.4a on the peer under test — converting that window into its own buffer's timebase — could not be driven from outside (F-S5-2) |
 | `arbitrate-as-capture` | capture | CT-I20 | Exists to be **refused**: the engine will not build an arbiter for a peer that is not a host, and the tool exits non-zero before a socket is opened |
 | `late-candidate-capture` | capture | CT-I7 | Two Candidates for one event, the second 700 ms after the host issued: it attaches and `t0` does not move |
 | `preview-capture` | capture | IOP-9, CT-I36, CT-I36a | A `continuous` metadata Stream and a live-only `preview` alongside shot-windowed video; announces a segment and the discarded preview as `absent` / `not_retained` |
@@ -118,7 +119,10 @@ Registered in [`tests/CMakeLists.txt`](../../tests/CMakeLists.txt); `ctest --pre
 
 | ctest row | Pair |
 |---|---|
+| `CT-I6-sockets` | `arbiter-no-detect` ↔ `nominating-capture` |
 | `CT-I7-sockets` | `reference-host` ↔ `late-candidate-capture` |
+| `CT-I22-sockets-capture-request` | `requesting-host` ↔ `nominating-capture` |
+| `F-S5-3-sockets-offer-during-live-session` | `reference-host` ↔ `offer-session` |
 | `CT-I8-sockets` | `acoustic-host` ↔ `nominating-capture` |
 | `CT-I12-sockets` | `reference-host` ↔ `offer-session` |
 | `CT-I18-sockets` | `three-timebase-host` ↔ `three-timebase-capture` |

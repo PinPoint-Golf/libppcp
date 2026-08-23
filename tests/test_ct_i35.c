@@ -313,6 +313,51 @@ static void test_arbitration(void)
         CHECK_EQ_I(ppcp_arbiter_retained_count(arb), before + 1);
     }
 
+    /* F-S5-1 / erratum E29.  On a live link the relation ALWAYS arrives late —
+     * §6.3's burst is still converging while the first swings are taken — and
+     * before this the host left those Candidates retained for the whole
+     * Session with no error, no Shot, and every Candidate present exactly as
+     * 8.2d requires.  Invisible from both ends. */
+    TEST("8.2d1 (E29) — a Candidate retained for want of a relation is reconsidered");
+    {
+        size_t before = ppcp_arbiter_retained_count(arb);
+        size_t groups_before = ppcp_arbiter_group_count(arb);
+
+        /* Nothing has changed yet, so nothing is re-admitted and nothing is
+         * lost — reconsidering is not a way to discard evidence. */
+        CHECK_EQ_I(ppcp_arbiter_reconsider(arb), 0);
+        CHECK_EQ_I(ppcp_arbiter_retained_count(arb), before);
+
+        /* The relation `cand:orphan` was waiting for.  Its instant falls inside
+         * the coincidence window of the group already issued, so 8.2e's
+         * attachment is what it gets — which is the half that matters: `t0` is
+         * NOT revised (I7) and the Candidate is on the Shot. */
+        {
+            const ppcp_shot *sh = ppcp_arbiter_shot_at(arb, 0);
+            ppcp_instant     t0_was;
+            size_t           cands_before;
+            CHECK(sh != NULL);
+            t0_was       = sh->t0;
+            cands_before = sh->candidate_count;
+
+            put_relation(host.p, "tb:nowhere", "tb:host", 200000.0);
+            CHECK_EQ_I(ppcp_arbiter_reconsider(arb), 1);
+            CHECK_EQ_I(ppcp_arbiter_retained_count(arb), before - 1);
+            CHECK_EQ_I(ppcp_arbiter_group_count(arb), groups_before);
+
+            sh = ppcp_arbiter_shot_at(arb, 0);
+            CHECK(sh != NULL);
+            CHECK_EQ_I(sh->candidate_count, cands_before + 1);
+            CHECK(memcmp(&sh->t0, &t0_was, sizeof(t0_was)) == 0);
+        }
+
+        /* `cand:android` declared its clock UNRELATED (5.4b), which is a
+         * statement and not a gap: it stays retained however often this is
+         * called, and no zero offset is substituted for it. */
+        CHECK_EQ_I(ppcp_arbiter_reconsider(arb), 0);
+        CHECK_EQ_I(ppcp_arbiter_retained_count(arb), before - 1);
+    }
+
     free(am);
     rig_free(&host);
     rig_free(&dev);

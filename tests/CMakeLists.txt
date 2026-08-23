@@ -155,6 +155,18 @@ if(TARGET ppcp-sim)
         "live_ref_rebound=0,replays=1,violations=0"
         4000)
 
+    # F-S5-2 / CORE 8.4 — a host that ASKS.  No host scenario originated
+    # `capture_request` before this, so the DEVICE half of 8.4a — converting a
+    # window expressed in the host's own convention into its own buffer's
+    # timebase — could not be driven from outside at all, and 8.4b's `absent` /
+    # `outside_buffer` answer was unobservable (raised by the S5 interop runs).
+    ppcp_pair_row(CT-I22-sockets-capture-request
+        reference-host.json requesting-host
+        "capture_requests_tx>=1,issued=1,violations=0"
+        reference-capture.json nominating-capture
+        "capture_requests_rx>=1,violations=0"
+        5000)
+
     # I18 — relations are MEASURED, never composed.  Three declared timebases
     # produce three probe sequences at each end, and `relations_composed`
     # counts held relations spanning two clocks of one peer, which is the only

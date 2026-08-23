@@ -611,6 +611,27 @@ static void sim_tick(sim *s)
         if (now - s->start_ns >= hold && now_ref(s, &ref) &&
             ppcp_arbiter_pump(s->arb, ref, &issued) == PPCP_OK)
             s->c.shots_tx += (int64_t)issued;
+
+        /* F-S5-2 / CORE 8.4a — ask the owner for the clip.  The window is the
+         * HOST's: 8.4a has the capture peer convert `t0` into its own timebase
+         * and locate the interval in its buffer, which is the device half of
+         * I22 and could not be driven from outside before this scenario
+         * existed.  One request per Shot, once. */
+        if ((s->sc->flags & SIM_F_REQUEST) != 0) {
+            size_t gi;
+            for (gi = 0; gi < SIM_MAX_SHOTS; gi++) {
+                const ppcp_shot *sh = ppcp_arbiter_shot_at(s->arb, gi);
+                if (sh == NULL)
+                    continue;
+                if (sim_already_requested(s, &sh->id))
+                    continue;
+                if (ppcp_peer_capture_request(s->p, sh->id.v, &sh->t0, NULL, 0,
+                                              1000000000, 2000000000) == PPCP_OK) {
+                    sim_note_requested(s, &sh->id);
+                    s->c.capture_requests_tx++;
+                }
+            }
+        }
     }
 
     if (s->captures_open)

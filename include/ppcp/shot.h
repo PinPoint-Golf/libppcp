@@ -287,6 +287,23 @@ PPCP_API size_t ppcp_arbiter_late_count(const ppcp_arbiter *a);
  * "host ↔ peer declaring `unrelated` timebases" puts EVERY candidate from that
  * peer here, and that is the honest answer (8.2i1, CONF §5). */
 PPCP_API size_t ppcp_arbiter_retained_count(const ppcp_arbiter *a);
+
+/* 8.2d1 (erratum E29) — RECONSIDER the Candidates retained for want of a
+ * relation, now that the relation set has changed.  Returns how many were
+ * re-admitted to arbitration.
+ *
+ * ⚠ CALL THIS WHENEVER A RELATION ARRIVES — on a `relation_update` event, or
+ * after your own sync estimator publishes one.  The library owns no clock and
+ * no event loop, so it cannot call itself, and a host that never calls it
+ * leaves every Candidate nominated before the sync burst converged retained and
+ * unarbitrated for the whole Session — with no error, no Shot, and every
+ * Candidate present exactly as 8.2d requires.  That is what F-S5-1 found.
+ *
+ * A Candidate whose relation is still missing stays retained.  One that now
+ * converts is re-observed: before its group issued it joins it and may set `t0`
+ * (8.2b1); after, it ATTACHES with `t0` unrevised (8.2e, I7).  8.2h's bound on
+ * issuing is ppcp_arbiter_pump()'s and is unaffected. */
+PPCP_API size_t ppcp_arbiter_reconsider(ppcp_arbiter *a);
 /* The Shot a group issued, or NULL.  Read-only: `t0` has no setter anywhere in
  * this library, which is I7 by surface as well as by behaviour. */
 PPCP_API const ppcp_shot *ppcp_arbiter_shot_at(const ppcp_arbiter *a, size_t group);

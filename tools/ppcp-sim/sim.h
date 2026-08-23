@@ -125,6 +125,11 @@ bool sim_decl_load(sim_decl *d, const char *path, char *err, size_t err_len);
 #define SIM_F_REPLAY_TWICE   0x00002000u  /* replay the accepted bundle twice (I34) */
 #define SIM_F_OBSERVER       0x00004000u  /* originate nothing past hello/declare */
 #define SIM_F_LATE_NOMINATE  0x00008000u  /* the second Candidate arrives late (I7) */
+/* F-S5-2 — 8.4a: ask an owner for an interval around a `t0` it never nominated.
+ * No host scenario originated `capture_request` before this, so the DEVICE half
+ * of I22 — converting a request window expressed in the host's convention into
+ * its own buffer's timebase — could not be driven from outside at all. */
+#define SIM_F_REQUEST        0x00010000u  /* a host requests a Capture per Shot */
 
 typedef struct sim_scenario {
     const char *name;
@@ -165,6 +170,7 @@ typedef struct sim_counter {
      * times the LIVE Session's `timebase_ref` changed after it opened, which
      * CORE 4.1a and I16 make impossible.  The second is a violation counter
      * whose value should never be anything but zero. */
+    int64_t capture_requests_tx, capture_requests_rx;
     int64_t imported_frames_rx;
     int64_t live_ref_rebound;
     int64_t shot_candidates_max;

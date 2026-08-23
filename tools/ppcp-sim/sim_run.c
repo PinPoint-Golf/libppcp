@@ -106,6 +106,17 @@ static const sim_scenario g_scenarios[] = {
       SIM_F_SYNC | SIM_F_NOMINATE | SIM_F_MINT,
       1, 0, 0, 0 },
 
+    { "requesting-host", "host",
+      "CT-I22 (device half), CT-I17, CORE 8.4",
+      "A host that arbitrates and then ASKS for the clip: a `capture_request` "
+      "per issued Shot, with a window expressed in the host's own convention. "
+      "It is what drives 8.4a on the peer under test — converting that window "
+      "into its own buffer's timebase — and what makes 8.4b's `absent` / "
+      "`outside_buffer` answer observable.",
+      SIM_F_SESSION_OPEN | SIM_F_SYNC | SIM_F_HEARTBEAT | SIM_F_ARM |
+      SIM_F_ARBITRATE | SIM_F_REQUEST,
+      0, 0, 0, 0 },
+
     { "arbitrate-as-capture", "capture",
       "CT-I20",
       "A capture peer asked to arbitrate. It cannot: I20 gives arbitration to a "
@@ -193,6 +204,10 @@ typedef struct sim {
     /* F-S5-3: the live Session's ref as it was when the Session opened.  A
      * replayed bundle used to rebind it silently. */
     bool    live_ref_seen;
+    /* F-S5-2 — Shots this host has already asked for a Capture of, so 8.4a is
+     * driven once per Shot rather than on every tick. */
+    ppcp_id requested[SIM_MAX_SHOTS];
+    size_t  requested_count;
     ppcp_id live_session_id;
     ppcp_id live_timebase_ref;
     bool    script_started;
@@ -379,6 +394,21 @@ static bool flush_tx(sim *s, uint8_t ch)
             return false;
         }
     }
+}
+
+static bool sim_already_requested(const sim *s, const ppcp_id *id)
+{
+    size_t i;
+    for (i = 0; i < s->requested_count; i++)
+        if (ppcp_id_equal(&s->requested[i], id))
+            return true;
+    return false;
+}
+
+static void sim_note_requested(sim *s, const ppcp_id *id)
+{
+    if (s->requested_count < SIM_MAX_SHOTS)
+        s->requested[s->requested_count++] = *id;
 }
 
 static void drain_events(sim *s);
@@ -662,6 +692,7 @@ static void handle_event(sim *s, const ppcp_event *e)
 
     case PPCP_EVENT_CAPTURE_REQUEST:
         /* 8.4b — an orphan request is answered with a result, never an error. */
+        s->c.capture_requests_rx++;
         if (e->msg != NULL) {
             char id[80];
             snprintf(id, sizeof(id), "%s/cap/req%u", s->d->peer_id, ++s->id_seq);
@@ -733,6 +764,7 @@ static int64_t counter_value(const sim_counter *c, const char *name)
     ROW(frames_rx); ROW(frames_tx); ROW(declares_rx);
     ROW(candidates_rx); ROW(candidates_tx);
     ROW(shots_rx); ROW(shots_tx); ROW(minted_shots_rx);
+    ROW(capture_requests_tx); ROW(capture_requests_rx);
     ROW(imported_frames_rx); ROW(live_ref_rebound);
     ROW(shot_candidates_max); ROW(t0_revisions);
     ROW(captures_rx); ROW(captures_unique); ROW(captures_duplicate);

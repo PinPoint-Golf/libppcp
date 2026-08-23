@@ -930,6 +930,60 @@ size_t ppcp_arbiter_retained_count(const ppcp_arbiter *a)
     return (a == NULL) ? 0 : a->retained_count;
 }
 
+/* 8.2d1 (erratum E29) — a Candidate excluded for want of a relation is
+ * RECONSIDERED when the relation arrives.
+ *
+ * 8.2d said exclusion is a conclusion and the Candidate remains evidence, and
+ * said nothing about what happens when the missing relation shows up thirty
+ * seconds later — which on a live link it always does, because §6.3's sync
+ * burst is still converging while the first swings are taken.  On the "need
+ * not" reading a peer that nominates early is silently unarbitrated for the
+ * whole Session and the failure is invisible: no error, no Shot, and the
+ * Candidates all present and retained exactly as 8.2d requires (F-S5-1, S5).
+ *
+ * Re-observing is all it takes, because ppcp_arbiter_observe() already does the
+ * right thing at either end of the timeline: before issue the Candidate joins
+ * its group and may set `t0` under 8.2b1; after issue it ATTACHES under 8.2e
+ * with `t0` unrevised.  The mint deadline is therefore not a gate here — 8.2h's
+ * bound on ISSUING is already enforced by ppcp_arbiter_pump(), which marks a
+ * group `late` rather than racing the device.
+ *
+ * The embedding calls this when a relation changes — on a `relation_update`
+ * event, or after its own sync estimator publishes one.  The library owns no
+ * clock and no event loop, so it cannot call itself. */
+size_t ppcp_arbiter_reconsider(ppcp_arbiter *a)
+{
+    ppcp_candidate again[PPCP_ARBITER_MAX_RETAINED];
+    size_t         n = 0, i, keep = 0, readmitted = 0;
+    const ppcp_id *ref;
+
+    if (a == NULL || a->retained_count == 0)
+        return 0;
+    ref = ppcp_peer_timebase_ref(a->p);
+    if (ref == NULL)
+        return 0;
+
+    /* Partition first, re-observe afterwards: ppcp_arbiter_observe() may retain
+     * again — the policy of 8.2d's third case can still exclude — and mutating
+     * the array being walked would either lose an entry or loop. */
+    for (i = 0; i < a->retained_count; i++) {
+        ppcp_instant at_ref;
+        if (ppcp_relations_convert(ppcp_peer_relations(a->p), &a->retained[i].at,
+                                   ref, &at_ref) == PPCP_OK)
+            again[n++] = a->retained[i];
+        else
+            a->retained[keep++] = a->retained[i];
+    }
+    a->retained_count = keep;
+
+    for (i = 0; i < n; i++) {
+        bool excluded = false;
+        if (ppcp_arbiter_observe(a, &again[i], &excluded) == PPCP_OK && !excluded)
+            readmitted++;
+    }
+    return readmitted;
+}
+
 const ppcp_shot *ppcp_arbiter_shot_at(const ppcp_arbiter *a, size_t group)
 {
     if (a == NULL || group >= PPCP_ARBITER_MAX_GROUPS)
