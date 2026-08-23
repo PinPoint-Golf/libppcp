@@ -547,6 +547,7 @@ Append-only. Newest last.
 | 2026-08-23 | D (S3) | **F-D6-4** — `ppcp-sim` speaks plaintext or TLS 1.3 `psk_ke`; the device can reach neither (Network.framework: TLS 1.2 PSK only, RV 5.4b1). CT-S5 device, CT-S4(6), interop 1/7/8/9 are blocked on **D9's `direct` path**, not on libppcp | D9 first in S4-D |
 | 2026-08-23 | D (S3) | libppcp's F-D4-1 fix correctly broke a device fixture (`segment` on a `shot_windowed` Stream, wrong since D3) — the engine had not checked | Fixture corrected; recorded as evidence the fix works |
 | 2026-08-23 | H, D (S3) | Both apps' `ppcp-sim` use was limited: H's sandbox refused a binary outside its repo; D cannot speak its TLS. Rows against the sim are libppcp's only this session | S4: `ppcp-conform` (L14) drives the apps from outside through their real transports (A11), which is the intended route |
+| 2026-08-23 | user | **PinPointCapture gets a microphone-to-ball distance setting.** D5's `AcousticTimeOfFlight` (distance + sigma, 343 m/s) exists but nothing in the app supplies a distance, so every device Candidate goes out without `tof_correction` | **Decided.** S4 **D7**: an in-app setting (per session, persisted with a sensible default and a sigma reflecting that it is a user estimate, not a measurement) feeding `CandidateFactory`; recorded in the session bundle so the correction is reproducible. The host-side question (PinPointStudio's own microphone) stays open |
 
 ---
 
