@@ -7,12 +7,13 @@
 | Document | `PPCP-RV` |
 | Version | **1.0** |
 | Payload version | `ppcp1` |
-| Status | **APPROVED for implementation**, 22 August 2026. Both teams approve; no open findings. |
+| Status | **APPROVED for implementation**, 22 August 2026. Both teams approve; no open findings. **Revision 9 adds [RV-6](#11-rv-6--guided-pairing) under [CR-01](../changerequests/CR-01-in-band-pairing.md) and is awaiting review by both teams.** |
 | Date | 22 August 2026 |
 | Versioned | Independently of PPCP. Same repository. |
 | Relates to | [`PPCP-CORE`](ppcp-core.md) §3 (transport contract), §5.2.1 (peer identity), §12 (security considerations) |
 | Reviews | [`reviews/`](reviews/) — first-pass reviews from PinPointCapture and PinPointStudio, dispositioned in [`rv-review-disposition-2026-08-22.md`](rv-review-disposition-2026-08-22.md) |
-| Revision | 8 — final |
+| Revision | 9 — adds RV-6 (guided pairing). Revision 8 was final; [CR-01](../changerequests/CR-01-in-band-pairing.md) reopened it. |
+| Change requests | [`../changerequests/`](../changerequests/) — [CR-01](../changerequests/CR-01-in-band-pairing.md) and its [disposition](../changerequests/CR-01-disposition.md) |
 | Conformance | **Implementing `PPCP-RV` is OPTIONAL.** Implementing PPCP is not. |
 
 ---
@@ -28,6 +29,8 @@ This is the companion specification that [`PPCP-CORE` §12](ppcp-core.md#12-secu
 **[§4](#4-rv-2--the-pairing-code) is the part that cannot be corrected later at all.** A pairing code carries an opaque fixed payload that both sides must parse with no chance to negotiate first, and printed codes outlive releases. It has now survived three review passes and three independent recomputations of its vectors — the first pass found a defect in it that was invisible in the worked example, which is why the vectors are in the document and why one of them exercises every optional field.
 
 **[§5.2](#52-tls-profile) is the part still open.** A platform measurement ruled out the assumed mechanism and the owner relaxed forward secrecy to best-effort on the sensitivity of the data carried; [§5.4](#54-resolved-the-mechanism) records the measurement, the decision, what was given up and what both reviewers said about it.
+
+**[§11](#11-rv-6--guided-pairing) is the part that is new.** Revision 8 closed with no open findings and was final. [CR-01](../changerequests/CR-01-in-band-pairing.md) then asked for something the document had never been asked for and does not serve: a first pairing between peers that have never met, without an operator carrying a code between two screens. It is granted in part — the transfer goes, the human does not — and [§11](#11-rv-6--guided-pairing) is the answer. **It has not yet had an implementation review pass**, which every other section of this document has had at least three of.
 
 **The change history is [Annex C](#annex-c--change-history)**, at the back.
 
@@ -52,12 +55,15 @@ It is separate from PPCP for two reasons: it will version faster — near-field 
 | **RV-3** | Key derivation and the TLS profile ([§5](#5-rv-3--key-derivation-and-tls)) |
 | **RV-4** | Optional network join ([§6](#6-rv-4--network-join)) |
 | **RV-5** | The security model ([§7](#7-rv-5--security-model)) |
+| **RV-6** | Guided pairing: a first pairing with no code, authenticated by a compared short string ([§11](#11-rv-6--guided-pairing)) |
 
 ### 1.3 Where it stops
 
 - **(1.3a) MUST** Rendezvous ends when an authenticated, encrypted, bidirectional byte stream exists. Everything after that is PPCP.
 - **(1.3b) MUST NOT** Anything in this document change the meaning of any field defined in [`PPCP-CORE`](ppcp-core.md).
 - **(1.3c) MUST NOT** Any PPCP message be sent before the handshake of [§5](#5-rv-3--key-derivation-and-tls) completes. `hello` is the first byte of application data on an established, authenticated connection.
+
+- **(1.3c1) MUST** *Erratum E30, 24 August 2026 — CR-01.* The **bootstrap frames of [§11](#11-rv-6--guided-pairing) are not PPCP messages**, and 1.3c does not reach them. They cross a connection of their own that carries nothing else, ends before any pairing exists, and is torn down before [§5](#5-rv-3--key-derivation-and-tls)'s handshake is attempted. A peer MUST NOT send a PPCP message on a bootstrap connection and MUST NOT send a bootstrap frame on a PPCP link ([11.4c](#114-frames)).
 
 Out of scope, and deliberately: which transport is used, platform permission handling, user interface, and how a peer stores its own secrets at rest beyond the requirements in [§7.2](#72-handling-the-pairing-secret).
 
@@ -75,13 +81,15 @@ Three paths reach the same place. **They differ in which peer dials**, and getti
 |---|---|---|---|---|
 | **Pairing code** ([§4](#4-rv-2--the-pairing-code)) | the peer that **displays** the code, in the code | the peer that **scans** it | the displayer | **Primary.** REQUIRED of any RV implementation |
 | **Service discovery** ([§3](#3-rv-1--service-discovery)) | the peer that **advertises**, via mDNS | the peer that **browses** | the advertiser | OPTIONAL. Reconnection convenience only |
+| **Guided pairing** ([§11](#11-rv-6--guided-pairing)) | the peer that **opens a bootstrap window**, via mDNS or out of band | the peer that **dials the window** | the window opener | OPTIONAL. **First pairing only**, and the only path that establishes one without a code |
 | **Direct** | out of band — a tunnel, a cached endpoint, a socket handed in by an embedding application | either | either | OPTIONAL |
 
 - **(2a) MUST** An RV implementation supports the pairing-code path.
-- **(2b) MAY** An implementation support the discovery path, the direct path, both or neither in addition.
+- **(2b) MAY** An implementation support the discovery path, the guided-pairing path, the direct path, any combination or none in addition.
 - **(2c) MUST** Whichever path is used, the resulting connection completes the handshake of [§5](#5-rv-3--key-derivation-and-tls) before any PPCP message crosses it. There is no unauthenticated **rendezvous** path.
 - **(2c1) MUST** *Erratum E4, 23 August 2026.* 2c binds connections this document establishes — the three paths above. It does not reach a connection an embedding established by other means and handed to the PPCP engine, which [9a](#9-conformance) already declares fully PPCP-conformant and which is what [`PPCP-CONF` §2c](ppcp-conformance.md#2-required-test-infrastructure)'s **required** test infrastructure runs over: a simulator that spoke TLS would be testing a TLS stack rather than PPCP. What binds a peer claiming `PPCP-RV` on such a connection is this: no pairing-code key material, no persisted `PRK`, no `PRK`-derived key and no resolvable identifier ([§7.7](#77-what-must-never-cross-an-unauthenticated-channel)) ever crosses it; the peer does not present it to the user as a paired connection; and a **shipping configuration does not offer one** — a harness path is a build-time facility, not a runtime setting. Read without this, 2c and 9a are jointly unsatisfiable for any peer that both claims RV and is testable (F-D9-1).
 
+- **(2f) MUST** *Erratum E30, 24 August 2026 — CR-01.* Guided pairing **establishes** a pairing; it does not carry PPCP. Its bootstrap connection produces a `PRK` and closes, and the peers then connect under [§5](#5-rv-3--key-derivation-and-tls) exactly as they would from a scanned code — which is why [2c](#2-rendezvous-paths) is unweakened rather than excepted, and why the fourth row's *Dials* column describes the **bootstrap** connection only. The [§5](#5-rv-3--key-derivation-and-tls) connection that follows it may run in the **opposite** direction, and on the deployment CR-01 describes it does ([11.2](#112-why-it-is-not-tls-and-what-that-unlocks)).
 - **(2e) MUST** The table is written in terms of **what a peer does**, not what role it holds. Nothing here requires a host at either end. Two capture peers pairing directly — the multi-device case — is one displaying a code and the other scanning it, with no host involved.
 
 **Why the two paths dial in opposite directions**, since it looks like an inconsistency:
@@ -98,7 +106,7 @@ The cost is that a peer supporting both paths implements both a listener and a c
 
 ## 3. RV-1 — Service discovery
 
-*Optional. Reconnection convenience only — a first pairing always uses [§4](#4-rv-2--the-pairing-code).*
+*Optional. Reconnection convenience, and — since [§3.7](#37-the-bootstrap-window) — the way a peer offering a first pairing is found. A first pairing uses [§4](#4-rv-2--the-pairing-code) or [§11](#11-rv-6--guided-pairing); discovery never establishes one by itself.*
 
 ### 3.1 Service type
 
@@ -109,6 +117,8 @@ The cost is that a peer supporting both paths implements both a listener and a c
 
 - **(3.2a) MUST** The instance name is `PPCP-` followed by the first four bytes of `rid` ([§3.3](#33-txt-record)) in uppercase hexadecimal — for example `PPCP-9B1D2DF9`.
 - **(3.2b) MUST NOT** The instance name contain a user-assigned device name, a person's name, a model identifier, or any other value that persists across pairings.
+
+- **(3.2c) MUST** *Erratum E31, 24 August 2026 — CR-01.* A **bootstrap instance** ([§3.7](#37-the-bootstrap-window)) has no `rid` to name itself from. Its instance name is `PPCP-` followed by the eight uppercase hexadecimal characters of `bn` — the 4-byte window identifier of [3.7c](#37-the-bootstrap-window) — and it is therefore indistinguishable in **form** from a reconnection instance, deliberately. [3.2b](#32-instance-name) is unchanged and binds it identically: `bn` is drawn fresh for every window and persists across nothing.
 
 3.2b exists because platform advertising APIs commonly default the service name to the device name, which is frequently a person's name. Publishing that on a driving range's network is a privacy failure that no amount of transport encryption repairs, and it happens by default unless the name is set explicitly.
 
@@ -129,6 +139,20 @@ The cost is that a peer supporting both paths implements both a listener and a c
 - **(3.3d) MUST** *Erratum E25, 23 August 2026 — a decision, reversible.* A **version range** is written `LOW` or `LOW-HIGH`, where each endpoint is `MAJOR.MINOR` as [`PPCP-CORE` 10.1b](ppcp-core.md#101-version-negotiation) defines it. Both endpoints are **inclusive**, they share a MAJOR, and the range denotes every MINOR between them: `1.0-1.2` is `1.0`, `1.1`, `1.2`. A bare `LOW` is the range `LOW-LOW`. Support across two MAJORs is written as **several ranges separated by a comma**, most preferred first — `2.0-2.1,1.4-1.6`. A reader that cannot parse a range ignores that advertisement rather than guessing.
 - **(3.3e) MUST** The same range syntax is used **everywhere this protocol set states a supported range**: `pv` here, and `detail.supported` on `error` / `unsupported_version` ([`PPCP-CORE` 10.1f](ppcp-core.md#101-version-negotiation)). It is **not** used for `hello.versions` ([`PPCP-MSG` 3.1b](ppcp-messages.md#31-hello)), which is an ordered **list** of the exact versions an initiator offers, most preferred first — a different thing, deliberately, because the initiator is choosing rather than describing and the message is not size-constrained the way a TXT record is.
 
+- **(3.3f) MUST** *Erratum E31, 24 August 2026 — CR-01.* A **bootstrap instance** ([§3.7](#37-the-bootstrap-window)) carries a different set, and the two forms are told apart by the presence of `bs`:
+
+| Key | Value | Notes |
+|---|---|---|
+| `txtvers` | `1` | As above. |
+| `pv` | as above | As above, and filtered before connecting for the same reason. |
+| `role` | as above | As above, and [B9](#annex-b--open-issues) applies to it identically. |
+| `bs` | `1` | **A bootstrap window is open.** Its presence is what identifies the instance as one. |
+| `dl` | tstr, at most 32 bytes | **Optional bootstrap label.** Operator-set, **untrusted**, present only while the window is open — see [3.3g](#33-txt-record). |
+
+- **(3.3g) MUST** A bootstrap instance carries **no `rn` and no `rid`**: it names no pairing, because it holds none. [3.3b](#33-txt-record) binds it unchanged in every other respect, with `dl` as the single scoped exception, and `dl` is subject to the rules of [4.4d](#44-handling-a-scanned-code) in full — escaped for display, truncated, and **never** an identifier, a trust signal or a storage key. A peer MUST NOT default `dl` from a device name, a user name or a host name; it is either set by the operator for this window or absent. A receiver that sees both `bs` and `rid` on one instance treats the instance as malformed and ignores it.
+
+`dl` is a privacy trade and is stated as one. [3.2b](#32-instance-name) and [3.3b](#33-txt-record) exist to keep a persistent human-readable string off a venue's network, and `dl` puts one there. It is admitted because the workflow CR-01 was raised for — *"a range operator sets up several bays"* — does not function without it: a browsing peer that sees four open windows and cannot tell which is the bay the operator is standing in has no basis to choose, and choosing wrong is the case [§11.8](#118-what-the-comparison-proves) then has to catch rather than avoid. What bounds the trade is that the string lives only for the window ([3.7d](#37-the-bootstrap-window)), is typed for the venue rather than inherited from the device, and is never any part of what the pairing is keyed on.
+
 3.3d exists because `1.0-1.2` appeared in the `pv` row as an example and was defined nowhere, while [`PPCP-MSG` 3.1b](ppcp-messages.md#31-hello) spelled the same idea as an ordered list and 10.1f called for "the sender's full supported range" without saying how to write one — three expressions of one concept across three documents, each of which an implementer would have invented independently. There are now **two** forms and the boundary between them is stated: a range where a peer *describes* what it supports, a list where it *offers* in preference order (finding F-D7-2, PinPointCapture, session S4; decided by L17).
 
 ### 3.4 Resolvable identifiers
@@ -145,6 +169,7 @@ rid = HMAC-SHA256(K_id, "ppcp1 rid" || rn)  truncated to the first 8 bytes
 - **(3.4a) MUST** `rn` is regenerated on every service registration and at least every 15 minutes thereafter, and `rid` recomputed with it.
 - **(3.4b) MUST** A browsing peer resolves a discovered `rid` by recomputing it with the `K_id` of each pairing it holds. A match identifies the pairing to offer in [§5.2](#52-tls-profile).
 - **(3.4c) MUST NOT** A browsing peer connect to an instance whose `rid` it cannot resolve.
+- **(3.4c1) MUST** *Erratum E31, 24 August 2026 — CR-01.* [3.4c](#34-resolvable-identifiers) binds the **reconnection** path — an instance that carries an `rid`. A **bootstrap instance** carries none ([3.3g](#33-txt-record)), so there is nothing to resolve and 3.4c does not reach it. A browsing peer MAY dial such an instance **only** while its own user has asked it to pair, and **only** to run [§11](#11-rv-6--guided-pairing). It MUST NOT dial one opportunistically, in the background, or to enumerate what is present; and a bootstrap connection establishes nothing until [§11.7](#117-the-short-authentication-string)'s comparison has been affirmed at both ends, so an unattended peer that dialled one anyway would obtain a pairing with nobody.
 - **(3.4d)** A peer holding several pairings advertises the one it is offering to reconnect. Advertising several simultaneously is not specified — see [Annex B3](#annex-b--open-issues).
 - **(3.4d1) MUST** *Erratum E27, 23 August 2026 — a decision, reversible.* A peer holding several pairings advertises **exactly one service instance at a time**, and **rotates which pairing it advertises on the `rn` rotation of [3.4a](#34-resolvable-identifiers)** — a fresh registration at least every 15 minutes, selecting the next pairing in a stable order. One instance is what keeps the count of held pairings unobservable, which is the property 3.4e is about; rotation is what bounds the wait for the *right* counterpart to recognise it, to the rotation period times the number of pairings held. A peer SHOULD advertise a **recently used** pairing first, because the counterpart a user is standing in front of is usually the one they used last.
 - **(3.4d2) SHOULD** A peer holding several pairings **browse as well as advertise**, and prefer what it discovers. Browsing resolves *every* held pairing against every advertisement it sees ([3.4b](#34-resolvable-identifiers)) in one pass, with no rotation and no waiting, so a peer that can browse should not be waiting on its own advertisement at all. This is [3.5c](#35-who-advertises-and-who-browses)'s reversal, and for a peer holding several pairings it is the better shape rather than merely a permitted one — which for a peer that cannot advertise usefully anyway ([3.5d](#35-who-advertises-and-who-browses)) settles the question entirely.
@@ -162,10 +187,31 @@ The construction is the same idea as a resolvable private address: unlinkable to
 - **(3.5c)** A deployment that reverses this — a host advertising so a capture peer can browse and dial on reconnection — is conformant, and is the shape a "reconnect to a discovered host" interaction needs. The cost is that the host supplies its own responder, which is a platform question rather than a protocol one.
 - **(3.5d) MUST NOT** *Erratum E23, 23 August 2026.* A peer **advertise for reconnection where its platform cannot resolve a PSK identity server-side**, and 3.5b does not apply to it: the roles reverse under 3.5c, and that reversal is **the conformant shape for such a peer rather than a deviation from a SHOULD**. [5.3b](#53-psk-identity) requires the accepting side to recompute `tag` with the `K_id` of *each pairing it holds* and select the match — a per-connection resolver hook. A platform whose listener offers no such hook refuses a rotating identity outright, so a peer that advertised anyway would be discoverable and unable to complete the handshake it advertised for, which is worse than not advertising. This is measured, not hypothetical: `Network.framework`'s listener has no server-side PSK resolver and answers `PSK_IDENTITY_NOT_FOUND`. The **required** pairing-code path is unaffected — there the device dials (finding F-D1-1, PinPointCapture, session S1).
 
+- **(3.5e) SHOULD** *Erratum E32, 24 August 2026 — CR-01.* Where a peer's counterpart **cannot** advertise for reconnection under [3.5d](#35-who-advertises-and-who-browses), the peer that **can** advertises. This is the reversal of [3.5c](#35-who-advertises-and-who-browses) stated as an obligation rather than a permission, and it is here because 3.5d only says who must *not* advertise: read together with [3.5b](#35-who-advertises-and-who-browses)'s recommendation that the capture peer does, a deployment could conclude that **neither** end advertises and satisfy every clause while doing so. In that deployment [§7.4](#74-persistent-pairings)'s persisted pairing buys nothing at all — both peers hold valid key material and no path exists by which either finds the other — and the users see a protocol that remembers them and still asks for a code every session.
+
+  CR-01 §9 question 3 asks whether the host will advertise. 3.5e is the answer this document can give: on a deployment whose capture peer is bound by 3.5d, **the host advertising is what makes persistence work**, and it is a SHOULD rather than a MUST only because [§3](#3-rv-1--service-discovery) as a whole is optional and a host reachable at a cached endpoint has another way. Whether PinPointStudio does it remains PinPointStudio's to confirm, and 3.5c is still right that supplying a responder is a platform question — but it is no longer a question the specification leaves open on which peer *should*.
+
 ### 3.6 Multicast is not to be relied on
 
 - **(3.6a) MUST NOT** An implementation treat discovery failure as an error state. Multicast is rate-limited or dropped by many consumer access points, blocked by client isolation on guest networks, and does not cross VLAN boundaries. **It will not work at a range.**
 - **(3.6b) MUST** Failure to discover falls back to the pairing code or a cached endpoint, without user-visible failure.
+
+### 3.7 The bootstrap window
+
+*Erratum E31, 24 August 2026 — CR-01. How a peer offering a first pairing under [§11](#11-rv-6--guided-pairing) is found. The handshake itself is [§11](#11-rv-6--guided-pairing); this is only its advertisement.*
+
+A **bootstrap window** is a bounded interval during which a peer will accept one guided pairing from a peer it has never met. It is advertised as a service instance of its own, alongside — not instead of — whatever the peer advertises for reconnection.
+
+- **(3.7a) MUST** A bootstrap window opens **only** on an explicit user action at the peer that opens it. It MUST NOT open at launch, on a schedule, on discovery of a counterpart, or in response to anything arriving on the network.
+- **(3.7b) MUST** The window closes on the earliest of: one guided pairing **completed**; one bootstrap attempt **aborted or rejected** ([§11.9](#119-aborting-and-the-one-attempt-rule)); the peer's own timeout; or a further user action closing it. The timeout is the peer's own policy and **MUST NOT exceed 180 seconds**. On close the peer withdraws the service instance.
+- **(3.7c) MUST** `bn` is 4 bytes from a CSPRNG, drawn fresh for each window, used for the instance name of [3.2c](#32-instance-name) and for nothing else. It is not a key, not an identifier of the peer, and is never persisted.
+- **(3.7d) MUST** A peer advertises **at most one** bootstrap instance at a time, and the instance exists only while the window is open.
+- **(3.7e) MAY** A peer advertise a bootstrap instance **and** a reconnection instance ([3.4d1](#34-resolvable-identifiers)) simultaneously. This does not breach 3.4d1's one-instance rule, which exists to keep the *count of held pairings* unobservable: a bootstrap instance carries no `rid` and therefore contributes nothing to that count.
+- **(3.7f) MUST** The bootstrap instance's SRV record names the endpoint the bootstrap connection is made to. That endpoint MUST NOT be the peer's PPCP listener: a bootstrap connection and a PPCP link are different protocols with different first frames, and separating them at the port is what keeps either from having to guess which it received ([11.3c](#113-roles-and-the-connection)).
+- **(3.7g)** **Residual exposure, stated rather than hidden.** An open window announces to everyone on the link that a peer here will pair with a stranger **right now**, and — where `dl` is present — under a name the operator chose. This is strictly more than [3.4e](#34-resolvable-identifiers) discloses, and it is why the window is user-opened ([3.7a](#37-the-bootstrap-window)), single-attempt ([3.7b](#37-the-bootstrap-window)) and short. It is not reducible further while the peer is discoverable for pairing at all: a window nobody can see is a window nobody can pair with.
+- **(3.7h) MAY** A guided pairing be reached **without** discovery, at an endpoint entered or configured out of band. [§11](#11-rv-6--guided-pairing) constrains the handshake and not how the endpoint was learned, and [3.6a](#36-multicast-is-not-to-be-relied-on) applies here with more force than anywhere else in this document — multicast is least reliable at exactly the venue this path was asked for.
+
+**Why a window and not a mode.** A peer permanently willing to pair with a stranger is a peer any passer-by may attempt to pair with, and the only thing standing between them and success is an operator who declines. [§11.8](#118-what-the-comparison-proves) bounds an active attacker to one guess in a million *per operator confirmation*, and that bound is worth exactly what the number of confirmations is: an always-open peer converts a one-shot attack into a grinding one. The window is what makes the count small, and 3.7a and 3.7b are the two clauses that keep it small.
 
 ---
 
@@ -448,6 +494,8 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 | Retrospective decryption after the pairing secret leaks | **Only where both peers reach TLS 1.3 or a TLS 1.2 ECDHE_PSK suite** ([§5.2b](#52-tls-profile)). Otherwise **not defended** — see below. |
 | Tracking a device across venues by its advertisement, or by its first TLS flight | Rotating resolvable identifiers, in the advertisement ([§3.4](#34-resolvable-identifiers)) **and in the PSK identity** ([§5.3](#53-psk-identity)) — both halves are needed, and Draft 1 had only the first |
 | A pairing code photographed and reused later | Single use and expiry ([§7.3](#73-single-use-and-expiry)) |
+| **An active man-in-the-middle on a first pairing established without a code** | The compared short authentication string of [§11.7](#117-the-short-authentication-string), which an attacker must match on **both** legs at once and cannot bias ([§11.8](#118-what-the-comparison-proves)). One guess in 1 048 576, per operator confirmation, non-repeatable ([3.7b](#37-the-bootstrap-window)) |
+| **A pairing secret photographed, where the pairing was established under [§11](#11-rv-6--guided-pairing)** | **Structurally.** A guided pairing's `PRK` is derived from an ephemeral exchange and is never displayed, printed, or rendered as a code. There is nothing to photograph — see below |
 | A stale code reaching a newer peer and being half-understood | Version marker and its reporting obligation ([§4.2](#42-version-handling)) |
 
 **Not defended against, and stated so nobody assumes otherwise:**
@@ -460,7 +508,12 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 | Denial of service | An attacker on the link can disrupt multicast or the transport. The fallbacks in [§3.6](#36-multicast-is-not-to-be-relied-on) reduce the impact; nothing prevents it. |
 | **Impersonation between peers that scanned the same multi-use code** | They hold **identical key material** by construction ([§7.4f](#74-persistent-pairings)). `mu: 1` is the pairwise case; `mu > 1` is a group credential and must be read as one. |
 | **Retrospective decryption of a recorded session, where the pairing secret is later obtained and the peers could not reach an ephemeral key exchange** | A deliberate trade, taken on the sensitivity of the payload ([§5.4.3](#543-the-decision)) — **including the candidate-attached audio**, which the owner's judgement was asked about specifically and covers. Single use and publisher-side expiry ([§7.3](#73-single-use-and-expiry)) reduce the window in which a secret is obtainable; they do not close it. |
+| **An operator who affirms [§11.7](#117-the-short-authentication-string)'s digits without comparing them** | The comparison **is** the authentication on that path. A user who confirms without looking has authenticated the attacker, and no clause can reach that. [11.7d](#117-the-short-authentication-string) constrains how the digits are presented for exactly this reason; it cannot constrain whether they are read. |
+| **A one-in-a-million guess by a man-in-the-middle on a guided pairing** | Bounded, not eliminated. [§11.8](#118-what-the-comparison-proves) states the number and what keeps the attacker to one draw of it. A successful guess is an undetected MITM for the life of the pairing, which is why [7.4b](#74-persistent-pairings)'s revocability matters as much on this path as on any. |
+| **Denial of a bootstrap window by an attacker who dials it first** | An attacker on the link can consume the single attempt of [3.7b](#37-the-bootstrap-window) before the operator's device reaches it. The operator sees digits that do not match, declines, and opens the window again; the attacker can repeat this indefinitely. It costs the attacker nothing and gains it nothing but the operator's patience, and it is the [§3.6](#36-multicast-is-not-to-be-relied-on) fallback — the pairing code — that ends it. |
 | Anything after the byte stream exists | PPCP's problem, and PPCP assumes the stream is authenticated ([§1.3c](#13-where-it-stops)). |
+
+**The one place [§11](#11-rv-6--guided-pairing) is stronger than [§4](#4-rv-2--the-pairing-code), and it is worth naming.** [§5.4.3](#543-the-decision) accepted retrospective decryption on the grounds that the payload is not highly sensitive, and named the route by which the secret leaks: *"they obtain it by photographing the code, or from a peer's storage."* A guided pairing removes the first of those two routes entirely. Its `PRK` descends from an X25519 exchange whose private halves never leave the two devices and are erased at the end of the handshake ([11.6f](#116-derivation)); no value from which it can be recovered is ever displayed to a room. Storage remains — [7.4b](#74-persistent-pairings) and [7.2c](#72-handling-the-pairing-secret) are what address that, unchanged — but the camera does not. This was not the reason CR-01 was raised and it is not why the request was granted; it is a consequence, and a document that records what a decision costs should record what one buys.
 
 ### 7.2 Handling the pairing secret
 
@@ -468,6 +521,8 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 - **(7.2b) MUST NOT** A pairing secret, a derived key, or a decoded payload appear in a log, a crash report, an analytics event, or a **diagnostic export**.
 - **(7.2c) MUST** Secrets at rest are held in the platform's protected storage where one exists.
 - **(7.2d) MUST** A peer erases a pairing's key material when the pairing is revoked or the session it belongs to closes, unless the pairing was persisted under [§7.4](#74-persistent-pairings).
+
+- **(7.2e) MUST NOT** *Erratum E33, 24 August 2026 — CR-01.* A guided pairing's **ephemeral private key**, its shared secret `Z`, `BK`, or `K_c` ([§11.6](#116-derivation)) appear in a log, a crash report, an analytics event or a diagnostic export, and each is erased at the end of the handshake whether it succeeded or failed ([11.6f](#116-derivation)). [7.2b](#72-handling-the-pairing-secret) already binds the `PRK` that results; these are the values it descends from, and a document that named only the destination would be read as permitting the sources. The **short authentication string** is not on this list: it is displayed on two screens by design, reveals nothing about `Z`, and is worthless once the window has closed.
 
 7.2b names diagnostic export explicitly because a user-initiated diagnostic bundle is a first-class output of a PPCP implementation, it is attached to public issue trackers, and it is assembled by code whose author is thinking about clock residuals rather than about secrets.
 
@@ -497,6 +552,7 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 
 7.4e's tail clause said the opposite until Draft 3 — that the original `sid` was reused *for the PSK identity* — which is what [5.3e](#53-psk-identity) now forbids, and its cross-reference pointed at a clause that had moved. It is the [§5.3](#53-psk-identity) fix not carried into the section an implementer is reading when they build persistence, and a security document that says transmit two sections after forbidding it is resolved by whichever section is read second.
 
+- **(7.4i) MAY** *Erratum E33, 24 August 2026 — CR-01.* A pairing established under [§11](#11-rv-6--guided-pairing) **is persisted under 7.4a like any other**, and [7.4f](#74-persistent-pairings) does not reach it. A guided pairing is pairwise by construction — one bootstrap connection, two ephemeral keys, one counterpart, and a window that closes on the first completed attempt ([3.7b](#37-the-bootstrap-window)) — so its key material reached exactly two peers and the group-credential reasoning below does not apply. There is no `mu` on this path and none is defined for it; a second device pairs by opening a second window.
 - **(7.4f) MUST NOT** A peer persist `PRK` derived from a pairing code whose `mu` exceeded 1. **A pairing established from a multi-use code is session-scoped**, because its key material is held by every peer that scanned that code.
 - **(7.4g)** Where a persistent pairing from a multi-use code is wanted, the peers derive a fresh **per-peer** secret inside the authenticated channel and persist that. Specifying that exchange is deferred; until it exists, multi-device pairing is per-session.
 
@@ -554,7 +610,9 @@ This section is what [`PPCP-CORE` §12](ppcp-core.md#12-security-considerations)
 - **(9a)** Implementing `PPCP-RV` is OPTIONAL. A peer connecting only over a tunnel, or handed an established socket, is fully PPCP-conformant with no rendezvous implementation.
 - **(9b) MUST** An implementation claiming `PPCP-RV` conformance implements the pairing-code path ([§4](#4-rv-2--the-pairing-code)), the key derivation and TLS profile ([§5](#5-rv-3--key-derivation-and-tls)), and [§7](#7-rv-5--security-model) in full.
 - **(9c) MUST** It reproduces the test vectors of [§10](#10-test-vectors) exactly.
-- **(9d)** Service discovery ([§3](#3-rv-1--service-discovery)) and network join ([§6](#6-rv-4--network-join)) are independently optional, and an implementation states which it provides.
+- **(9d)** Service discovery ([§3](#3-rv-1--service-discovery)), network join ([§6](#6-rv-4--network-join)) and guided pairing ([§11](#11-rv-6--guided-pairing)) are independently optional, and an implementation states which it provides.
+- **(9e) MUST** *Erratum E30, 24 August 2026 — CR-01.* An implementation claiming [§11](#11-rv-6--guided-pairing) implements it **in full** — both the commitment and the two-sided confirmation. Guided pairing has no useful subset: an implementation that skipped the commitment ([11.5c](#115-the-exchange)) or confirmed at one end only ([11.7c](#117-the-short-authentication-string)) would complete handshakes indistinguishable from a conformant one and would authenticate nothing, and its counterpart cannot tell. This is [RT-12](#9-conformance)'s problem arriving on a second path, and [RT-20](#9-conformance) is where it is caught.
+- **(9f)** Claiming [§11](#11-rv-6--guided-pairing) does not relieve a peer of [2a](#2-rendezvous-paths). The pairing code stays REQUIRED, and [§3.6](#36-multicast-is-not-to-be-relied-on) is why: guided pairing is reached over multicast on a network where multicast frequently does not work.
 
 Required tests, to be folded into [`PPCP-CONF`](ppcp-conformance.md) once this document is agreed. **Method** uses the vocabulary of [`PPCP-CONF` §1](ppcp-conformance.md#1-claiming-conformance), with one addition: **review** means the requirement is not observable from outside the implementation and is verified by reading the code.
 
@@ -578,11 +636,20 @@ Required tests, to be folded into [`PPCP-CONF`](ppcp-conformance.md) once this d
 | **RT-16** | **review** | No `PRK` derived from a code with `mu > 1` is persisted (7.4f). |
 | **RT-17** | **review** | The peer offers **every** key-exchange mode and ciphersuite its platform exposes, and the offered set is derived from a platform capability query rather than from a constant (5.2b1, 5.4f). **Re-read whenever the TLS setup path is touched, and whenever a platform SDK is updated** — a mode that becomes available is a mode the peer must begin offering, and a platform that gains TLS 1.3 external PSK silently restores property 2 for an implementation that asks rather than assumes. |
 
+| **RT-18** | static | The guided-pairing vectors of [§10.4](#104-guided-pairing) reproduce byte-for-byte: `pk`, the commitment, `Z`, `BK`, the **six displayed digits**, both confirmation MACs, `sid` in canonical UUID text, and the `PRK`, `K_tls` and `K_id` that descend from it (11.5, [11.6](#116-derivation)). The `PRK` row is the one that matters most — it is where this path rejoins [§5.1](#51-key-derivation), and an implementation that agrees on the digits and disagrees on the `PRK` fails at the TLS handshake with no diagnostic. |
+| **RT-19** | injected | An acceptor sent a `bs_reveal` whose `pk` does not match the committed hash **aborts** with `commitment_mismatch` and does not derive (11.5d). Injected by a counterpart that commits to one key and reveals another. |
+| **RT-20** | paired | The digits differ on the two legs of an interposed connection, and a peer whose user declines **does not pair** — with the window closed and not reopened without a further user action (11.7, [3.7b](#37-the-bootstrap-window)). Run against a deliberate man-in-the-middle that relays both legs; this is the test the whole path exists to pass, and no single-implementation harness can run it. |
+| **RT-21** | injected | A shared secret of all zeros **aborts** with `invalid_key` (11.6b). Injected by offering a small-order point as `pk`. |
+| **RT-22** | paired | A bootstrap instance carries `bs`, no `rn` and no `rid`; an instance carrying both `bs` and `rid` is ignored; the instance is withdrawn when the window closes (3.3f, [3.3g](#33-txt-record), [3.7b](#37-the-bootstrap-window)). |
+| **RT-23** | **review** | The ephemeral private key, `Z`, `BK` and `K_c` are erased on completion **and on abort**, and appear in no export (7.2e, [11.6f](#116-derivation)); the keypair is drawn fresh per attempt and never reused (11.5a). |
+
 **Three of these cannot be tested from outside**, and that is worth stating rather than leaving to be discovered. Entropy quality and storage protection produce no observable difference on the wire — a peer using a predictable secret completes exactly the same handshake as one using a good secret — so **RT-12 is the requirement on which the whole model rests and the one no test can catch.** It has to be read in the code, and it should be read again whenever the key-generation path is touched.
 
 RT-17 joins RT-12 in that set for a specific reason: 5.2b1 is the clause the relaxation made load-bearing, and it states its own untestability — an observer cannot distinguish a peer that offered less than it had from one that had less to offer. The requirement now carrying property 2 is the one nothing external can check.
 
 RT-9 and RT-11 are the two most likely to be skipped among those that *can* be tested, and the two least likely to surface in use.
+
+**RT-20 is the one that cannot be run yet, and it is the important one.** [B7](#annex-b--open-issues) already records that interoperability is untestable until a second implementation exists; guided pairing sharpens that from a general caution into a specific gap, because the property [§11](#11-rv-6--guided-pairing) exists to deliver is *resistance to an interposed third party*, and a harness cannot interpose itself between an implementation and itself in any way that means anything. Until RT-20 runs against a real counterpart with a real relay in between, [§11](#11-rv-6--guided-pairing) is a design with vectors and not a demonstrated one, and no conformance claim should say otherwise.
 
 ---
 
@@ -698,6 +765,291 @@ ppcp:qGF2AWJkbmVCYXkgM2JlcIGiYWhsMTkyLjE2OC4xLjIwYXAZHmxibXUBY2V4cBpqkCbAY3Bza1A
 
 The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in place of `dn` they would have been `a8 61 6e …`**, and a parser reading the first key to find the version would have read a display name. Note also that this payload is 133 octets against the 400-byte guidance of [4.5a](#45-size), so a code carrying network credentials stays comfortably scannable.
 
+### 10.4 Guided pairing
+
+*Added 24 August 2026 — [CR-01](../changerequests/CR-01-in-band-pairing.md). The chain of [§11.6](#116-derivation), end to end, from two ephemeral keys to the `PRK` that [§5.1](#51-key-derivation) takes over.*
+
+**The two private keys below are fixed so the vector reproduces. They are not how a key is chosen.** [11.5a](#115-the-exchange) requires a fresh CSPRNG draw per attempt, and a peer that shipped either of these values would be trivially impersonable by anyone reading this document.
+
+```
+sk_i   202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
+sk_a   606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f
+
+pk_i = X25519(sk_i, 9)
+       358072d6365880d1aeea329adf9121383851ed21a28e3b75e965d0d2cd166254
+pk_a = X25519(sk_a, 9)
+       675dd574ed7789310b3d2e7681f3790b466c773b1521fecf36577958371ea52f
+```
+
+**The commitment** ([11.5b](#115-the-exchange)) — `bs_offer.ct`:
+
+```
+ct = SHA-256("ppcp1 bs-commit" || pk_i)
+     f32cd8e62f80f76adb4ba21971efbd10eb71aa6715d9e458f5422c1644357a3a
+```
+
+**The shared secret** ([11.6a](#116-derivation)). Both peers reach it, and this is the assertion that catches a peer which has mixed up the argument order of its key-agreement call:
+
+```
+Z = X25519(sk_i, pk_a) = X25519(sk_a, pk_i)
+    7c79d7b5f31b9aac367477f5f7c7a68b5c44cac28ed5c902a59ec48c02956a6a
+```
+
+**The bootstrap key, and what hangs off it** ([11.6c](#116-derivation)):
+
+```
+BK      = HKDF-Extract(salt = "ppcp1 bootstrap", IKM = Z)
+          b9f16f38e5a45ec6c0563b4fd3b38b696dfbbf4e3491fe1b7941a62637099349
+
+sas_raw = HKDF-Expand(BK, "ppcp1 sas" || pk_i || pk_a, 4)
+          11e66a4c                    = 300313164 as a big-endian uint32
+
+SAS     = 300313164 mod 1000000       = 313164
+                                      → displayed as  313 164
+```
+
+**The confirmation MACs** ([11.5f](#115-the-exchange)). Two labels, one per direction, so neither can be reflected:
+
+```
+K_c   = HKDF-Expand(BK, "ppcp1 bs-confirm", 32)
+        da18828cffc40cddfbf43ed2d1d3ff16d30fb9dc25989041b5eb71a26239e092
+
+mac_i = HMAC-SHA256(K_c, "ppcp1 bs-confirm-i")  first 16 bytes
+        2785c15fc343b3edc5a98755bf7b69b0
+mac_a = HMAC-SHA256(K_c, "ppcp1 bs-confirm-a")  first 16 bytes
+        7046dd47d329be70dfda16c59315a783
+```
+
+**The session identifier** ([11.6d](#116-derivation)). Note the two rows: the expanded bytes, and the bytes **after** the version and variant fields are set. The second is `sid`, and it is the second that salts the `PRK`:
+
+```
+expand  = HKDF-Expand(BK, "ppcp1 bootstrap-sid", 16)
+          1cc4b886e8bd65e063b207ae783bc56b
+                        ^^      ^^
+sid     = expand with octet 6 = (0x65 & 0x0f) | 0x40 = 0x45
+                    octet 8 = (0x63 & 0x3f) | 0x80 = 0xa3
+          1cc4b886e8bd45e0a3b207ae783bc56b
+
+Session.id (4.3e canonical text):
+          1cc4b886-e8bd-45e0-a3b2-07ae783bc56b
+```
+
+**Where it rejoins [§5.1](#51-key-derivation)** ([11.6e](#116-derivation)). From here nothing in this document is new — these are §5.1's own expansions, over a `PRK` that came from an exchange instead of from a code:
+
+```
+PRK   = HKDF-Extract(salt = sid, IKM = Z)
+        3e351aef1e5fe48411e969526b079830494d2cf13104d661694e897598ccf8c9
+K_tls = HKDF-Expand(PRK, "ppcp1 tls-psk",       32)
+        240b513437501f3ab8602b06b45cd84577f10f126bdc497d3cf797c9559856b0
+K_id  = HKDF-Expand(PRK, "ppcp1 rendezvous-id", 32)
+        9e8c8b155b89fcc9b70f4043ddaa607a7ff7acec20dc326f5c307661956a0bd9
+```
+
+**Read the `PRK` row as the one that matters.** Two implementations that agree on all six digits and disagree on the `PRK` show the operator a successful comparison and then fail the TLS handshake with `PSK_IDENTITY_NOT_FOUND` — a failure that looks exactly like the platform limitation of [3.5d](#35-who-advertises-and-who-browses) and will be diagnosed as one. The three most likely causes are all in this vector: `sid` salted before its version and variant bits were set, `Z` computed with the arguments transposed, and the `SAS` info string built as `pk_a || pk_i`.
+
+---
+
+## 11. RV-6 — Guided pairing
+
+*Optional. Added 24 August 2026 by [CR-01](../changerequests/CR-01-in-band-pairing.md), and the only part of this document that has not had an implementation review pass. A first pairing between peers that have never met, with no code carried between two screens.*
+
+### 11.1 What this path is, and the one thing it cannot be
+
+**Authentication cannot be manufactured from nothing.** Two peers meeting for the first time on a network an attacker may control share no secret, and nothing they say to each other distinguishes the intended counterpart from someone sitting between them relaying both halves. Every scheme that appears to escape this imports its authentication from somewhere outside the channel: a printed code, a certificate authority, physical contact, or a person. There is no fourth kind.
+
+CR-01 asks for a first pairing without the code. **It cannot also be without the person**, and this section does not pretend otherwise — [§5](../changerequests/CR-01-in-band-pairing.md) of that request is right that a scheme establishing an anonymous encrypted channel and trusting what arrives on it would satisfy a casual reading of *secure* while deleting [2c](#2-rendezvous-paths) in substance.
+
+What guided pairing removes is the **transfer**. Nothing is carried from one screen to the other, nothing is typed, and no camera is involved. What it keeps is a **comparison**: six digits appear on both screens and the operator affirms at each end that they match. That is a materially smaller act — it needs no focus, no lighting and no line of sight between the two devices, and it works when one of the two screens is a desktop monitor that cannot be pointed at anything.
+
+- **(11.1a) MUST** A guided pairing produces a `PRK`, and from that point the pairing is **indistinguishable** from one established by a scanned code. [§5](#5-rv-3--key-derivation-and-tls), [§7.4](#74-persistent-pairings) and [§7.5](#75-reconnecting-within-a-session) apply to it verbatim and are unchanged by this section.
+- **(11.1b) MUST NOT** A guided pairing complete without an affirmative act by a user at **both** peers ([11.7c](#117-the-short-authentication-string)).
+- **(11.1c) MUST NOT** A peer establish a pairing by accepting an unauthenticated channel and trusting what arrives on it, at any point, under any user instruction, on any path in this document. Trust on first use is not a permitted reading of this section, and [2c](#2-rendezvous-paths) stands unamended.
+- **(11.1d) MUST NOT** A peer substitute an automatic comparison for the human one — matching the digits itself across a channel it also controls, or accepting a counterpart's assertion that they matched. The comparison has value **only** because it crosses a channel the attacker is not on, and the only such channel here is a person looking at two screens.
+
+11.1d is the clause most likely to be optimised away by someone trying to remove the last tap, and removing it removes the entire security of the path while leaving every byte on the wire unchanged. A peer that did so would pass [RT-18](#9-conformance) and every other static test in this document.
+
+### 11.2 Why it is not TLS, and what that unlocks
+
+The bootstrap handshake carries **no pre-shared key**, because at first contact there is not one to carry. It is therefore not a TLS-PSK connection, and the platform limitation that shapes the rest of this document does not reach it.
+
+That is not a detail. [CR-01 §6.2](../changerequests/CR-01-in-band-pairing.md) measured that Apple's TLS listener has no server-side PSK resolver, which is what [3.5d](#35-who-advertises-and-who-browses) is built on, and CR-01 §6 concludes: *"Any bootstrap in which the capture peer **listens** on Apple platforms inherits it."* **That is true of a bootstrap built on TLS-PSK and it does not bind this one.** There is no PSK identity to resolve, so there is nothing for the listener to fail to resolve.
+
+- **(11.2a) MUST** The dialling direction of the **bootstrap** connection is unconstrained. Either peer may open the window and either may dial it, whatever its platform, and [3.5b](#35-who-advertises-and-who-browses), [3.5c](#35-who-advertises-and-who-browses) and [3.5d](#35-who-advertises-and-who-browses) do not reach it — they are about advertising a **pairing**, and a bootstrap window advertises none.
+- **(11.2b) MUST** The [§5](#5-rv-3--key-derivation-and-tls) connection that **follows** a guided pairing is constrained by [§3.5](#35-who-advertises-and-who-browses) exactly as any other, and the peers therefore **may swap roles between the two connections**. On the deployment CR-01 describes they do: the capture peer opens the window and the host dials it, then the pairing exists and the capture peer dials the host under [§5](#5-rv-3--key-derivation-and-tls) because [3.5d](#35-who-advertises-and-who-browses) leaves it no choice.
+
+**This is what makes "the host PC finds the device and connects to it" reachable**, and it is reachable only at first contact. A range operator standing at a bay opens a window on the capture device, and PinPointStudio — browsing, dialling, with a screen large enough to show six digits at a glance — finds it and connects. Once the pairing exists, [3.5d](#35-who-advertises-and-who-browses) and [3.4d2](#34-resolvable-identifiers) put the steady state back on the device-browses-and-dials shape that CR-01 §2 correctly declines to reopen. Both directions are available, on different connections, for different reasons, and neither contradicts the other.
+
+- **(11.2c)** **The bootstrap connection is plaintext, and that is not a relaxation of [5.2f](#52-tls-profile).** Nothing confidential crosses it: two ephemeral public keys, a hash of one of them, and two MACs. Every one of those is a public value in the construction's own security argument — an observer who records the entire exchange learns nothing that helps it, because the secret is the Diffie-Hellman output and that is never sent. [5.2f](#52-tls-profile) forbids a **PPCP** connection falling back to plaintext, no PPCP message crosses this one ([1.3c1](#13-where-it-stops)), and encrypting it would add a key-agreement step to protect values that are already public.
+
+11.2c will be read by a reviewer as a loophole, so it is stated as a claim that can be checked rather than as an assurance. The check is: name a value on this connection whose disclosure to a passive observer weakens the pairing. There is not one. What an **active** attacker can do to this connection is a different question entirely, and it is [§11.8](#118-what-the-comparison-proves) — which does not depend on the connection being encrypted, and could not be repaired by encrypting it.
+
+### 11.3 Roles and the connection
+
+- **(11.3a)** The peer that opens the window and accepts the connection is the **acceptor**. The peer that dials it is the **initiator**. Neither term implies a role: a host, a capture peer or an observer may be either ([2e](#2-rendezvous-paths)).
+- **(11.3b) MUST** The bootstrap runs over one reliable, ordered byte stream. Where that stream is TCP it is a connection of its own, to the endpoint of [3.7f](#37-the-bootstrap-window), and it carries one bootstrap attempt and nothing else.
+- **(11.3c) MUST** An acceptor closes the connection **without reply** if its first frame is not a well-formed `bs_offer`. This is the mirror of [`PPCP-ENC` 2.1c](ppcp-encoding.md#21-binding-streams-to-a-link) for the other protocol, and it is what makes the separation at the port of [3.7f](#37-the-bootstrap-window) reliable rather than merely tidy. Where the first frame **is** a well-formed `bs_offer` and no window is open, the acceptor replies `bs_abort` / `window_closed` and closes: the line between the two is whether the counterpart has already demonstrated it speaks this protocol. Something that has not gets nothing to learn from; something that has is far more likely a peer racing a window that has just closed than an attacker, and it is owed a diagnostic its user can act on.
+- **(11.3d) MUST** An acceptor runs **at most one** bootstrap attempt at a time and refuses a concurrent one with `bs_abort` / `window_closed`. Serialising is what makes the single-attempt bound of [3.7b](#37-the-bootstrap-window) mean what [§11.8](#118-what-the-comparison-proves) says it means; an acceptor that ran ten attempts in parallel would offer an attacker ten draws against one operator confirmation.
+- **(11.3e) SHOULD** An attempt that has not reached [11.5f](#115-the-exchange) within 30 seconds is aborted, and one awaiting a user's affirmation is aborted after 60. The window's own bound is [3.7b](#37-the-bootstrap-window)'s 180 seconds and it binds regardless.
+
+### 11.4 Frames
+
+- **(11.4a) MUST** A bootstrap frame is framed exactly as [`PPCP-ENC` §3](ppcp-encoding.md#3-framing) — the 8-byte header, then a deterministically encoded CBOR map ([4.3a](#43-payload)) — with the header's `channel` byte set to **`255`**, which [`PPCP-ENC` 2a](ppcp-encoding.md#2-channels) reserves and no PPCP channel may use.
+
+  The reuse is deliberate and is [A4](#annex-a--decisions-and-alternatives)'s reasoning applied a second time: a peer implementing this document already has this parser and this encoder, and needs no second one. The reserved channel byte is what makes a misdirected frame fail closed rather than be half-understood — a bootstrap frame arriving on a PPCP link is rejected by [`PPCP-ENC` 2c](ppcp-encoding.md#2-channels), and a PPCP frame arriving on a bootstrap connection is rejected by [11.3c](#113-roles-and-the-connection) or [11.4c](#114-frames).
+
+- **(11.4b) MUST** Every frame carries `ty`, an unsigned integer naming its type. `bs_offer` and `bs_accept` also carry `v`, the **bootstrap format version**, which this document defines as `1` and which is unrelated to the PPCP wire version — that is negotiated in `hello`, inside TLS, after the pairing exists.
+
+| `ty` | Frame | Sent by | Fields |
+|---|---|---|---|
+| `1` | `bs_offer` | initiator | `v` uint, `ct` bstr(32) |
+| `2` | `bs_accept` | acceptor | `v` uint, `pk` bstr(32) |
+| `3` | `bs_reveal` | initiator | `pk` bstr(32) |
+| `4` | `bs_confirm` | either | `mac` bstr(16) |
+| `5` | `bs_abort` | either | `rc` uint |
+
+- **(11.4c) MUST** A peer that receives a frame out of the order of [§11.5](#115-the-exchange), a frame type it does not know, a field of the wrong type or length, or a second frame of a type already received, aborts with `malformed` and closes. It does not attempt recovery: there is one exchange, it is five frames long, and a peer that has lost track of where it is in it has nothing to resynchronise to.
+- **(11.4d) MUST** `v` is the **first key** of `bs_offer` and `bs_accept`. This is [4.3b](#43-payload)'s construction rather than a second rule — under RFC 8949 §4.2.1 a one-character key sorts before every two-character key, and `ty`, `ct`, `pk`, `mac` and `rc` are all two — and it is here for [4.2a](#42-version-handling)'s reason: a peer that does not implement a later bootstrap version decodes far enough to say so.
+- **(11.4e) MUST** A peer that decodes a `v` it does not implement aborts with `unsupported_version` and reports to its **user** that the counterpart requires a newer version of the application, not a generic failure. This is [4.2b](#42-version-handling) on the other path, and for the same reason: the operator is standing there and can act on it.
+
+**Abort reason codes.** `rc` is one of:
+
+| `rc` | Meaning |
+|---|---|
+| `1` | `unsupported_version` — `v` not implemented ([11.4e](#114-frames)) |
+| `2` | `commitment_mismatch` — the revealed `pk` does not hash to `ct` ([11.5d](#115-the-exchange)) |
+| `3` | `invalid_key` — the key agreement produced an all-zero output ([11.6b](#116-derivation)) |
+| `4` | `rejected` — the user declined, or a confirmation MAC did not verify |
+| `5` | `timeout` — [11.3e](#113-roles-and-the-connection) |
+| `6` | `window_closed` — no window open, or one attempt already running ([11.3d](#113-roles-and-the-connection)) |
+| `7` | `malformed` — [11.4c](#114-frames) |
+
+- **(11.4f) MUST** A user's refusal and a failed confirmation MAC are reported with the **same** code, `rejected`, and are indistinguishable to the counterpart. A failed MAC after matching digits means an attacker forged one or an implementation is wrong; neither is a fact to hand to the party that may have caused it. This is [7.7c](#77-what-must-never-cross-an-unauthenticated-channel)'s principle on this path, narrowed to the one pair of cases where it bites — the other codes describe the peer's own state before any secret exists and reveal nothing.
+- **(11.4g) MUST NOT** `bs_abort` carry any detail beyond `rc` — no message, no diagnostic string, no peer name.
+
+### 11.5 The exchange
+
+Five frames. Read the order as load-bearing: **the acceptor reveals its key having seen only a commitment to the initiator's**, and that is the whole of what stops an attacker choosing the digits.
+
+```
+  initiator                                        acceptor
+      |                                                |
+      |  1.  bs_offer   { v: 1, ct }                   |     ct = SHA-256("ppcp1 bs-commit" || pk_i)
+      | ---------------------------------------------> |
+      |                                                |
+      |  2.  bs_accept  { v: 1, pk: pk_a }             |     acceptor reveals first
+      | <--------------------------------------------- |
+      |                                                |
+      |  3.  bs_reveal  { pk: pk_i }                   |     acceptor checks ct
+      | ---------------------------------------------> |
+      |                                                |
+      |        both derive Z, BK, SAS, K_c  (11.6)     |
+      |        both DISPLAY the six digits             |
+      |        each waits for its own user  (11.7)     |
+      |                                                |
+      |  4.  bs_confirm { mac: mac_i }                 |
+      | ---------------------------------------------> |
+      |  4.  bs_confirm { mac: mac_a }                 |
+      | <--------------------------------------------- |
+      |                                                |
+      |        both verify; pairing exists (11.6e)     |
+```
+
+- **(11.5a) MUST** Each peer draws a **fresh X25519 keypair** ([RFC 7748](https://www.rfc-editor.org/rfc/rfc7748)) from a CSPRNG for **every attempt**, uses it for that attempt only, and never reuses or persists it. A reused ephemeral is not ephemeral, and on this path it would let an attacker who obtained one private key impersonate that peer at every future first pairing it ever attempts.
+- **(11.5b) MUST** The initiator sends `bs_offer` carrying `ct = SHA-256("ppcp1 bs-commit" || pk_i)`, and does **not** send `pk_i` in it.
+- **(11.5c) MUST** The acceptor replies `bs_accept` carrying `pk_a`. It MUST NOT have seen `pk_i` at this point, and an implementation that sends `pk_a` only after receiving `pk_i` — a natural-looking reordering that saves a round trip — **destroys the security of this path entirely** ([§11.8](#118-what-the-comparison-proves)).
+- **(11.5d) MUST** The initiator sends `bs_reveal` carrying `pk_i`. The acceptor recomputes `SHA-256("ppcp1 bs-commit" || pk_i)`, compares it to the `ct` it received **in constant time**, and aborts with `commitment_mismatch` on any difference. It MUST NOT derive anything from a `pk_i` that failed this check.
+- **(11.5e) MUST** Both peers then derive ([§11.6](#116-derivation)), display the six digits, and each waits for **its own** user ([§11.7](#117-the-short-authentication-string)). Neither sends `bs_confirm` before its own user has affirmed.
+- **(11.5f) MUST** Each peer sends `bs_confirm` carrying its own MAC and verifies the counterpart's **in constant time**:
+
+```
+mac_i = HMAC-SHA256(K_c, "ppcp1 bs-confirm-i")   first 16 bytes   (sent by the initiator)
+mac_a = HMAC-SHA256(K_c, "ppcp1 bs-confirm-a")   first 16 bytes   (sent by the acceptor)
+```
+
+  The two labels differ so that neither MAC can be reflected back at its own sender by a relay that has nothing else to send. A peer that receives its own MAC value aborts with `rejected`.
+
+- **(11.5g) MUST** The pairing exists only when a peer has **both** affirmed at its own end and verified the counterpart's MAC. Until then it holds nothing and MUST NOT persist, advertise, or offer anything derived from the exchange.
+- **(11.5h) MUST** The bootstrap connection is closed once both MACs have verified. It is not reused, not upgraded in place, and not held open — the peers reconnect under [§5](#5-rv-3--key-derivation-and-tls), in whichever direction [11.2b](#112-why-it-is-not-tls-and-what-that-unlocks) puts them.
+
+**Why not upgrade the connection in place**, since it is already open and both ends now hold a key. Because [§5](#5-rv-3--key-derivation-and-tls) would then have two shapes — one where TLS is negotiated on a fresh connection and one where it is layered onto a live plaintext stream — and the second is a new attack surface, a second code path in every implementation, and a second thing [2c](#2-rendezvous-paths) has to be read against. The cost of not doing it is one TCP connection setup, once, at pairing time, while an operator is watching a screen. It is not a cost worth a second shape of `§5`.
+
+### 11.6 Derivation
+
+- **(11.6a) MUST** `Z = X25519(own private key, counterpart public key)`, 32 octets, as [RFC 7748 §5](https://www.rfc-editor.org/rfc/rfc7748#section-5).
+- **(11.6b) MUST** A peer whose key agreement produces an **all-zero** `Z` aborts with `invalid_key` and derives nothing. This is [RFC 7748 §6.1](https://www.rfc-editor.org/rfc/rfc7748#section-6.1)'s check, and it is what makes a small-order public key a failed handshake rather than a shared secret an attacker chose.
+- **(11.6c) MUST** From `Z`:
+
+```
+BK      = HKDF-Extract(salt = "ppcp1 bootstrap", IKM = Z)
+sas_raw = HKDF-Expand(BK, "ppcp1 sas" || pk_i || pk_a,  4)
+K_c     = HKDF-Expand(BK, "ppcp1 bs-confirm",          32)
+```
+
+  where `pk_i` and `pk_a` are the 32 raw octets of each public key, **initiator first**, and the info strings are their ASCII bytes with no terminator. The public keys are in the `sas_raw` info so that the digits are bound to the exact pair of keys the peer holds — `Z` alone would not say **whose** keys produced it, and that binding is what [§11.8](#118-what-the-comparison-proves) rests on.
+
+- **(11.6d) MUST** The session identifier is derived rather than exchanged:
+
+```
+sid = HKDF-Expand(BK, "ppcp1 bootstrap-sid", 16)
+```
+
+  with octet 6 then set to `(octet6 & 0x0f) | 0x40` and octet 8 to `(octet8 & 0x3f) | 0x80`, so that `sid` is a well-formed version 4 UUID as [4.3e](#43-payload) requires. **The bits are set before `sid` is used for anything**, including as the salt of [11.6e](#116-derivation). Deriving it costs no round trip and puts no value on the plaintext connection that a later observation could be correlated against.
+
+- **(11.6e) MUST** The pairing key material is then [§5.1](#51-key-derivation)'s, unchanged:
+
+```
+PRK   = HKDF-Extract(salt = sid, IKM = Z)
+K_tls = HKDF-Expand(PRK, "ppcp1 tls-psk",        32)
+K_id  = HKDF-Expand(PRK, "ppcp1 rendezvous-id",  32)
+```
+
+  [§5.1](#51-key-derivation) is not amended by this section and does not need to be: it takes an input keying material and a salt, and this path supplies `Z` and a derived `sid` where the code path supplies `psk` and a printed one. [5.1c](#51-key-derivation)'s rule that a persisting peer persists `PRK` and never the original secret is satisfied here by construction — there is no original secret to persist, only an ephemeral one that [11.6f](#116-derivation) erases.
+
+- **(11.6f) MUST** A peer erases its ephemeral private key, `Z`, `BK` and `K_c` when the handshake ends, **whether it succeeded or failed**, and they appear in no log or export ([7.2e](#72-handling-the-pairing-secret)). What survives a successful handshake is `PRK` and what [§5.1](#51-key-derivation) derives from it; what survives a failed one is nothing.
+- **(11.6g) MUST** An implementation MUST NOT substitute a different curve, a different KDF, or a different label. There is no negotiation on this path and none is wanted: a first-contact handshake with a cryptographic-agility mechanism is a first-contact handshake with a downgrade attack, and the values here are fixed for the same reason [§4](#4-rv-2--the-pairing-code)'s are.
+
+### 11.7 The short authentication string
+
+- **(11.7a) MUST** The displayed value is `sas_raw` read as a **big-endian unsigned 32-bit integer, modulo 1 000 000**, rendered as exactly **six decimal digits with leading zeros**. `000042` is a valid string and MUST be shown as six characters.
+- **(11.7b) MUST** Both peers display it. A peer that cannot display six digits to a user MUST NOT implement this path — there is no headless guided pairing, because the comparison is the authentication and a peer with no screen has no way to be compared.
+- **(11.7c) MUST** Each peer obtains an affirmative act from **its own** user before sending `bs_confirm`. A single affirmation at one end does not establish a pairing at the other ([11.1b](#111-what-this-path-is-and-the-one-thing-it-cannot-be)), and a peer MUST NOT treat the arrival of the counterpart's `bs_confirm` as standing in for its own user's.
+- **(11.7d) SHOULD** The digits are presented so that comparison is the obvious act and acceptance is not the default: both peers group them identically — `313 164` — the affirmative control is not pre-selected and not the one a stray tap reaches, and the prompt asks whether the numbers **match** rather than whether to trust or continue. A dialogue whose default is *Continue* is a dialogue that authenticates whatever is on the other end.
+- **(11.7e) MUST NOT** A peer display any part of the digits, or any control that affirms them, before it has completed [11.5d](#115-the-exchange). There is nothing to compare before then, and a progressive display would leak the value to whichever side an attacker reached first.
+- **(11.7f) MUST NOT** The digits be reused, cached, or shown again after the attempt ends. They are a function of two ephemeral keys and are meaningless outside the attempt that produced them.
+
+**Six digits, and why not more.** Twenty bits is what Bluetooth numeric comparison and [ZRTP](https://www.rfc-editor.org/rfc/rfc6189) both settle on, and the reasoning is not that 2⁻²⁰ is negligible in the abstract — it is that the attacker gets **one** draw and a failed draw is seen by a human. Lengthening the string buys little against an attacker already limited to one attempt and costs a great deal against the operator, who is the component most likely to fail: a person asked to compare ten digits at a range, in daylight, forty times a day, stops comparing. [3.7b](#37-the-bootstrap-window)'s single attempt is doing more work here than a longer string would.
+
+### 11.8 What the comparison proves
+
+**The property.** After a successful comparison, both peers hold the same `PRK`, and that `PRK` is shared with **the peer at the other end of the channel the operator's two screens belong to** and with nobody else.
+
+**How the commitment produces it.** An attacker interposed on the bootstrap connection must run two exchanges — one with the initiator, one with the acceptor — and must make both display the same six digits, because the operator will compare them. The digits on each leg are `HKDF(Z, "ppcp1 sas" || pk_i || pk_a)` for that leg's key pair. To force a collision the attacker would need to choose one of its two keys **after** seeing the honest key it is paired against, and grind candidates until the two legs agree; 2²⁰ trial keys is seconds of work.
+
+[11.5b](#115-the-exchange) and [11.5c](#115-the-exchange) are what deny it that. The initiator commits to `pk_i` before seeing anything; the acceptor reveals `pk_a` having seen only a hash. So on the acceptor's leg the attacker must choose its key before learning `pk_a`, and on the initiator's leg it is bound by a commitment it made before learning `pk_i`. Neither leg's digits can be steered. The attacker's best strategy is to pick both keys blind and hope the two legs collide — **one chance in 1 048 576** — and a miss is a mismatch on two screens with an operator looking at both.
+
+**What bounds the retries, which is the part that matters more than the number.** A miss must cost the attacker the attempt. [3.7b](#37-the-bootstrap-window) closes the window on an abort or a rejection, [3.7a](#37-the-bootstrap-window) requires a fresh user action to reopen it, and [11.3d](#113-roles-and-the-connection) forbids concurrent attempts. Together those make the attacker's expected work *one million operator confirmations*, not one million packets. Remove any one of the three and the attack becomes a loop.
+
+**What it does not prove**, stated so it is not assumed:
+
+- **It does not prove which device is at the other end** — only that the channel has two ends and the operator saw both. An operator who compares the bay's screen against the wrong bay's phone has authenticated a channel to the wrong bay, correctly. `dl` ([3.3f](#33-txt-record)) exists to make that unlikely; the comparison is what makes it *survivable*, because the wrong bay's digits will not match the one the operator is reading.
+- **It does not survive an operator who does not compare.** [§7.1](#71-threat-model) says so in its *not defended* table, and [11.7d](#117-the-short-authentication-string) is the most that a specification can do about it.
+- **It confers no forward secrecy on what follows.** The bootstrap exchange is itself ephemeral, but the `PRK` it produces persists, and every session keyed from it is bound by [§5.4.3](#543-the-decision) exactly as a code-established pairing is. A guided pairing removes the photographable secret ([§7.1](#71-threat-model)); it does not remove the stored one.
+
+### 11.9 Aborting, and the one-attempt rule
+
+- **(11.9a) MUST** Any abort — a mismatch, a user's refusal, a failed MAC, a timeout, a malformed frame, a closed connection — ends the attempt, closes the window ([3.7b](#37-the-bootstrap-window)), and leaves **no** pairing at either peer.
+- **(11.9b) MUST NOT** A peer reopen the window without a further explicit user action ([3.7a](#37-the-bootstrap-window)). It MUST NOT retry automatically, offer a *try again* control that reopens without that action, or keep the window open across a failure.
+- **(11.9c) MUST NOT** A peer report an abort to its user in terms that invite a retry as the obvious next step where the cause was a **mismatch or a MAC failure**. Those two mean either an implementation is wrong or someone is on the link, and *"the numbers did not match — do not retry until you know why"* is the honest message. A timeout or a closed connection carries no such implication and may be reported as the ordinary failure it is.
+- **(11.9d) SHOULD** A peer that has aborted twice in one sitting offers the pairing code ([§4](#4-rv-2--the-pairing-code)) instead. The code path is required of every implementation ([2a](#2-rendezvous-paths)), it does not depend on multicast, and it is the answer to both of the plausible causes.
+
+11.9c is unusual for a specification to state and it is here because the alternative is worse. Every other failure in this document is a network problem, and users learn from those that retrying is what one does. A mismatch is the **one** signal this path produces that an attack is under way, and a peer whose dialogue makes retrying the reflex has converted its single-attempt bound into an unbounded one by way of the operator's muscle memory.
+
+### 11.10 What must not cross a bootstrap connection
+
+- **(11.10a) MUST NOT** A PPCP message, a `Peer.id`, a device or user name, a Source list, a capability, a session identifier, a stored-session count, or any value that persists across attempts cross a bootstrap connection. The five frames of [§11.4](#114-frames) are its entire vocabulary. [7.6a](#76-peer-identity) and [7.7b](#77-what-must-never-cross-an-unauthenticated-channel) bind it unchanged, and `Peer.id` is still first disclosed in `hello`, inside TLS ([7.6b](#76-peer-identity)), after the pairing exists.
+- **(11.10b) MUST NOT** Any value from a pairing the peer already holds — a `PRK`, a `K_id`, an `rid`, a `psk`, a `sid` — cross a bootstrap connection or influence any value on it. A guided pairing knows nothing about what either peer has paired with before, and that is what keeps it from becoming an oracle for [§3.4](#34-resolvable-identifiers)'s identifiers.
+- **(11.10c) MUST** A peer treats everything it received on a bootstrap connection as spent when the connection closes. Nothing from it is persisted except the `PRK` of [11.6e](#116-derivation), and only after [11.5g](#115-the-exchange).
+
 ---
 
 ## Annex A — Decisions and alternatives
@@ -718,6 +1070,10 @@ The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in 
 | **A10** | **`Peer.id` disclosed only inside TLS** | Include it in the PSK identity, so a server can select a key without trying each | The identity is sent in the clear in the first flight. A stable identity there would undo the rotating identifier at the first connection. Trying each held pairing is cheap at the scale involved. |
 | **A11** | **One PSK identity form, always resolvable** ([§5.3](#53-psk-identity)) | Keep `0x01 \|\| sid` for a first pairing and use the resolvable form only for a persisted one, which is marginally simpler on the first handshake | Two forms of the same length starting with the same byte need a discriminator, and the saving is one HMAC. One form is simpler than two plus a type rule. The leading `0x01` remains a format version byte for a future third form. |
 | **A12** | **Every payload key but `v` is at least two characters** ([4.3b](#43-payload)) | Special-case `v` to be emitted first regardless of deterministic ordering | A special case is a rule an implementer can forget; a length constraint is one the encoder enforces for free, and it keeps working for keys added in later payload versions. |
+| **A14** | **A compared six digits, not a transferred short code** ([§11.7](#117-the-short-authentication-string)) | A short-code PAKE — SPAKE2 or CPace over four or six digits the acceptor displays and the initiator's user types | A PAKE is the stronger primitive and it solves a problem CR-01 did not raise: it still transfers a value between two screens, which is the exact act the request asked to remove. Comparison needs no keyboard, no camera and no line of sight, and against an attacker bounded to one attempt the two reach the same place. A PAKE also brings a password-guessing surface and a hash-to-curve dependency; the comparison brings neither. **If a future deployment wants pairing with only one screen — a headless capture peer — a PAKE is the answer and this decision reverses**, because [11.7b](#117-the-short-authentication-string) forbids that case outright. |
+| **A15** | **Commit, then reveal** ([11.5b](#115-the-exchange), [11.5c](#115-the-exchange)) | A plain two-message ephemeral exchange, one round trip shorter | Without the commitment an interposed attacker chooses its key after seeing the honest one and grinds 2²⁰ candidates until both legs display the same digits — seconds of work, and the comparison then proves nothing. The commitment is the entire security of the path and it costs one frame. It is also the clause most likely to be "optimised" back out by an implementer counting round trips, which is why [11.5c](#115-the-exchange) says what removing it does. |
+| **A16** | **X25519, fixed, with no negotiation** ([11.6g](#116-derivation)) | Offer a curve list, or use P-256, which more platforms expose through a general-purpose crypto interface | A first-contact handshake with an agility mechanism is a first-contact handshake with a downgrade attack, and there is no PSK here to authenticate the transcript with — the whole point of the path. One curve, stated. X25519 over P-256 because it has no invalid-curve class of failure, its check is one comparison against zero ([11.6b](#116-derivation)), and both platforms in this deployment expose it. **[B14](#annex-b--open-issues) gates that last claim on a measurement rather than an assumption**, which is what [5.4b](#54-resolved-the-mechanism) had to learn the hard way. |
+| **A17** | **A bootstrap connection of its own, torn down before [§5](#5-rv-3--key-derivation-and-tls)** ([11.5h](#115-the-exchange)) | Upgrade the live plaintext connection to TLS-PSK in place once both ends hold the key | The upgrade saves one TCP setup, once, at pairing time, and costs `§5` a second shape — one where TLS is negotiated on a fresh connection and one where it is layered onto a stream that has already carried plaintext. That is a second code path in both implementations, a second thing to read [2c](#2-rendezvous-paths) against, and a new place for a downgrade to hide. Tearing down also makes [11.2b](#112-why-it-is-not-tls-and-what-that-unlocks)'s role swap natural rather than awkward. |
 | **A13** | **`mu > 1` is session-scoped and never persisted** ([7.4f](#74-persistent-pairings)) | Remove `mu` entirely, so every pairing is pairwise | Multi-device pairing is a real workflow and displaying three codes is worse ergonomics for no gain. Bounding the shared credential to one session keeps the workflow and removes the permanent exposure. |
 
 ---
@@ -736,6 +1092,9 @@ The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in 
 | ~~**B8**~~ | ~~TLS 1.3 external PSK unreachable; device confirmation outstanding.~~ | **Closed in Draft 6.** The measurement was repeated on an iPhone 16 on the release OS and is identical to the desktop result ([5.4b1](#541-what-was-measured)). The premise is confirmed, the relaxation stands, and no clause changed — which is how 5.4b was worded. |
 | **B12** | **Forward secrecy is now best-effort, and nothing replaces it on the leg that lacks it.** A per-session **ratchet** — re-deriving `PRK` at each session close and erasing its predecessor — would restore the property for every session after the first, at the cost of persistent state that both ends must keep in step and recover from when they fall out of it. It is not specified, and it is the cheapest route back to property 2 without changing the transport. | Open — worth revisiting if the payload is ever reassessed, or if a peer wants it independently. |
 | **B9** | **`role` in a TXT record is unverified before pairing.** A peer advertising `role: host` is taken at its word by a browser deciding whether to dial. It costs only a wasted connection — the handshake authenticates — but a browser should not treat it as more than a filter hint. | Open. |
+| **B14** | **X25519 reachability through both platforms' public interfaces is assumed, not measured.** [11.6a](#116-derivation) mandates it and [A16](#annex-a--decisions-and-alternatives) argues for it on the belief that CryptoKit's `Curve25519.KeyAgreement` and the host's crypto library both expose raw X25519 with no TLS involved. That belief is the same *shape* as the one [§5.4](#54-resolved-the-mechanism) held about TLS 1.3 external PSK for four drafts before anyone ran it. | **Open, and it gates implementation.** Both teams run the check — a raw X25519 agreement between two locally generated keypairs, output compared to [RFC 7748 §6.1](https://www.rfc-editor.org/rfc/rfc7748#section-6.1) — and report before writing any of [§11](#11-rv-6--guided-pairing). A negative result on either side reopens [A16](#annex-a--decisions-and-alternatives), not the rest of the section. |
+| **B15** | **The fleet case is not served.** CR-01's motivation is *"a range operator sets up several bays"*, and [§11](#11-rv-6--guided-pairing) still costs one operator confirmation per device per host. What would collapse that to one per device is a venue-scoped enrolment credential — pair once with the venue, connect to any bay in it — and that is a **group credential**, which is exactly what [7.4f](#74-persistent-pairings) forbids persisting and what [B2](#annex-b--open-issues) says has no revocation story. | **Open, and deliberately not attempted here.** Its prerequisite is [B2](#annex-b--open-issues)'s per-peer re-keying inside the authenticated channel, not a fourth rendezvous path. Specifying a venue credential before B2 exists would ship the multi-device exposure [7.4f](#74-persistent-pairings) was written to bound, permanently rather than for one session. |
+| **B16** | **[§11](#11-rv-6--guided-pairing) has had no implementation review pass.** Every other section of this document has had at least three, and [§4](#4-rv-2--the-pairing-code) three independent recomputations of its vectors. [§10.4](#104-guided-pairing)'s values have been computed once, by the author, from one implementation of X25519. | Open. **The vectors need recomputing independently by both teams before anything is built on them** — that is what caught the defect in [§4.3b](#43-payload), and the `PRK` row is the one where a disagreement surfaces as a TLS failure that looks like a platform limitation. |
 | **B7** | **Interoperability is untestable until a second implementation exists.** Every test in [§9](#9-conformance) can pass against a single implementation's own assumptions, which is exactly the failure mode [`PPCP-CONF` §5c](ppcp-conformance.md#5-interoperability) records for PPCP itself. | Open — structural. |
 
 ---
@@ -743,6 +1102,20 @@ The first four octets are `a8 61 76 01` — `map(8)`, `"v"`, `1`. **With `n` in 
 # Annex C — Change history
 
 *Non-normative. Newest first.*
+
+## Revision 9 — CR-01, guided pairing
+
+**Revision 8 was final and closed with no open findings.** [CR-01](../changerequests/CR-01-in-band-pairing.md) reopened it, correctly: it reported no defect, and asked for a requirement the document had never been asked to serve — a host and a capture peer that have never met reaching a working link without an operator carrying a code between two screens.
+
+**Granted in part.** The transfer goes; the person does not. [§11.1](#111-what-this-path-is-and-the-one-thing-it-cannot-be) states why in one paragraph and it is the only interesting sentence in the ruling: authentication cannot be manufactured from nothing, so a first contact on a hostile network imports its trust from outside the channel or has none. CR-01 §5 says the same thing from the other side and is right to. What [§11](#11-rv-6--guided-pairing) does is make the human act as small as it can be — six digits compared, not carried — and then spend the rest of the section keeping the attacker to a single guess at them.
+
+**[2c](#2-rendezvous-paths) is untouched.** This was the constraint the answer had to respect and it is met structurally rather than by exception: the bootstrap produces a `PRK` and closes, and the peers then connect under [§5](#5-rv-3--key-derivation-and-tls) exactly as they would from a scanned code. There is still no unauthenticated rendezvous path.
+
+**One thing CR-01 did not spot, and it is the useful part.** The request's §6 concludes that any bootstrap in which the capture peer listens inherits the platform's missing server-side PSK resolver. That is true of a bootstrap built on TLS-PSK. This one carries no PSK — there is not one yet — so nothing has to be resolved, and [11.2a](#112-why-it-is-not-tls-and-what-that-unlocks) leaves the bootstrap's dialling direction free. **The host PC can find the capture device and connect to it**, at first contact, which is what the feature was asked for. The steady state stays where [3.5d](#35-who-advertises-and-who-browses) and [3.4d2](#34-resolvable-identifiers) put it, and CR-01 §2 was right not to reopen that.
+
+**Question 3 is answered as a clause rather than left to goodwill.** [3.5e](#35-who-advertises-and-who-browses): where the counterpart cannot advertise, the peer that can should. Without it a deployment could have neither end advertising and satisfy every clause, which makes persistence buy nothing.
+
+**What is new is also what is least proved.** [§11](#11-rv-6--guided-pairing) has had no implementation review pass, [§10.4](#104-guided-pairing)'s vectors have been computed once by one implementation, [RT-20](#9-conformance) — the test the path exists to pass — cannot run until two implementations can be put either side of a relay, and [B14](#annex-b--open-issues) gates the whole section on a platform measurement neither team has run. Every other section of this document earned its confidence over three review passes. This one has earned none yet, and the revision says so where a reader will see it rather than in an annex.
 
 **Draft 5** carries the third-pass findings. All six were in [§5](#5-rv-3--key-derivation-and-tls), and all six were consequences of Draft 4's relaxation that had not been carried into the clauses around it: a conformance test still refusing the newly-legal handshake, the clause that became load-bearing acquiring no test, the achieved outcome becoming a per-connection variable that nothing reported, and a server-sent field becoming reachable on a path nothing exercised. [§4](#4-rv-2--the-pairing-code), [§6](#6-rv-4--network-join) and [§7](#7-rv-5--security-model) are approved without reservation by both teams.
 
@@ -782,6 +1155,17 @@ The last open item, and it was a decision rather than a finding.
 | **E25** | [3.3d, 3.3e](#33-txt-record) | **Decided by L17, reversible.** One **range** syntax for `pv` and `detail.supported`; `hello.versions` stays an ordered list. Three documents had spelled one idea three ways (F-D7-2, S4). |
 | **E26** | [7.4h](#74-persistent-pairings) | **Decided by L17, reversible.** A persisted pairing may keep the network **name** and never the passphrase, so §7.4's workflow reaches a venue with its own network (F-D7-3, S4). |
 | **E27** | [3.4d1, 3.4d2](#34-resolvable-identifiers) | **Decided by L17, reversible.** One advertised instance at a time, rotating on the `rn` rotation, recently-used first; a multi-pairing peer browses as well. Annex B3 narrowed (F-D7-4, S4). |
+
+## Errata after revision 9 — change request CR-01
+
+*[CR-01](../changerequests/CR-01-in-band-pairing.md) asked for something revision 8 did not serve rather than reporting a defect in what it did. It is **granted in part**: the code goes, the operator does not. The [disposition](../changerequests/CR-01-disposition.md) carries the ruling and the answers to the request's three questions; these are the clauses.*
+
+| # | Clause | Change |
+|---|---|---|
+| **E30** | [§11](#11-rv-6--guided-pairing), [1.3c1](#13-where-it-stops), [2f](#2-rendezvous-paths), [9e, 9f](#9-conformance) | **Added, 24 August 2026 — CR-01.** **RV-6, guided pairing**: a first pairing between peers that have never met, from a committed X25519 exchange authenticated by six digits compared on both screens. It produces a `PRK` and closes; [§5](#5-rv-3--key-derivation-and-tls) and [§7](#7-rv-5--security-model) then apply verbatim, so [2c](#2-rendezvous-paths) is unweakened rather than excepted. Optional; the pairing code stays REQUIRED ([9f](#9-conformance)). |
+| **E31** | [3.2c](#32-instance-name), [3.3f, 3.3g](#33-txt-record), [3.4c1](#34-resolvable-identifiers), [§3.7](#37-the-bootstrap-window) | **Added, 24 August 2026 — CR-01.** The **bootstrap window**: a user-opened, single-attempt, ≤180-second service instance carrying `bs` and an optional operator label `dl`, and carrying **no `rid`** — so [3.4c](#34-resolvable-identifiers)'s refusal to dial an unresolvable instance is scoped to the reconnection path, which is what made a first pairing over discovery impossible. `dl` is a stated privacy trade, bounded by the window. |
+| **E32** | [3.5e](#35-who-advertises-and-who-browses) | **Added, 24 August 2026 — CR-01 question 3.** Where a counterpart cannot advertise under [3.5d](#35-who-advertises-and-who-browses), the peer that can **SHOULD**. 3.5d says only who must not, and read with [3.5b](#35-who-advertises-and-who-browses) a deployment could have **neither** end advertising while satisfying every clause — leaving [§7.4](#74-persistent-pairings)'s persisted pairing with no path by which either peer finds the other. |
+| **E33** | [7.1](#71-threat-model), [7.2e](#72-handling-the-pairing-secret), [7.4i](#74-persistent-pairings) | **Added, 24 August 2026 — CR-01.** The security model carried into [§11](#11-rv-6--guided-pairing): what the comparison defends and what it does not, erasure of the ephemeral material, and that a guided pairing is **pairwise** so [7.4f](#74-persistent-pairings) does not reach it. Records that this path removes the photographable secret [§5.4.3](#543-the-decision) named — a consequence, not the reason it was granted. |
 
 ## Revision 8 — final
 

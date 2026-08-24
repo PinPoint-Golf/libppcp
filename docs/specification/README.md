@@ -5,9 +5,9 @@
 | | |
 |---|---|
 | Wire version | `ppcp/1.0` |
-| Status | **APPROVED for implementation**, 22 August 2026. Revision 9, final — see [`CORE` Annex D](ppcp-core.md#annex-d--change-history) — **plus errata E1–E29**, all normative, listed in [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9) |
-| Date | 22 August 2026; errata to 23 August 2026 |
-| Errata | **29**, from implementation sessions S1–S5 |
+| Status | **APPROVED for implementation**, 22 August 2026. Revision 9, final — see [`CORE` Annex D](ppcp-core.md#annex-d--change-history) — **plus errata E1–E33**, all normative, listed in [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9). E30–E33 are `PPCP-RV` only, from [CR-01](../changerequests/CR-01-disposition.md) |
+| Date | 22 August 2026; errata to 24 August 2026 |
+| Errata | **33** — E1–E29 from implementation sessions S1–S5, E30–E33 from change request [CR-01](../changerequests/CR-01-disposition.md) |
 | Freeze | **The text is recommended for freeze; `ppcp/1.0` is NOT declared stable.** All ten interoperability pairings of [`CONF` §5](ppcp-conformance.md#5-interoperability) pass, three of them between the two real applications, and both freeze-gate audits run and pass. Five conditions remain — see [`../conformance/freeze-readiness.md`](../conformance/freeze-readiness.md) |
 | Reviews | [`reviews/`](reviews/) — three rounds each from PinPointCapture (mobile) and PinPointStudio (host) |
 | Reference implementation | `libppcp`, MIT, this repository |
@@ -33,7 +33,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 
 **Twenty-nine errata have been taken, and that is the process working rather than failing.** Every one was found by building the thing: two implementations that each invented a different way to associate a peer's connections (E1); a PSK identity that failed one handshake in sixteen because a zero byte truncated it (E21); a document whose only worked example no conformant encoder could reproduce (E5); a `session_offer` that silently rebound the live Session's clock reference (E28); and a sweep that found 27 of the 45 messages required by no normative clause at all (E18). Four more were open questions the implementation had to answer, decided and marked reversible (E24–E27). The full list, with the finding that produced each, is [`CORE`'s errata table](ppcp-core.md#errata-after-revision-9).
 
-[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval — it is versioned separately, and is now approved for implementation in its own right.
+[`PPCP-RV`](ppcp-rv.md) is **not** covered by this approval — it is versioned separately, and is now approved for implementation in its own right. **Its revision 9 adds [RV-6, guided pairing](ppcp-rv.md#11-rv-6--guided-pairing) under [CR-01](../changerequests/CR-01-disposition.md) and is the one part of the set awaiting a first review pass.**
 
 ## The documents
 
@@ -43,7 +43,7 @@ The formal specification of PPCP: normative field tables, a fixed message catalo
 | 2nd | [**PPCP-MSG**](ppcp-messages.md) | Normative | Forty-five messages, channel semantics, error codes. Annex A holds the nine interaction sequences, now with real message names |
 | 3rd | [**PPCP-ENC**](ppcp-encoding.md) | Normative | Framing, CBOR encoding, bulk transfer, the bundle container |
 | 4th | [**PPCP-CONF**](ppcp-conformance.md) | Normative | What an implementation must demonstrate, and the seven places it will silently fail |
-| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **APPROVED**, revision 8 — five review passes, **no open findings**. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Versioned separately from PPCP |
+| — | [**PPCP-RV**](ppcp-rv.md) | Normative when agreed | Rendezvous, pairing, security. **APPROVED**, revision 9 — five review passes on §1–§10, **no open findings there**. Revision 9's [§11, RV-6](ppcp-rv.md#11-rv-6--guided-pairing) is new under [CR-01](../changerequests/CR-01-disposition.md) and **has had no review pass**. [Dispositioned separately](rv-review-disposition-2026-08-22.md). Versioned separately from PPCP |
 | — | [**Requirements traceability**](requirements-traceability.md) | Audit | All 172 requirements against the specification set — 164 covered or deliberately out of scope, **six findings** |
 | — | [**Review disposition**](review-disposition-2026-08-22.md) | Record | Every review comment across all three rounds, what was done with it, and the calls a reviewer may want to reverse |
 | — | [**reviews/**](reviews/) | Input | All twenty reviews as submitted |
@@ -68,7 +68,7 @@ All answered, and both teams agreed on every one. Four are now closed.
 
 [`PPCP-CORE` Annex B](ppcp-core.md#annex-b--open-issues) has the full list. The ones needing someone to act:
 
-- **`PPCP-RV`** is approved with **no open findings**. What remains is B13 — whether the absence of forward secrecy should be user-visible — which is a product question for the implementation teams, and B2, per-peer re-keying, which both publishers avoid by emitting `mu: 1` only.
+- **`PPCP-RV`** is approved with **no open findings against §1–§10**. What remains there is B13 — whether the absence of forward secrecy should be user-visible — which is a product question for the implementation teams, and B2, per-peer re-keying, which both publishers avoid by emitting `mu: 1` only. **[§11, RV-6](ppcp-rv.md#11-rv-6--guided-pairing) is new and unreviewed**, and carries three open issues of its own: B14 (X25519 reachability, a platform measurement that gates implementation), B15 (the fleet case, which needs B2 first) and B16 (no review pass, vectors computed once).
 - **Two timing defaults**, neither measured: the coincidence window and the issue hold. The window's floor must be measured per nominator class, not pooled — see [Annex B8](ppcp-core.md#annex-b--open-issues). Rig work.
 - **The rig itself.** `frame_start_to_exposure_offset_ns` and `readout_ns` are `assumed` on every device until it exists; provenance now makes that visible rather than silent.
 - **The synthetic peer simulator.** Four of the seven silent-failure tests are untestable without a peer that declares something the reference implementation would not.
@@ -93,7 +93,7 @@ If implementation shows something here to be wrong, that is the expected outcome
 
 *Approved is not stable: implementation is expected to find things, and the change belongs here first. **[`PPCP-CORE`'s errata table](ppcp-core.md#errata-after-revision-9) is the authoritative list** — every erratum, its clause, what changed and the finding that produced it. This is the summary. Tracked in [`../implementation/implementation-plan.md` §9](../implementation/implementation-plan.md).*
 
-**Twenty-nine errata, E1–E29**, from implementation sessions S1–S5. Grouped by what they were:
+**Thirty-three errata, E1–E33.** E1–E29 came from implementation sessions S1–S5; E30–E33 came from [CR-01](../changerequests/CR-01-disposition.md), the first change request, which is a different thing and is grouped separately below. Grouped by what they were:
 
 | | Errata | What they are |
 |---|---|---|
@@ -103,6 +103,7 @@ If implementation shows something here to be wrong, that is the expected outcome
 | **A platform made a clause unimplementable** | E21, E22, E23, E24 | A zero byte in a PSK identity truncated by a `strlen`-lengthed interface — one handshake in sixteen. A listener with no server-side PSK resolver. A clock test iOS does not expose. |
 | **The model had no room for the answer** | E7, E12, E13, E17, E29 | No declared container for a payload. No way to say *which* span left the buffer. Camera vocabulary on a stream with no frames. A `closed_at` in a clock the closing peer cannot read. A Candidate excluded for a missing relation and never revisited when it arrived. |
 | **Scope and reading** | E2, E3, E4, E8, E15, E18, E26, E27 | `mu` counts pairings, not handshakes. 2c binds the rendezvous paths, not a handed-in socket. A responder's timebase is addressable. Three completeness states, not two. C3 binds requests. And the sweep that found **27 of 45 messages required by no normative clause**. |
+| **A requirement the document never served** | E30, E31, E32, E33 | **Not defects.** [CR-01](../changerequests/CR-01-disposition.md) asked for a first pairing with no code carried between two screens, which revision 8 was self-consistent in not providing. Granted in part — the transfer goes, the operator does not — as [RV-6](ppcp-rv.md#11-rv-6--guided-pairing): a committed X25519 exchange authenticated by six digits compared on both screens. 2c is unweakened; the pairing code stays required. |
 
 *Newest first. What changed between drafts, kept at the back because a first reader does not need it.*
 
