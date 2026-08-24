@@ -132,8 +132,8 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-18 | static | every §10.4 row byte-for-byte, **against E30–E55** | L18 | pass | — | — |
 | RT-19 | injected | reveal ≠ commitment → `commitment_mismatch`, nothing derived | L20 | pass | — | — |
 | RT-20a(a) | static | interposer quadruple, no curve: `849063` ≠ `576027` | L18 | pass | — | — |
-| RT-20a(b) | static | no collision over a stated run; digits uniform by χ². ⛔ never the rate | L22 | — | — | — |
-| RT-20b | injected | one real peer against the relay, **including 11.5c's ordering** | L21, H10, D11 | **unrun — needs L21** | **unrun** | **unrun** |
+| RT-20a(b) | static | no collision over a stated run; digits uniform by χ². ⛔ never the rate | L22 | pass (**derivation half — `Z` from the RNG, not key agreement**) | — | — |
+| RT-20b | injected | one real peer against the relay, **including 11.5c's ordering** | L21, H10, D11 | pass — **(v), (i), (ii), (iii); the relay's own half.** ⛔ **(iv) NOT exercised, deliberately** | **unrun** | **unrun** |
 | RT-20c | paired | ⛔ **both implementations either side of the relay. This is the RV-6 claim** | L21, H10, D11 | **unrun** | **unrun** | **unrun** |
 | RT-21 | injected | small-order `pk` → `invalid_key`, no derivation, **not retried** | L18, H10, D11 | pass (zero half) | — | — |
 | RT-22 | paired | `bs`, no `rn`, no `rid`; `bs`+`rid` ignored; withdrawn on close | D10 | n/a | n/a | pass (socket half — **record-level withdrawal not measured**) |
@@ -145,6 +145,12 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-25 | **review** | one attempt at a time; digits for one (trap 3) | H10 | n/a | — | n/a |
 | RT-26 | **review** | affirmative control not the default; no retry affordance | H10, D11 | n/a | — | — |
 | RT-27 | **review** | only `pk` and `Z` cross the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary; both failure halves → `invalid_key` | L18, H10, D11 | review — **Mark Liversedge, 24 Aug 2026**, library half, at `4b47dee` ([§5b](#5b-two-review-rows-are-accepted-rather-than-discharged)) | — | — |
+
+⛔ **RT-20b(iv) is UNEXERCISED ON PURPOSE, and this is the note to read before anyone reports it red.** *"The window closes and does not reopen without a further user action"* cannot be self-tested in `libppcp`: a `--peer` stand-in **has no bootstrap window** — it takes one connection and exits — so a second dial finds nothing listening and the probe would report **`pass` for a property the stand-in never had.** That is a manufactured green of exactly the kind [3.7b](../specification/ppcp-rv.md#37-the-bootstrap-window) and [11.9b](../specification/ppcp-rv.md#119-aborting-and-the-one-attempt-rule) exist to stop anyone claiming, and it would be **worse than no coverage, because it would read as coverage.** ⚠ **Its first ever run is therefore against PinPointCapture, which has a real window — so a red cell there in C3 is suspect until the probe itself is confirmed.** The failure would look like the application's defect and might not be one.
+
+⚠ **What RT-20a(b) does and does not show.** 200 000 quadruples, **0 collisions**, χ² **1014.9 over 999 dof**, binned the way PinPointCapture binned theirs (933.6) so the two figures compare. The rate is **never** asserted — separating 10⁻⁶ from a 5% neighbour needs ~10⁹ trials. But `Z` here is **drawn from the RNG, not from key agreement**, because there is no curve in this repository: [11.11c](../specification/ppcp-rv.md#1111-where-x25519-comes-from) makes the derivation a pure function, so what is measured is **HKDF's** distribution. It does **not** show that X25519's own outputs are well distributed, nor that two legs of a real interposition differ — that is RT-20b(i), and it is a different row for a reason.
+
+✅ **New instruments for the two application columns**, which hold `—` and had nothing that could fill them. Each asserts the **reason**, not merely the refusal, and each is self-tested against an honest stand-in first: `--probe rt19` (commitment_mismatch), `--probe rt21` (invalid_key, not retried), `--probe rt24` (unsupported_version).
 
 **Reproducing the `libppcp` column:** `cmake --preset dev && cmake --build --preset dev -j2 && ctest --preset dev` — 53/53, ASan and UBSan clean. RT-18/RT-20a(a)/RT-24b are `ctest --preset dev -R test_rv_bootstrap`; RT-19/RT-24 are `-R test_bs_engine`.
 
