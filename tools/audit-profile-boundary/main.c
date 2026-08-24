@@ -38,6 +38,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+/* strtok_s takes the same three arguments in the same order as strtok_r. */
+#define strtok_r(s, d, ctx) strtok_s((s), (d), (ctx))
+#endif
 
 #define MAX_MSGS   64
 #define MAX_NAME   64
@@ -126,7 +130,17 @@ static FILE *open_in(const char *dir, const char *name)
     char path[1024];
     FILE *f;
     snprintf(path, sizeof(path), "%s/%s", dir, name);
+#ifdef _MSC_VER
+    /* fopen() is portable C, correct here, and the only choice that stays
+       true on every platform this file builds on; fopen_s() is a Microsoft/
+       Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     f = fopen(path, "r");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     if (f == NULL) {
         fprintf(stderr, "audit-profile-boundary: cannot read %s\n", path);
         exit(2);

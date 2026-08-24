@@ -86,7 +86,9 @@ static void assertion_known_field_after_unknown_survives(void)
     ppcp_cbor_item   it;
     uint32_t         i;
     int              found = 0;
-    ppcp_instant     t1;
+    ppcp_instant     t1 = {0};  /* always overwritten before use (found==1
+                                    guarantees it); MSVC can't see that across
+                                    the loop and flags it C4701 otherwise. */
 
     /* The failure mode I13 guards against is not "the decoder errored": it is
      * a decoder that stops reading at the first key it does not know, and

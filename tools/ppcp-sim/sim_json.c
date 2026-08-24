@@ -4,6 +4,7 @@
  * sim_json.c — the reader declared in sim_json.h.
  */
 #include "sim_json.h"
+#include "sim_platform.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -303,11 +304,22 @@ bool sj_parse(sj_doc *doc, char *text, sj_node *nodes, int node_cap)
 
 char *sj_read_file(const char *path, char *err, size_t err_len)
 {
-    FILE  *f = fopen(path, "rb");
+    FILE  *f;
     char  *buf;
     long   len;
     size_t got;
 
+#ifdef _MSC_VER
+    /* fopen() is portable C, correct here, and the only choice that stays
+       true on every platform this file builds on; fopen_s() is a Microsoft/
+       Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+    f = fopen(path, "rb");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     if (f == NULL) {
         snprintf(err, err_len, "cannot open %s: %s", path, strerror(errno));
         return NULL;

@@ -49,7 +49,17 @@ static size_t load(const char *name)
     FILE  *f;
     size_t n;
     snprintf(path, sizeof(path), "%s/%s", PPCP_FIXTURE_DIR, name);
+#ifdef _MSC_VER
+    /* fopen() is portable C, correct here, and the only choice that stays
+       true on every platform this file builds on; fopen_s() is a Microsoft/
+       Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     f = fopen(path, "rb");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     if (f == NULL) {
         fprintf(stderr, "FAIL cannot open fixture %s\n", path);
         exit(EXIT_FAILURE);

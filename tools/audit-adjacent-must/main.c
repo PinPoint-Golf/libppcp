@@ -35,6 +35,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _MSC_VER
+/* fopen() is portable C, correct at all three call sites below, and the only
+   choice that stays true on every platform this file builds on; fopen_s() is
+   a Microsoft/Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(disable : 4996)
+#endif
+
 #define MAX_CLAUSES 4096
 #define MAX_LINE    8192
 #define MAX_ID        24

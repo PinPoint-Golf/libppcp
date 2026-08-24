@@ -38,18 +38,25 @@
  * (psk_key_exchange_modes), §4.2.11.2 (the binder), §7.1 (HKDF-Expand-Label).
  */
 #include "sim.h"
+#include "sim_platform.h"
 
 #include "ppcp/hash.h"
 
 #include <errno.h>
-#include <netdb.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <netdb.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 /* The mode needs no library that this repository does not already contain. */
 bool sim_tls_available(void) { return true; }
@@ -141,6 +148,9 @@ static void expand_label(const uint8_t secret[TLS_HASH_BYTES], const char *label
 
 static bool random_bytes(uint8_t *out, size_t n)
 {
+#if defined(_WIN32)
+    return sim_win_random_bytes(out, n);
+#else
     FILE  *f = fopen("/dev/urandom", "rb");
     size_t got;
     if (f == NULL)
@@ -148,6 +158,7 @@ static bool random_bytes(uint8_t *out, size_t n)
     got = fread(out, 1, n, f);
     fclose(f);
     return got == n;
+#endif
 }
 
 static size_t unhex(const char *hex, uint8_t *out, size_t cap)
@@ -155,7 +166,19 @@ static size_t unhex(const char *hex, uint8_t *out, size_t cap)
     size_t n = 0;
     while (hex != NULL && hex[0] != '\0' && hex[1] != '\0' && n < cap) {
         unsigned v = 0;
-        if (sscanf(hex, "%2x", &v) != 1)
+        int      scanned;
+#ifdef _MSC_VER
+        /* sscanf() is portable C, correct here, and the only choice that
+           stays true on every platform this file builds on; sscanf_s() is a
+           Microsoft/Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+        scanned = sscanf(hex, "%2x", &v);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+        if (scanned != 1)
             break;
         out[n++] = (uint8_t)v;
         hex += 2;
@@ -316,6 +339,13 @@ static int dial(const char *host, int port)
     char            portbuf[16];
     int             fd = -1;
 
+#if defined(_WIN32)
+    /* getaddrinfo() is a Winsock call too, and it is the FIRST one this dial
+     * path makes — before any socket() call, whose wrapper is where
+     * WSAStartup normally happens. Called explicitly here so this dialler
+     * doesn't depend on call order to stay initialised. */
+    sim_win_wsa_ensure();
+#endif
     memset(&hints, 0, sizeof(hints));
     hints.ai_family   = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -326,7 +356,7 @@ static int dial(const char *host, int port)
         fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (fd < 0)
             continue;
-        if (connect(fd, ai->ai_addr, ai->ai_addrlen) == 0)
+        if (connect(fd, ai->ai_addr, (socklen_t)ai->ai_addrlen) == 0)
             break;
         close(fd);
         fd = -1;
@@ -462,8 +492,8 @@ int sim_run_psk_ke_only(const sim_opts *o)
                 has_key_share ? "present" : "absent");
         return 1;
     }
-    fprintf(stderr, "ppcp-sim: RT-4 inconclusive — the peer answered %zd bytes beginning "
+    fprintf(stderr, "ppcp-sim: RT-4 inconclusive — the peer answered %lld bytes beginning "
                     "0x%02x, which is neither an alert nor a ServerHello (is this a TLS "
-                    "listener at all?)\n", got, (unsigned)reply[0]);
+                    "listener at all?)\n", (long long)got, (unsigned)reply[0]);
     return 1;
 }

@@ -81,7 +81,17 @@ static void write_file(const char *dir, const char *name, const buf *o, size_t l
     char  path[1024];
     FILE *f;
     snprintf(path, sizeof(path), "%s/%s", dir, name);
+#ifdef _MSC_VER
+    /* fopen() is portable C, correct here, and the only choice that stays
+       true on every platform this file builds on; fopen_s() is a Microsoft/
+       Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
     f = fopen(path, "wb");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     if (f == NULL) die("could not open a fixture for writing");
     if (fwrite(o->b, 1, len, f) != len) die("short write");
     fclose(f);

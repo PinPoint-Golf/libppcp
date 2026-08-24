@@ -16,6 +16,7 @@
  * stderr, which is what makes a failed interoperability run readable.
  */
 #include "sim.h"
+#include "sim_platform.h"
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -18,15 +18,21 @@
  * is one of the things the simulator exists to demonstrate.
  */
 #include "sim.h"
+#include "sim_platform.h"
 
 #include <errno.h>
-#include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 /* ------------------------------------------------------------- violations */
 
@@ -390,7 +396,7 @@ static bool flush_tx(sim *s, uint8_t ch)
         sim_log_frames(NULL, "TX", ch, bytes, (size_t)wrote);
         s->c.frames_tx++;
         if (ppcp_peer_drain_commit(s->p, ch, (size_t)wrote) != PPCP_OK) {
-            sim_violation("the engine refused a commit of %zd bytes", wrote);
+            sim_violation("the engine refused a commit of %lld bytes", (long long)wrote);
             return false;
         }
     }

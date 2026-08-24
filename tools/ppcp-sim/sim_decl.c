@@ -11,6 +11,7 @@
  */
 #include "sim.h"
 #include "sim_json.h"
+#include "sim_platform.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,11 @@ static void copy_id(char *dst, size_t cap, const char *src)
 
 int64_t sim_now_ns(void)
 {
+#if defined(_WIN32)
+    /* Windows has no clock_gettime()/CLOCK_MONOTONIC; QueryPerformanceCounter
+     * is the platform's monotonic clock. */
+    return sim_win_monotonic_ns();
+#else
     struct timespec ts;
 #if defined(CLOCK_MONOTONIC)
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -37,6 +43,7 @@ int64_t sim_now_ns(void)
     clock_gettime(CLOCK_REALTIME, &ts);
 #endif
     return (int64_t)ts.tv_sec * 1000000000 + (int64_t)ts.tv_nsec;
+#endif
 }
 
 ppcp_result sim_clock_now(void *ctx, const char *timebase_id, int64_t *out_ns)

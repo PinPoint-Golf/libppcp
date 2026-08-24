@@ -10,20 +10,27 @@
  * arrival order, which is the rule the erratum withdrew.
  */
 #include "sim.h"
+#include "sim_platform.h"
 
-#include <arpa/inet.h>
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
 
 static void chan_init(sim_chan *c)
 {
@@ -113,6 +120,13 @@ static int dial_once(const char *host, int port, char *err, size_t err_len)
     int             fd = -1;
     int             rc;
 
+#if defined(_WIN32)
+    /* getaddrinfo() is a Winsock call too, and it is the FIRST one the dial
+     * path makes — before any socket() call, whose wrapper is where
+     * WSAStartup normally happens. Called explicitly here so the dialler
+     * doesn't depend on call order to stay initialised. */
+    sim_win_wsa_ensure();
+#endif
     memset(&hints, 0, sizeof(hints));
     hints.ai_family   = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -126,7 +140,7 @@ static int dial_once(const char *host, int port, char *err, size_t err_len)
         fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (fd < 0)
             continue;
-        if (connect(fd, ai->ai_addr, ai->ai_addrlen) == 0)
+        if (connect(fd, ai->ai_addr, (socklen_t)ai->ai_addrlen) == 0)
             break;
         close(fd);
         fd = -1;
@@ -166,7 +180,7 @@ static bool flush_channel(ppcp_peer *p, uint8_t channel, int fd,
             return true;
         sim_log_frames(NULL, "TX", channel, bytes, (size_t)wrote);
         if (ppcp_peer_drain_commit(p, channel, (size_t)wrote) != PPCP_OK) {
-            snprintf(err, err_len, "the engine refused a commit of %zd bytes", wrote);
+            snprintf(err, err_len, "the engine refused a commit of %lld bytes", (long long)wrote);
             return false;
         }
     }
@@ -177,7 +191,6 @@ bool sim_connect(sim_link *l, const char *host, int port, int64_t timeout_ms,
 {
     uint8_t link_id[PPCP_LINK_ID_BYTES];
     size_t  i;
-    FILE   *rnd;
 
     (void)timeout_ms;
     for (i = 0; i < SIM_CH_COUNT; i++)
@@ -186,14 +199,23 @@ bool sim_connect(sim_link *l, const char *host, int port, int64_t timeout_ms,
     /* ENC 2.1a — 16 bytes from a CSPRNG, minted by the dialler.  The library
      * has no random source (ground rule 8), so the embedding supplies them;
      * here the embedding is this file. */
-    rnd = fopen("/dev/urandom", "rb");
-    if (rnd == NULL || fread(link_id, 1, sizeof(link_id), rnd) != sizeof(link_id)) {
-        snprintf(err, err_len, "cannot read /dev/urandom for the link_id");
-        if (rnd != NULL)
-            fclose(rnd);
+#if defined(_WIN32)
+    if (!sim_win_random_bytes(link_id, sizeof(link_id))) {
+        snprintf(err, err_len, "the platform CSPRNG failed for the link_id");
         return false;
     }
-    fclose(rnd);
+#else
+    {
+        FILE *rnd = fopen("/dev/urandom", "rb");
+        if (rnd == NULL || fread(link_id, 1, sizeof(link_id), rnd) != sizeof(link_id)) {
+            snprintf(err, err_len, "cannot read /dev/urandom for the link_id");
+            if (rnd != NULL)
+                fclose(rnd);
+            return false;
+        }
+        fclose(rnd);
+    }
+#endif
     if (ppcp_peer_set_link_id(p, link_id) != PPCP_OK) {
         snprintf(err, err_len, "the engine refused the link_id (is this peer a listener?)");
         return false;
@@ -269,7 +291,17 @@ bool sim_listen(sim_link *l, int port, const char *port_file, int64_t timeout_ms
         char  tmp[512];
         FILE *f;
         snprintf(tmp, sizeof(tmp), "%s.tmp", port_file);
+#ifdef _MSC_VER
+    /* fopen() is portable C, correct here, and the only choice that stays
+       true on every platform this file builds on; fopen_s() is a Microsoft/
+       Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
         f = fopen(tmp, "w");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
         if (f == NULL) {
             snprintf(err, err_len, "cannot write the port file %s", port_file);
             close(srv);
@@ -330,7 +362,7 @@ bool sim_listen(sim_link *l, int port, const char *port_file, int64_t timeout_ms
 
                 if ((pfd[k].revents & (POLLIN | POLLHUP | POLLERR)) == 0)
                     continue;
-                if (pfd[k].fd == srv) {
+                if ((int)pfd[k].fd == srv) {
                     int fd = accept(srv, NULL, NULL);
                     if (fd >= 0) {
                         set_nodelay(fd);
@@ -339,7 +371,7 @@ bool sim_listen(sim_link *l, int port, const char *port_file, int64_t timeout_ms
                     }
                     continue;
                 }
-                got = recv(pfd[k].fd, buf, sizeof(buf), 0);
+                got = recv((int)pfd[k].fd, buf, sizeof(buf), 0);
                 if (got <= 0) {
                     snprintf(err, err_len, "a peer closed a stream before binding it");
                     close(srv);
@@ -369,7 +401,7 @@ bool sim_listen(sim_link *l, int port, const char *port_file, int64_t timeout_ms
                     close(srv);
                     return false;
                 }
-                l->ch[channel].fd   = pfd[k].fd;
+                l->ch[channel].fd   = (int)pfd[k].fd;
                 l->ch[channel].open = true;
                 if ((size_t)got > consumed) {
                     size_t remain = (size_t)got - consumed;
@@ -377,7 +409,7 @@ bool sim_listen(sim_link *l, int port, const char *port_file, int64_t timeout_ms
                     l->ch[channel].rx_len = remain;
                 }
                 for (j = 0; j < pending_count; j++) {
-                    if (pending[j] == pfd[k].fd) {
+                    if (pending[j] == (int)pfd[k].fd) {
                         pending[j] = pending[pending_count - 1];
                         pending_count--;
                         break;

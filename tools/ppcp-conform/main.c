@@ -17,7 +17,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#include <io.h>
+/* strtok_s takes the same three arguments in the same order as strtok_r. */
+#define strtok_r(s, d, ctx) strtok_s((s), (d), (ctx))
+/* Windows' _access() has no X_OK bit — the platform has no separate
+ * executable permission on a regular file — so this checks existence, which
+ * is the only part of the question access(path, X_OK) can still answer here. */
+#define access(p, mode) _access((p), 0)
+#else
 #include <unistd.h>
+#endif
 
 #ifndef PPCP_SIM_PATH
 #define PPCP_SIM_PATH "ppcp-sim"

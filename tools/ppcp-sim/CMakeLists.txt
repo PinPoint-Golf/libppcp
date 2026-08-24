@@ -20,18 +20,26 @@ add_executable(ppcp-sim
     sim_net.c
     sim_run.c
     sim_tls.c
+    sim_platform.c
     sim.h
+    sim_platform.h
     sim_json.h
     sim_run_steps.inc)
 
 target_link_libraries(ppcp-sim PRIVATE ppcp ppcp_build_flags)
 target_include_directories(ppcp-sim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# POSIX 2008 for poll(2), getaddrinfo(3) and strtok_r(3) under -std=c11, which
-# defines __STRICT_ANSI__ and would otherwise hide them.
-target_compile_definitions(ppcp-sim PRIVATE _POSIX_C_SOURCE=200809L)
-if(APPLE)
-    target_compile_definitions(ppcp-sim PRIVATE _DARWIN_C_SOURCE)
+if(WIN32)
+    # sim_platform.h's Winsock wrappers and WSAPoll (Vista+) for poll();
+    # bcrypt for BCryptGenRandom, replacing /dev/urandom.
+    target_link_libraries(ppcp-sim PRIVATE ws2_32 bcrypt)
+else()
+    # POSIX 2008 for poll(2), getaddrinfo(3) and strtok_r(3) under -std=c11, which
+    # defines __STRICT_ANSI__ and would otherwise hide them.
+    target_compile_definitions(ppcp-sim PRIVATE _POSIX_C_SOURCE=200809L)
+    if(APPLE)
+        target_compile_definitions(ppcp-sim PRIVATE _DARWIN_C_SOURCE)
+    endif()
 endif()
 
 # The scenario declarations sit beside the binary too, so a consumer that
