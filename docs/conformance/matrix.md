@@ -136,7 +136,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-20b | injected | one real peer against the relay, **including 11.5c's ordering** | L21, H10, D11 | **unrun — needs L21** | **unrun** | **unrun** |
 | RT-20c | paired | ⛔ **both implementations either side of the relay. This is the RV-6 claim** | L21, H10, D11 | **unrun** | **unrun** | **unrun** |
 | RT-21 | injected | small-order `pk` → `invalid_key`, no derivation, **not retried** | L18, H10, D11 | pass (zero half) | — | — |
-| RT-22 | paired | `bs`, no `rn`, no `rid`; `bs`+`rid` ignored; withdrawn on close | D10 | n/a | n/a | pass (2 of 3 — withdrawal unrun) |
+| RT-22 | paired | `bs`, no `rn`, no `rid`; `bs`+`rid` ignored; withdrawn on close | D10 | n/a | n/a | ⛔ **fail — withdrawal assertion fails** |
 | RT-23 | **review** | ephemeral key, `Z`, `BK`, `K_c` erased on completion **and abort** | D11 | n/a | n/a | review — reviewer unassigned |
 | RT-24 | injected | `bs_accept.v` ≠ sent `v` aborts; both-directions rewrite diverges | L19, L20 | pass (first half) | — | — |
 | RT-24a | **review** | transcript bound into `sas_raw` and `K_c` **and nothing else** | L18 | review — reviewer unassigned | — | — |
@@ -148,7 +148,9 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 
 **Reproducing the `libppcp` column:** `cmake --preset dev && cmake --build --preset dev -j2 && ctest --preset dev` — 53/53, ASan and UBSan clean. RT-18/RT-20a(a)/RT-24b are `ctest --preset dev -R test_rv_bootstrap`; RT-19/RT-24 are `-R test_bs_engine`.
 
-**Reproducing PinPointCapture's RT-22:** `make test-core`, suite *"RV 3.7 — the bootstrap window"*, 254/254. The withdrawal assertion is `make test-app` (`Tests/BootstrapAdvertiserTests.swift`).
+⛔ **RT-22 does not pass, and the reason is worth reading before anyone re-runs it.** The `bs`/`rn`/`rid` key-set assertions pass on the host in `make test-core` (254/254). The **withdrawal** assertion runs in `make test-app` and **fails**: `Tests/BootstrapAdvertiserTests.swift:163`, `afterClose == .none → false` — **after the window closed, the bootstrap port still answered a dial**. A further test in the same suite (*"A refused dial does NOT close the window"*) then **deadlocked**, held `xcodebuild` for 25 minutes at 0% CPU, and was killed by the orchestrator; `-default-test-execution-time-allowance 120` did not stop it.
+
+Two candidate causes and they are not the same finding: `NWListener.cancel()` may not have taken effect by the time `close()` returns — a race, and the test is then flaky rather than the code wrong; or the listener genuinely outlives the window, which is a real [3.7b](../specification/ppcp-rv.md#37-the-bootstrap-window)/[3.7d](../specification/ppcp-rv.md#37-the-bootstrap-window) defect. ⚠ **And the test asserts a TCP property as a proxy for a DNS-SD one** — 3.7b withdraws the *instance*; answering on a port is a different claim. Whichever it is, **this cell does not go green until `make test-app` completes and that assertion passes.**
 
 ⚠ **Four rows here are `review` and that is not an accident.** RT-23, RT-24a, RT-25, RT-26 and RT-27 each catch something that produces **byte-identical handshakes** — a peer violating [11.3d1](../specification/ppcp-rv.md#113-roles-and-the-connection) is conformant on the wire, and one that compares the digits in software passes every static test in the document. They join [RT-12](../specification/ppcp-rv.md#9-conformance) and RT-17 in the set nothing external can check. **Each needs a named reviewer and a commit, and none has one yet.**
 
