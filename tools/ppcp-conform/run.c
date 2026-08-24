@@ -14,25 +14,78 @@
 #include "conform.h"
 
 #include <errno.h>
-#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <process.h>   /* _getpid */
+/* getpid()/usleep() are POSIX names this file otherwise uses unchanged;
+ * _getpid() takes the same zero arguments and Sleep() takes milliseconds
+ * where usleep() takes microseconds, hence the /1000. */
+#define getpid _getpid
+#define usleep(us) Sleep((DWORD)((us) / 1000))
+#else
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 #define CF_MAX_ARGV 32
 
+/* Windows has no /tmp; GetTempPathA resolves whatever TEMP/TMP actually
+ * point at, cached because it costs a syscall and every row asks three
+ * times. Returned WITHOUT a trailing separator so every call site's
+ * "%s/ppcp-conform-..." format stays the same on both platforms. */
+#if defined(_WIN32)
+static const char *cf_tmp_dir(void)
+{
+    static char buf[MAX_PATH] = "";
+    if (buf[0] == '\0') {
+        DWORD n = GetTempPathA(sizeof(buf), buf);
+        if (n == 0 || n >= sizeof(buf))
+            snprintf(buf, sizeof(buf), ".");
+        else if (buf[n - 1] == '\\' || buf[n - 1] == '/')
+            buf[n - 1] = '\0';
+    }
+    return buf;
+}
+#define CF_TMP_DIR cf_tmp_dir()
+#else
+#define CF_TMP_DIR "/tmp"
+#endif
+
+#ifdef _MSC_VER
+/* fopen()/fscanf() below are portable C, correct at every call site in this
+   file, and the only choice that stays true on every platform it builds on;
+   the *_s() replacements are a Microsoft/Annex-K extension with no Linux/
+   macOS equivalent. Both share warning 4996, so one disable covers both. */
+#pragma warning(disable : 4996)
+#endif
+
+#if defined(_WIN32)
+static int64_t now_ms(void)
+{
+    /* GetTickCount64: monotonic, millisecond-granularity already, and this
+     * value is only ever differenced against another now_ms() from the same
+     * boot — unlike gettimeofday's wall clock it can't be stepped backwards
+     * by an NTP correction mid-row. */
+    return (int64_t)GetTickCount64();
+}
+#else
 static int64_t now_ms(void)
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
+#endif
 
 static void append_cmd(char *dst, size_t cap, const char *const *argv)
 {
@@ -72,11 +125,103 @@ static void last_line(const char *path, char *out, size_t cap)
     fclose(f);
 }
 
-static pid_t spawn(const char *const *argv, const char *err_path)
+#if defined(_WIN32)
+
+/* fork()+dup2()+execv() has no Windows equivalent — Windows processes don't
+ * fork, so there is no child-side branch to speak of. CreateProcess spawns
+ * the new process image directly, and the stderr redirect that dup2() did
+ * AFTER the fork here is instead a handle installed in STARTUPINFO BEFORE
+ * the process exists, which is why this is one call rather than fork's two
+ * halves. */
+typedef HANDLE cf_pid_t;
+#define CF_PID_NONE NULL
+static bool cf_pid_valid(cf_pid_t p) { return p != CF_PID_NONE; }
+
+static cf_pid_t spawn(const char *const *argv, const char *err_path)
+{
+    char                 cmdline[2048];
+    size_t               n = 0, i;
+    SECURITY_ATTRIBUTES  sa;
+    HANDLE               herr;
+    STARTUPINFOA         si;
+    PROCESS_INFORMATION  pi;
+
+    /* CreateProcess wants one command-line string, not an argv array; every
+     * argument this tool ever builds (paths, a role/scenario name, decimal
+     * numbers, hex) is space- and quote-free, so wrapping each in quotes is
+     * enough without a general Windows command-line escaper. */
+    cmdline[0] = '\0';
+    for (i = 0; argv[i] != NULL; i++) {
+        size_t len = strlen(argv[i]);
+        if (n + len + 4 >= sizeof(cmdline))
+            return CF_PID_NONE;
+        if (n > 0)
+            cmdline[n++] = ' ';
+        cmdline[n++] = '"';
+        memcpy(cmdline + n, argv[i], len);
+        n += len;
+        cmdline[n++] = '"';
+        cmdline[n] = '\0';
+    }
+
+    sa.nLength              = sizeof(sa);
+    sa.bInheritHandle        = TRUE;
+    sa.lpSecurityDescriptor  = NULL;
+    herr = CreateFileA(err_path, GENERIC_WRITE, FILE_SHARE_READ, &sa,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (herr == INVALID_HANDLE_VALUE)
+        return CF_PID_NONE;
+
+    memset(&si, 0, sizeof(si));
+    si.cb         = sizeof(si);
+    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    si.hStdError  = herr;
+    memset(&pi, 0, sizeof(pi));
+
+    if (!CreateProcessA(argv[0], cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(herr);
+        return CF_PID_NONE;
+    }
+    CloseHandle(herr);
+    CloseHandle(pi.hThread);
+    return pi.hProcess;
+}
+
+static int wait_for(cf_pid_t pid)
+{
+    DWORD code = 127;
+    if (!cf_pid_valid(pid))
+        return 127;
+    WaitForSingleObject(pid, INFINITE);
+    if (!GetExitCodeProcess(pid, &code))
+        code = 127;
+    CloseHandle(pid);
+    return (int)code;
+}
+
+/* TerminateProcess only — NOT CloseHandle: every kill() call site is
+ * immediately followed by wait_for(), which is what closes the handle after
+ * confirming the process actually exited. */
+static void cf_terminate(cf_pid_t pid)
+{
+    if (cf_pid_valid(pid))
+        TerminateProcess(pid, 1);
+}
+#define kill(pid, sig) cf_terminate(pid)
+
+#else
+
+typedef pid_t cf_pid_t;
+#define CF_PID_NONE ((pid_t)-1)
+static bool cf_pid_valid(cf_pid_t p) { return p > 0; }
+
+static cf_pid_t spawn(const char *const *argv, const char *err_path)
 {
     pid_t pid = fork();
     if (pid < 0)
-        return -1;
+        return CF_PID_NONE;
     if (pid == 0) {
         int fd = open(err_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd >= 0) {
@@ -89,10 +234,10 @@ static pid_t spawn(const char *const *argv, const char *err_path)
     return pid;
 }
 
-static int wait_for(pid_t pid)
+static int wait_for(cf_pid_t pid)
 {
     int status = 0;
-    if (pid <= 0)
+    if (!cf_pid_valid(pid))
         return 127;
     while (waitpid(pid, &status, 0) < 0) {
         if (errno != EINTR)
@@ -102,6 +247,8 @@ static int wait_for(pid_t pid)
         return WEXITSTATUS(status);
     return 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
 }
+
+#endif
 
 /* Waits for the listener to report the port it bound.  `--listen 0` plus a port
  * file is what lets any number of rows run without a port to collide over. */
@@ -131,7 +278,7 @@ void cf_run_row(const cf_opts *o, const cf_row *r, cf_result *res)
     char        decl[1024], self_decl[1024], target[128], runms[32], listen_port[32];
     char        err_path[256], put_err_path[256], port_path[256];
     size_t      n = 0, m = 0;
-    pid_t       put_pid = -1, pid;
+    cf_pid_t    put_pid = CF_PID_NONE, pid;
     int         rc, put_rc = 0;
     int64_t     t0 = now_ms();
 
@@ -141,12 +288,12 @@ void cf_run_row(const cf_opts *o, const cf_row *r, cf_result *res)
 
     snprintf(decl, sizeof(decl), "%s/%s", o->scenario_dir, r->declaration);
     snprintf(runms, sizeof(runms), "%d", r->run_ms);
-    snprintf(err_path, sizeof(err_path), "/tmp/ppcp-conform-%ld-%s.log",
-             (long)getpid(), r->id);
-    snprintf(put_err_path, sizeof(put_err_path), "/tmp/ppcp-conform-%ld-%s-put.log",
-             (long)getpid(), r->id);
-    snprintf(port_path, sizeof(port_path), "/tmp/ppcp-conform-%ld-%s.port",
-             (long)getpid(), r->id);
+    snprintf(err_path, sizeof(err_path), "%s/ppcp-conform-%ld-%s.log",
+             CF_TMP_DIR, (long)getpid(), r->id);
+    snprintf(put_err_path, sizeof(put_err_path), "%s/ppcp-conform-%ld-%s-put.log",
+             CF_TMP_DIR, (long)getpid(), r->id);
+    snprintf(port_path, sizeof(port_path), "%s/ppcp-conform-%ld-%s.port",
+             CF_TMP_DIR, (long)getpid(), r->id);
     (void)remove(port_path);
 
     /* --self: the reference pairing.  A second `ppcp-sim` stands in for the peer
@@ -176,7 +323,7 @@ void cf_run_row(const cf_opts *o, const cf_row *r, cf_result *res)
         }
         put_argv[m] = NULL;
         put_pid = spawn(put_argv, put_err_path);
-        if (put_pid < 0) {
+        if (!cf_pid_valid(put_pid)) {
             snprintf(res->reason, sizeof(res->reason), "could not start the stand-in peer");
             return;
         }
@@ -221,13 +368,13 @@ void cf_run_row(const cf_opts *o, const cf_row *r, cf_result *res)
     append_cmd(res->command, sizeof(res->command), argv);
 
     pid = spawn(argv, err_path);
-    if (pid < 0) {
+    if (!cf_pid_valid(pid)) {
         snprintf(res->reason, sizeof(res->reason), "could not start the counterpart");
-        if (put_pid > 0) { kill(put_pid, SIGTERM); (void)wait_for(put_pid); }
+        if (cf_pid_valid(put_pid)) { kill(put_pid, SIGTERM); (void)wait_for(put_pid); }
         return;
     }
     rc = wait_for(pid);
-    if (put_pid > 0)
+    if (cf_pid_valid(put_pid))
         put_rc = wait_for(put_pid);
 
     res->exit_code = rc;

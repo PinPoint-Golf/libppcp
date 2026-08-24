@@ -21,6 +21,24 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _MSC_VER
+/* fopen() below is portable C, correct at both call sites in this file, and
+   the only choice that stays true on every platform it builds on; fopen_s()
+   is a Microsoft/Annex-K extension with no Linux/macOS equivalent. */
+#pragma warning(disable : 4996)
+#endif
+
+#if defined(_WIN32)
+/* gmtime_s takes the opposite argument order (dest, source) and returns
+ * errno_t rather than struct tm *; this wrapper matches gmtime_r's own
+ * signature so the one call site below needs no change. */
+static struct tm *cf_gmtime_r(const time_t *t, struct tm *out)
+{
+    return gmtime_s(out, t) == 0 ? out : NULL;
+}
+#define gmtime_r(t, out) cf_gmtime_r((t), (out))
+#endif
+
 const char *cf_verdict_name(cf_verdict v)
 {
     switch (v) {

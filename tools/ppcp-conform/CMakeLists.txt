@@ -21,11 +21,13 @@ target_include_directories(ppcp-conform PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_dependencies(ppcp-conform ppcp-sim)
 
 target_compile_definitions(ppcp-conform PRIVATE
-    _POSIX_C_SOURCE=200809L
     PPCP_SIM_PATH="$<TARGET_FILE:ppcp-sim>"
     PPCP_SCENARIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../scenarios")
-if(APPLE)
-    target_compile_definitions(ppcp-conform PRIVATE _DARWIN_C_SOURCE)
+if(NOT WIN32)
+    target_compile_definitions(ppcp-conform PRIVATE _POSIX_C_SOURCE=200809L)
+    if(APPLE)
+        target_compile_definitions(ppcp-conform PRIVATE _DARWIN_C_SOURCE)
+    endif()
 endif()
 
 if(PPCP_INSTALL)
