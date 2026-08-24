@@ -27,7 +27,8 @@ set(PPCP_TESTS
     test_ct_s6
     test_umbrella
     test_fixtures
-    test_rv)
+    test_rv
+    test_rv_bootstrap)
 
 foreach(t ${PPCP_TESTS})
     add_executable(${t} ${t}.c)

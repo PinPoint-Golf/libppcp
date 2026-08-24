@@ -295,6 +295,78 @@ PPCP_API ppcp_result ppcp_rv_check_expiry(const ppcp_rv_payload *p, uint64_t now
  * scanned that code holds identical key material. */
 PPCP_API bool ppcp_rv_may_persist(const ppcp_rv_payload *p);
 
+/* -------------------------------------------------- RV-6 bootstrap (RV §11) */
+
+#define PPCP_RV_BS_KEY_BYTES 32   /* pk, the private scalar and Z (11.11a) */
+#define PPCP_RV_BS_CT_BYTES  32   /* the commitment, SHA-256 (11.5b)       */
+#define PPCP_RV_BS_MAC_BYTES 16   /* mac_i / mac_a, truncated (11.5f)      */
+
+/* X25519 IS NOT HERE AND NEVER WILL BE — RV 11.11, and the same split as
+ * plan A7 and A8.  Two values in RV §11 need key agreement, a peer's own
+ * public key and the shared secret Z, and both are PARAMETERS exactly as psk,
+ * sid, rn and rn2 already are.  The embedding computes them with the crypto
+ * it already links.  Everything below is SHA-256, HMAC and HKDF, which this
+ * library carries, so plan A1's "no dependencies" is untouched.
+ *
+ * 11.11f is on the CALLER and is not optional.  An agreement that FAILS and
+ * one that returns an all-zero Z are the same event: OpenSSL fails the call,
+ * CryptoKit throws, something else may return zeros.  Map either to
+ * invalid_key (11.6b) — never to a transport error, and never retry it.
+ * ppcp_rv_bootstrap_derive() catches the zero half; only the caller can see
+ * the other half. */
+
+/* ct = SHA-256("ppcp1 bs-commit" || pk_i) — 11.5b.  No key agreement. */
+PPCP_API void ppcp_rv_bs_commit(const uint8_t pk_i[PPCP_RV_BS_KEY_BYTES],
+                                uint8_t ct[PPCP_RV_BS_CT_BYTES]);
+
+/* Constant-time compare, for 11.5d's commitment check and 11.5f's MACs.
+ * Both are MUSTs and both are trivially got wrong with memcmp. */
+PPCP_API bool ppcp_rv_ct_equal(const uint8_t *a, const uint8_t *b, size_t len);
+
+/* Everything downstream of Z — 11.6c..11.6e — as one pure function. */
+typedef struct ppcp_rv_bootstrap {
+    /* --- ephemeral: erase when the handshake ends, success OR failure ------ */
+    uint8_t  bk      [PPCP_RV_KEY_BYTES];     /* RT-18 asserts this row (R-16) */
+    uint8_t  sas_raw [4];                     /* RT-18 asserts this row (R-16) */
+    uint32_t sas;                             /* 0..999999; render "%06u" (11.7a) */
+    uint8_t  k_c     [PPCP_RV_KEY_BYTES];
+    uint8_t  mac_i   [PPCP_RV_BS_MAC_BYTES];
+    uint8_t  mac_a   [PPCP_RV_BS_MAC_BYTES];
+    /* --- persistable, and ONLY after 11.5g -------------------------------- */
+    uint8_t  sid     [PPCP_RV_SID_BYTES];     /* version/variant bits set (11.6d) */
+    uint8_t  prk     [PPCP_RV_KEY_BYTES];
+    uint8_t  k_tls   [PPCP_RV_KEY_BYTES];
+    uint8_t  k_id    [PPCP_RV_KEY_BYTES];
+} ppcp_rv_bootstrap;
+
+/* ⛔ THE STRUCT MIXES WHAT MUST BE ERASED WITH WHAT MAY BE KEPT, AND THE
+ * NATURAL THING TO DO WITH IT IS WRONG.  A caller keeps it because it holds
+ * the PRK — and keeps k_c and the digits alive with it, against 11.6f and
+ * 11.7f.  Copy out sid/prk/k_tls/k_id, then wipe.  On EVERY exit path:
+ * 11.6f as amended by E51 erases prk/k_tls/k_id/sid too on a handshake that
+ * FAILED, and a peer holds all of them from the moment it has Z — up to the
+ * 60 seconds 11.3e allows before either user has affirmed and the pairing
+ * exists at all (11.5g). */
+PPCP_API void ppcp_rv_bootstrap_wipe(ppcp_rv_bootstrap *out);
+
+/* `v` is 1..255 (11.4h1).  pk_i and pk_a are INITIATOR FIRST (11.6c): the
+ * order is bound into the transcript, and transposing it is one of the six
+ * causes RV §10.4 lists.
+ *
+ * TWO DISTINGUISHABLE FAILURES, and the distinction matters.  An all-zero `z`
+ * is PPCP_ERR_RV_INVALID_KEY — 11.6b's ATTACK SIGNAL, never retried and never
+ * reported as a transport error.  A `v` outside 1..255 is PPCP_ERR_MALFORMED,
+ * a programming error.  Returning one code for both would report a caller's
+ * bug as an attack (R-18).
+ * The transcript is bound into sas and k_c and into NOTHING else — 11.6c1,
+ * and 11.6c2 forbids dropping pk_i||pk_a on the grounds that Z implies them.
+ * The caller erases `z` and its own scalar afterwards (11.11h). */
+PPCP_API ppcp_result ppcp_rv_bootstrap_derive(const uint8_t z[PPCP_RV_BS_KEY_BYTES],
+                                              uint8_t v,
+                                              const uint8_t pk_i[PPCP_RV_BS_KEY_BYTES],
+                                              const uint8_t pk_a[PPCP_RV_BS_KEY_BYTES],
+                                              ppcp_rv_bootstrap *out);
+
 #ifdef __cplusplus
 }
 #endif

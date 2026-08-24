@@ -20,6 +20,9 @@ const char *ppcp_result_str(ppcp_result r)
     case PPCP_ERR_VERSION_NEWER:   return "a newer version of the application is required";
     case PPCP_ERR_EXPIRED:         return "expired";
     case PPCP_ERR_UNIMPLEMENTED:   return "not yet implemented";
+    /* RV 11.6b.  Worded as the event, not as a fault, because it is one: a
+     * peer reading this string is looking at a rejected key, not a bad link. */
+    case PPCP_ERR_RV_INVALID_KEY:  return "key agreement rejected (do not retry)";
     }
     return "unknown";
 }

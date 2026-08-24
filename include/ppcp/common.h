@@ -47,7 +47,18 @@ typedef enum ppcp_result {
     PPCP_ERR_NOT_FOUND,          /* no held pairing resolved; key absent */
     PPCP_ERR_VERSION_NEWER,      /* RV 4.2b — the code needs a newer application */
     PPCP_ERR_EXPIRED,            /* RV 4.4a — code past its `exp` */
-    PPCP_ERR_UNIMPLEMENTED       /* declared in planned.h, not yet built */
+    PPCP_ERR_UNIMPLEMENTED,      /* declared in planned.h, not yet built */
+
+    /* RV 11.6b — the key agreement failed, or produced an all-zero Z.
+     *
+     * ⛔ This is an ATTACK SIGNAL and it has its own code for that reason.  It
+     * is NOT a transport error, it is NOT retried, and it is not the same
+     * event as PPCP_ERR_MALFORMED: a `v` outside 1..255 is a caller's
+     * programming error and mapping one onto the other would report a bug as
+     * an attack (RV-6 review finding R-18).  A retry loop around this code
+     * eats RV 3.7b's single-attempt bound, which is what RV §11.8's whole
+     * argument rests on. */
+    PPCP_ERR_RV_INVALID_KEY
 } ppcp_result;
 
 /* Stable, human-readable, and safe to log: no result code carries payload. */

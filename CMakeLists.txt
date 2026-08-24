@@ -101,6 +101,7 @@ set(PPCP_SOURCES
     src/ppcp_sha256.c
     src/ppcp_base64url.c
     src/ppcp_rv_derive.c
+    src/ppcp_rv_bootstrap.c
     src/ppcp_rv_payload.c
     src/ppcp_codec.c
     src/ppcp_model_capability.c
