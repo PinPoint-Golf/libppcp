@@ -949,6 +949,97 @@ int rl_selftest(const char *helper, uint8_t v, rl_report *rep, bool quiet)
         }
     }
 
+    /* ---- 10. the decline, RT-20b(iii) ----------------------------------- */
+    /* The `--probe decline` path is code H and D will run against their own
+     * applications, and untested probe code produces a FALSE RED that lands
+     * in the wrong repository — the same failure the withheld-`bs_confirm`
+     * bug would have produced.  So it is exercised here first.
+     *
+     * ⛔ AND ONLY HALF OF IT IS, DELIBERATELY.  RT-20b(iv) — "the window
+     * closes and does not reopen without a further user action" — is NOT
+     * self-tested and MUST NOT BE.  A `--peer` stand-in has no bootstrap
+     * window: it accepts one connection and exits.  A second dial therefore
+     * finds nothing listening and the probe would report `pass` for a
+     * property the stand-in never had.  That is a manufactured green of
+     * exactly the kind 3.7b and 11.9b exist to prevent
+     * anyone claiming, and it would be worse than no coverage because it
+     * would read as coverage.  RT-20b(iv) is first exercised against
+     * PinPointCapture, which has a real window. */
+    {
+        char        err[RL_ERR_LEN] = { 0 };
+        int         port = 0;
+        int         lfd, cfd;
+        rl_child    ch;
+        rl_peer_out po;
+        rl_leg      leg;
+        rl_leg     *legs[1];
+        rl_leg_ctl  probe = ctl, peer_ctl = ctl;
+        rl_row     *r;
+
+        fprintf(stderr, "\n=== 10. RT-20b(iii), the decline ===\n");
+        probe.decline             = true;
+        probe.exchange_timeout_ms = 5000;
+        probe.affirm_timeout_ms   = 5000;
+        peer_ctl.exchange_timeout_ms = 6000;
+        peer_ctl.affirm_timeout_ms   = 6000;
+
+        lfd = rl_listen(0, &port, err, sizeof(err));
+        if (lfd < 0) { fprintf(stderr, "selftest: %s\n", err); return 2; }
+        {
+            int nothing = -1;
+            if (!spawn_peer(&ch, PPCP_BS_ROLE_ACCEPTOR, v, lfd, true, helper,
+                            &peer_ctl, &nothing, 1)) {
+                fprintf(stderr, "selftest: fork failed\n"); return 2;
+            }
+        }
+        cfd = rl_connect("127.0.0.1", port, 5000, err, sizeof(err));
+        if (cfd < 0) { fprintf(stderr, "selftest: %s\n", err); return 2; }
+        if (!rl_leg_init(&leg, "probe (initiator)", PPCP_BS_ROLE_INITIATOR, v,
+                         cfd, helper, &probe)) {
+            fprintf(stderr, "selftest: %s\n", leg.err);
+            rl_leg_finish(&leg);
+            return 2;
+        }
+        (void)rl_leg_begin(&leg);
+        legs[0] = &leg;
+        (void)rl_pump(legs, 1, rl_now_ms() + 20000);
+        (void)reap_peer(&ch, &po);
+
+        r = rl_row_add(rep, "RT-20b(iii)/control",
+                       "a declined comparison pairs NEITHER end (11.5g, 11.7c)",
+                       "injected",
+                       "the relay reaches the digits and declines; neither it nor "
+                       "the honest counterpart may hold a pairing");
+        snprintf(r->command, sizeof(r->command), "ppcp-relay --selftest");
+        if (leg.failed) {
+            rl_row_set(r, RL_FAIL, "harness fault: %s", leg.err);
+            rc = 1;
+        } else if (!leg.have_sas) {
+            rl_row_set(r, RL_FAIL, "the probe never reached the comparison, so the "
+                                   "decline was never exercised");
+            rc = 1;
+        } else if (leg.paired) {
+            rl_row_set(r, RL_FAIL, "⛔ the declining end paired anyway");
+            rc = 1;
+        } else if (po.paired) {
+            /* 11.7c is the clause: one end's affirmation does not establish a
+             * pairing at the other, and a peer MUST NOT treat the arrival of
+             * the counterpart's bs_confirm as standing in for its own user's. */
+            rl_row_set(r, RL_FAIL, "⛔ THE COUNTERPART PAIRED against a peer that "
+                                   "declined — 11.5g needs BOTH its own "
+                                   "affirmation and a verified MAC");
+            rc = 1;
+        } else {
+            rl_row_set(r, RL_PASS, "declined at %06u with `rejected`; neither end "
+                                   "holds a pairing. ⚠ RT-20b(iv), the window not "
+                                   "reopening, is NOT covered here — a stand-in has "
+                                   "no window and a pass would be manufactured",
+                       (unsigned)leg.sas);
+        }
+        fprintf(stderr, "  %s\n", r->reason);
+        rl_leg_finish(&leg);
+    }
+
     return rc;
 }
 
