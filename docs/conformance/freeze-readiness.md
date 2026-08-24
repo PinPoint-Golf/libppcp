@@ -221,6 +221,8 @@ The two are different acts and the specification set already separates them (`CO
 
 ⚠ **Condition 7 must not block the project, and that is a deliberate decision** (maintainer, 24 August 2026). The work proceeds; the row stays open and visible. **A candidate route is a review by `Fable`, which has expertise in this area** — worth trying, and worth being precise about what it would buy: a competent second reading of the transcript binding and the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary, which is **materially better than the nothing there is today**. ⛔ **It does not by itself discharge a [§9](../specification/ppcp-rv.md#9-conformance) `review` row**, which asks for a named reviewer accountable for the reading. Treat a Fable review as **evidence to record and to hand the eventual reviewer**, not as the reviewer.
 
+✅ **Done, 24 August 2026 — [`rv6-machine-review-2026-08-24.md`](rv6-machine-review-2026-08-24.md).** It found no security or interoperability defect, reproduced every §10.4 vector under an independent implementation, and raised **one substantive finding (F1): secret-bearing locals in the SHA-256/HKDF layer are cleared with plain `memset` while the layer above wipes through volatile pointers — including `pad`, which inverts back to the MAC key, and the hash state, which retains up to 32 octets of `Z`.** Verified by the orchestrator. ⛔ **Worth fixing before [RT-23](../specification/ppcp-rv.md#9-conformance) is signed**, since 7.2e/11.6f/E51 are MUSTs about memory. **Condition 7 still stands** — the review is evidence, not a discharge.
+
 **Non-blocking, but the freeze should record them as accepted rather than pending.**
 
 | # | Item | Why it does not block |
