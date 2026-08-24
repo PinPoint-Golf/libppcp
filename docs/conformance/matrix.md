@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-23 — **S5 wave 2 (L17)**. Both application columns re-read from their S5 claim files: PinPointStudio `5f9d53c` (`docs/ppcp-conformance.md` §10.4, §11), PinPointCapture `b83fdc7` (`docs/ppcp-conformance.md` §3, §4a and `docs/conformance/ppcp-conform.json`). All ten `CONF` §5a pairings pass; see [`freeze-readiness.md`](freeze-readiness.md) for what they do and do not prove |
+| Last updated | 2026-08-24 — **CR-01 session C1**, rows [RT-18 … RT-27](#5a-rv-6-guided-pairing--rv-9-rows-rt-18--rt-27) added; ⛔ RT-20c unrun, so [9g](../specification/ppcp-rv.md#9-conformance) forbids an RV-6 aggregate anywhere. Previously 2026-08-23 — **S5 wave 2 (L17)**. Both application columns re-read from their S5 claim files: PinPointStudio `5f9d53c` (`docs/ppcp-conformance.md` §10.4, §11), PinPointCapture `b83fdc7` (`docs/ppcp-conformance.md` §3, §4a and `docs/conformance/ppcp-conform.json`). All ten `CONF` §5a pairings pass; see [`freeze-readiness.md`](freeze-readiness.md) for what they do and do not prove |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -109,8 +109,8 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-4 | injected | strongest mode negotiated, never plaintext, outcome surfaced | H1, D1, **L13** | n/a | impl — the counterpart now exists | impl — the counterpart now exists |
 | RT-5 | paired | second handshake on a `mu: 1` code refused | H6 | n/a | pass | n/a |
 | RT-6 | injected | expired code reported as expired, no connection | L12, H6, D7 | impl | n/a (publishes, does not scan) | pass |
-| RT-7 | paired | TXT and instance name carry nothing persistent | H6, D7 | n/a | pass (browser half) | pass |
-| RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7 | impl | pass | pass |
+| RT-7 | paired | TXT and instance name carry nothing persistent | H6, D7, **H9** | n/a | pass (browser **and advertiser** halves) — `8ed4259` | pass |
+| RT-8 | paired | `rid` rotates and resolves under the right `K_id` only | L12, H6, D7, **H9** | impl | pass (advertiser: one instance name across three `rid` values, watched live) | pass |
 | RT-9 | paired | diagnostic export carries no secret or payload | H6, D7 | n/a | pass | pass |
 | RT-10 | injected | `session_resume` refused without a completed handshake | H1, D1 | n/a | impl | impl |
 | RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | pass | n/a (code path; plan §9, narrowed) |
@@ -120,6 +120,39 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-15 | paired | publisher refuses past `exp`; untrusted clock attempts | H6, D7 | n/a | pass (publisher half) | impl |
 | RT-16 | **review** | no `PRK` persisted from `mu > 1` | H6, D7 | n/a | pass | review |
 | RT-17 | **review** | every platform mode offered, from a capability query | H1, D1 | n/a | review — reviewer unassigned | review — reviewer unassigned |
+
+### 5a. RV-6 guided pairing — `RV` §9, rows RT-18 … RT-27
+
+*Added by [CR-01](../changerequests/CR-01-in-band-pairing.md), session **C1**, 24 August 2026. Plan: [`cr-01-implementation-plan.md`](../implementation/cr-01-implementation-plan.md).*
+
+⛔ **[9g](../specification/ppcp-rv.md#9-conformance) governs this whole block: no aggregate pass for RV-6 is reported anywhere while [RT-20c](../specification/ppcp-rv.md#9-conformance) is unrun, and it is unrun.** Every green cell below is arithmetic and bookkeeping between two parties that are both behaving. **RT-20b and RT-20c are the only rows in which somebody is attacking**, they both need the relay ([L21](../implementation/cr-01-implementation-plan.md#5-work-packages--libppcp-team-l), C2), and neither has run.
+
+| Test | Method | Asserts | Work packages | `libppcp` | PinPointStudio | PinPointCapture |
+|---|---|---|---|---|---|---|
+| RT-18 | static | every §10.4 row byte-for-byte, **against E30–E55** | L18 | pass | — | — |
+| RT-19 | injected | reveal ≠ commitment → `commitment_mismatch`, nothing derived | L20 | pass | — | — |
+| RT-20a(a) | static | interposer quadruple, no curve: `849063` ≠ `576027` | L18 | pass | — | — |
+| RT-20a(b) | static | no collision over a stated run; digits uniform by χ². ⛔ never the rate | L22 | — | — | — |
+| RT-20b | injected | one real peer against the relay, **including 11.5c's ordering** | L21, H10, D11 | **unrun — needs L21** | **unrun** | **unrun** |
+| RT-20c | paired | ⛔ **both implementations either side of the relay. This is the RV-6 claim** | L21, H10, D11 | **unrun** | **unrun** | **unrun** |
+| RT-21 | injected | small-order `pk` → `invalid_key`, no derivation, **not retried** | L18, H10, D11 | pass (zero half) | — | — |
+| RT-22 | paired | `bs`, no `rn`, no `rid`; `bs`+`rid` ignored; withdrawn on close | D10 | n/a | n/a | pass (2 of 3 — withdrawal unrun) |
+| RT-23 | **review** | ephemeral key, `Z`, `BK`, `K_c` erased on completion **and abort** | D11 | n/a | n/a | review — reviewer unassigned |
+| RT-24 | injected | `bs_accept.v` ≠ sent `v` aborts; both-directions rewrite diverges | L19, L20 | pass (first half) | — | — |
+| RT-24a | **review** | transcript bound into `sas_raw` and `K_c` **and nothing else** | L18 | review — reviewer unassigned | — | — |
+| RT-24b | static | both derivation counter-vectors: `PRK 9b779245…`, `sid 18dd04b1…` | L18 | pass | — | — |
+| RT-24c | static | the R-11 witness — **needs a curve**, so application-side | H10, D11 | pass (derivation half) | — | — |
+| RT-25 | **review** | one attempt at a time; digits for one (trap 3) | H10 | n/a | — | n/a |
+| RT-26 | **review** | affirmative control not the default; no retry affordance | H10, D11 | n/a | — | — |
+| RT-27 | **review** | only `pk` and `Z` cross the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary; both failure halves → `invalid_key` | L18, H10, D11 | pass (library half) | — | — |
+
+**Reproducing the `libppcp` column:** `cmake --preset dev && cmake --build --preset dev -j2 && ctest --preset dev` — 53/53, ASan and UBSan clean. RT-18/RT-20a(a)/RT-24b are `ctest --preset dev -R test_rv_bootstrap`; RT-19/RT-24 are `-R test_bs_engine`.
+
+**Reproducing PinPointCapture's RT-22:** `make test-core`, suite *"RV 3.7 — the bootstrap window"*, 254/254. The withdrawal assertion is `make test-app` (`Tests/BootstrapAdvertiserTests.swift`).
+
+⚠ **Four rows here are `review` and that is not an accident.** RT-23, RT-24a, RT-25, RT-26 and RT-27 each catch something that produces **byte-identical handshakes** — a peer violating [11.3d1](../specification/ppcp-rv.md#113-roles-and-the-connection) is conformant on the wire, and one that compares the digits in software passes every static test in the document. They join [RT-12](../specification/ppcp-rv.md#9-conformance) and RT-17 in the set nothing external can check. **Each needs a named reviewer and a commit, and none has one yet.**
+
+**Rows RT-7 and RT-8 moved this session too** — PinPointStudio now advertises, so their host halves are no longer browser-only. See §5 above; the cells there read `pass` from `ctest --test-dir build/ppcp-tests -R ppcp_advertise_test` at `8ed4259`. ⚠ RT-8's **cryptographic** half is demonstrated on each side against its **own** key and **not across the two** — no pairing exists between these applications yet.
 
 ## 6. The socket-paired rows
 
