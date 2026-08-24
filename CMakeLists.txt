@@ -102,6 +102,7 @@ set(PPCP_SOURCES
     src/ppcp_base64url.c
     src/ppcp_rv_derive.c
     src/ppcp_rv_bootstrap.c
+    src/ppcp_bs_frame.c
     src/ppcp_rv_payload.c
     src/ppcp_codec.c
     src/ppcp_model_capability.c
@@ -126,6 +127,7 @@ set(PPCP_HEADERS
     include/ppcp/timing.h
     include/ppcp/hash.h
     include/ppcp/rv.h
+    include/ppcp/bootstrap.h
     include/ppcp/model.h
     include/ppcp/message.h
     include/ppcp/peer.h

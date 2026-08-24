@@ -18,7 +18,9 @@
  *                    Estimate, Timebase, TimebaseRelation, ClockDiscontinuity
  *   ppcp/timing.h    L3 — the canonical instant, rolling shutter, AchievedFrames
  *   ppcp/hash.h      SHA-256, HMAC-SHA256, HKDF-SHA256
- *   ppcp/rv.h        L12 — the pairing code, key derivation, identities, resolver
+ *   ppcp/rv.h        L12 — the pairing code, key derivation, identities, resolver;
+ *                    L18 — the RV-6 bootstrap derivation (RV §11.6)
+ *   ppcp/bootstrap.h L19 — the five bootstrap frames of RV §11.4
  *   ppcp/model.h     L4 — the entity vocabulary of CORE §5, with validation
  *   ppcp/message.h   L5 — the forty-five messages of MSG §11 and the §10 codes
  *   ppcp/peer.h      L6 — the sans-I/O peer engine and the ENC §2.1 link binder
@@ -52,6 +54,7 @@
 #include "ppcp/timing.h"
 #include "ppcp/hash.h"
 #include "ppcp/rv.h"
+#include "ppcp/bootstrap.h"
 #include "ppcp/model.h"
 #include "ppcp/message.h"
 #include "ppcp/peer.h"
