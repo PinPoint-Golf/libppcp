@@ -133,7 +133,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-19 | injected | reveal ≠ commitment → `commitment_mismatch`, nothing derived | L20 | pass | — | — |
 | RT-20a(a) | static | interposer quadruple, no curve: `849063` ≠ `576027` | L18 | pass | — | — |
 | RT-20a(b) | static | no collision over a stated run; digits uniform by χ². ⛔ never the rate | L22 | pass (**derivation half — `Z` from the RNG, not key agreement**) | — | — |
-| RT-20b | injected | one real peer against the relay, **including 11.5c's ordering** | L21, H10, D11 | pass — **(v), (i), (ii), (iii); the relay's own half.** ⛔ **(iv) not exercised here, deliberately** | **unrun** | pass — **(ii), (iii), (iv)**; `make rv6` |
+| RT-20b | injected | one real peer against the relay, **including 11.5c's ordering** | L21, H10, D11 | pass — **(v), (i), (ii), (iii); the relay's own half.** ⛔ **(iv) not exercised here, deliberately** | pass — **(ii)/initiator**, its own mirror; `run-guided-relay.sh` | pass — **(ii), (iii), (iv)**; `make rv6` |
 | RT-20c | paired | ⛔ **both implementations either side of the relay. This is the RV-6 claim** | L21, H10, D11 | **unrun** | **unrun** | **unrun** |
 | RT-21 | injected | small-order `pk` → `invalid_key`, no derivation, **not retried** | L18, H10, D11 | pass (zero half) | — | pass (**throw half**) — the curve is asked **exactly once**, and the test counts |
 | RT-22 | paired | `bs`, no `rn`, no `rid`; `bs`+`rid` ignored; withdrawn on close | D10 | n/a | n/a | pass (socket half — **record-level withdrawal not measured**) |
@@ -142,8 +142,8 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-24a | **review** | transcript bound into `sas_raw` and `K_c` **and nothing else** | L18 | review — **Mark Liversedge, 24 Aug 2026**, at `4b47dee` ([§5b](#5b-two-review-rows-are-accepted-rather-than-discharged)) | — | — |
 | RT-24b | static | both derivation counter-vectors: `PRK 9b779245…`, `sid 18dd04b1…` | L18 | pass | — | — |
 | RT-24c | static | the R-11 witness — **needs a curve**, so application-side | H10, D11 | pass (derivation half) | — | — |
-| RT-25 | **review** | one attempt at a time; digits for one (trap 3) | H10 | n/a | — | n/a |
-| RT-26 | **review** | affirmative control not the default; no retry affordance | H10, D11 | n/a | — | — |
+| RT-25 | **review** | one attempt at a time; digits for one (trap 3) | H10 | n/a | **answered by construction** — `GuidedPairing` is one door, one attempt. Reviewer unassigned | n/a |
+| RT-26 | **review** | affirmative control not the default; no retry affordance | H10, D11 | n/a | ⚠ asserted by **reading the QML source, not by rendering it** — a regression guard, not a demonstration | ⚠ control set in Core and tested; the screen exists but is not reachable in the app |
 | RT-27 | **review** | only `pk` and `Z` cross the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary; both failure halves → `invalid_key` | L18, H10, D11 | review — **Mark Liversedge, 24 Aug 2026**, library half, at `4b47dee` ([§5b](#5b-two-review-rows-are-accepted-rather-than-discharged)) | — | — |
 
 ✅ **RT-20b(iv) HAS NOW RUN, against PinPointCapture, and passed — but read why the pass is credible.** The probe alone cannot tell *"the window closed correctly"* from *"the listener died for some other reason"*: all it observes is that a second dial found nothing. What makes it evidence is the **corroboration** — the app's own suite separately asserts `11.9b — closing withdraws, and nothing reopens it on its own`, and the run records the window's own close reason (`attemptAbortedOrRejected`) rather than merely an absence. ⚠ **A pass from the probe alone would still not be worth much; a pass corroborated by the window's recorded state is.**

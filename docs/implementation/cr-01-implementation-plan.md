@@ -176,7 +176,7 @@ Numbered from H9.
 |---|---|
 | Deliverable | The claim states **initiator only** ([9e1](../specification/ppcp-rv.md#9-conformance)), names every RT row with its command, and carries **RT-20c `unrun`** with **no RV-6 aggregate** until it runs ([CA7](#3-decisions-this-plan-fixes), trap 9). RT-25 and RT-26 are `review` rows with a named reviewer and a commit. |
 | Traps | 9 |
-| Status | ☐ not started |
+| Status | ⛔ **NOT RUN — C3 cancelled.** Codeless first contact was dropped as a requirement ([log 42](#10-decisions-findings-and-errata-log)), so no RV-6 conformance is claimed and this package has nothing to state. [9g](../specification/ppcp-rv.md#9-conformance) is satisfied **by not claiming**: `claim-libppcp.md` names `RT-20c` `unrun` and reports no aggregate |
 
 ---
 
@@ -209,7 +209,7 @@ Numbered from D10.
 |---|---|
 | Deliverable | The claim states **acceptor only** ([9e1](../specification/ppcp-rv.md#9-conformance)). ⚠ This repository's claim reports aggregate pass counts at the top of the document; under [9g](../specification/ppcp-rv.md#9-conformance) that is **not permissible for RV-6** while RT-20c is unrun, so the aggregate is removed for RV-6 and a named **RT-20c `unrun`** row stands in its place. RT-23, RT-26 and RT-27 are `review` rows with a named reviewer and a commit. |
 | Traps | 9 |
-| Status | ☐ not started |
+| Status | ⛔ **NOT RUN — C3 cancelled.** Codeless first contact was dropped as a requirement ([log 42](#10-decisions-findings-and-errata-log)), so no RV-6 conformance is claimed and this package has nothing to state. [9g](../specification/ppcp-rv.md#9-conformance) is satisfied **by not claiming**: `claim-libppcp.md` names `RT-20c` `unrun` and reports no aggregate |
 
 ---
 
@@ -221,7 +221,7 @@ Three sessions, one agent per repo. **Team L runs one step ahead by construction
 |---|---|---|---|---|
 | **C1 — the library, and the discovery halves** | L18, L19, L20 | **H9** (advertising — no library dependency) | **D10** (the window and its advertisement — no library dependency) | `ctest` green; **every row of [§10.4](../specification/ppcp-rv.md#104-guided-pairing) reproduces byte-for-byte**, including both counter-vectors and the interposer quadruple; RT-18, RT-20a(a), RT-24b passing in `libppcp`; PinPointStudio advertises `role: host` on macOS and PinPointCapture browses and resolves it; PinPointCapture's window is discoverable and withdraws on close (RT-22) |
 | **C2 — the relay, then the two roles** | **L21 first**, then L22 | H10 | D11 | ⛔ **The relay exists and both of its own legs complete**; each application completes a guided pairing **against the relay**, and RT-20b passes for each — including its own mirror of the commitment ordering, which is [CA4](#3-decisions-this-plan-fixes)'s point: each team only ever tests its own half |
-| **C3 — the pair** | fixes from interop | H11 | D12 | **RT-20c passes**: the two real implementations either side of the relay, digits differing on both, both declining, neither pairing. Both claim files carry the [9g](../specification/ppcp-rv.md#9-conformance) shape. Every RT-18…RT-27 cell is *passing*, *review* with a named reviewer, or has a named blocker |
+| ⛔ **C3 — CANCELLED, not run** | — | — | — | ~~**RT-20c passes**: the two real implementations either side of the relay, digits differing on both, both declining, neither pairing. Both claim files carry the [9g](../specification/ppcp-rv.md#9-conformance) shape. Every RT-18…RT-27 cell is *passing*, *review* with a named reviewer, or has a named blocker |
 
 ### C1 — the gate, item by item, verified from artefacts
 
@@ -305,6 +305,30 @@ Three sessions, one agent per repo. **Team L runs one step ahead by construction
 | 42 | 2026-08-24 | ⛔ **DECISION — the maintainer drops codeless first contact, and with it RV-6 as a product requirement.** His decomposition, which is clearer than any in these documents: **(a)** pair a phone to PinPointStudio with a QR code; **(b)** PinPointStudio reconnects to a phone it has already paired with; **(c)** PinPointStudio pairs with a phone it has never met. *"I think (c) is now a non-starter but (a) and (b) are golden. I am happy to drop (c) as a requirement."* **(c) is RV-6.** ⚠ **One correction was needed on (b) and it is load-bearing: the direction must reverse.** [3.5d](../specification/ppcp-rv.md#35-who-advertises-and-who-browses) forbids the phone advertising for reconnection and forbids it being dialled — `Network.framework`'s listener cannot resolve a rotating PSK identity ([5.3b](../specification/ppcp-rv.md#53-psk-identity)), measured, `PSK_IDENTITY_NOT_FOUND`. So (b) is **PinPointStudio advertises, the phone dials** ([3.5e](../specification/ppcp-rv.md#35-who-advertises-and-who-browses)) — identical to a user, opposite on the wire. ✅ **Confirmed with him: every connection is phone-initiated.** |
 | 43 | 2026-08-24 | ✅ **What (b) still needs is THREE CALLS, and every part exists and is tested.** `identityKeys()` → `browse(against:)` (resolving per [3.4b](../specification/ppcp-rv.md#34-resolvable-identifiers), refusing per 3.4c) → `connectToHost`. The host half is **[H9](#6-work-packages--pinpointstudio-team-h), built this session** — including the `NSBonjourServices` / `NSLocalNetworkUsageDescription` plist keys that were **absent**, which with [3.6a](../specification/ppcp-rv.md#36-multicast-is-not-to-be-relied-on) forbidding an error report meant **PinPointStudio's browse was dead with no symptom whatsoever.** ⛔ **That fix, not RV-6, is this session's most valuable output for the product.** ⚠ **`PinPointCapture/docs/implementation/mvp-online.md` now contradicts this decision** — its §1(a), §2.2's first-contact row, §4.1 demo step 1 (*"no code is carried between screens"*) and §6's Phase 0 all assume RV-6 gates the MVP. **It needs amending and that is not this plan's to do.** |
 | 44 | 2026-08-24 | ⛔ **RV-6 IS PARKED, NOT ABANDONED — DO NOT DELETE IT.** Recorded because the code is now unreachable from any product path, and a future cleanup pass will find ~1,500 lines in `libppcp` plus a ~3,000-line relay in `tools/` and reasonably propose removing them. **Two named reasons it stays, both the maintainer's:** ⓵ **The tripod case, which is the strongest argument this feature ever had** — better than the venue premise it was actually granted on. *"The phone will be placed on a tripod and calibrated. Having to move it to pair is a PITA."* A mounted, calibrated phone **cannot be aimed at a host's screen without losing its calibration**, so the earlier reasoning — *it has a camera, therefore it can scan* — silently assumed a phone free to be pointed. The normal path is unaffected (pair before mounting), but **re-pairing bites**: a reinstall, lost keys, a rebuilt host, a second studio. ⓶ **Other projects.** `libppcp` is MIT, sans-I/O and dependency-free by construction, so the derivation, the frames and the engine are portable as they stand; the relay is a self-contained test instrument. **Reviving it is a UI job, not a protocol one** — the window, the acceptor, the initiator and both six-digit screens are built and tested. |
+
+---
+
+## 10a. ⛔ This plan is CLOSED — read this before editing anything under it
+
+**Closed 24 August 2026.** Sessions C1 and C2 ran and are recorded; **C3 was cancelled, not deferred**. Do not reopen it, and do not add work packages or session rows — the standing rule is that the maintainer opens them.
+
+**What was delivered:** RV-6 is implemented end to end across all three repositories, its vectors reproduce byte-for-byte against E30–E55 in three independent implementations, and a relay demonstrates interposition over real sockets. `libppcp` `ctest` 56/56; PinPointStudio's initiator completes a guided pairing through the real application; PinPointCapture's acceptor likewise, and it passes [RT-20b](../specification/ppcp-rv.md#9-conformance)(ii)/(iii)/(iv).
+
+⛔ **What was NOT delivered, and must not be claimed:** [RT-20c](../specification/ppcp-rv.md#9-conformance). **No RV-6 conformance is claimed anywhere and [9g](../specification/ppcp-rv.md#9-conformance) is satisfied by not claiming it** — `claim-libppcp.md` names the row `unrun` and reports no aggregate. That is a **terminal state, not a gap**: the requirement it served was withdrawn ([log 42](#10-decisions-findings-and-errata-log)), so the row was never run rather than run and failed.
+
+⛔ **RV-6 is PARKED, NOT ABANDONED. Do not delete the code** — [log 44](#10-decisions-findings-and-errata-log) records the two reasons and the shape a revival should take.
+
+**The three questions this work actually settled**, in the maintainer's own decomposition:
+
+| | | |
+|---|---|---|
+| **(a)** | pair a phone to PinPointStudio by QR code | ✅ works, measured 30/30, untouched by any of this |
+| **(b)** | reconnect to a host already paired with, no code | ✅ built after this plan closed — **PinPointStudio advertises, the phone dials**; ⛔ **not the reverse**, [3.5d](../specification/ppcp-rv.md#35-who-advertises-and-who-browses) forbids it |
+| **(c)** | pair with a host never met | ⛔ **dropped as a requirement.** This is RV-6 |
+
+✅ **The most valuable output was not the feature.** [H9](#6-work-packages--pinpointstudio-team-h) added the `NSBonjourServices` and `NSLocalNetworkUsageDescription` plist keys, which were **absent** — and with [3.6a](../specification/ppcp-rv.md#36-multicast-is-not-to-be-relied-on) forbidding an error report, **PinPointStudio's browse was dead with no symptom whatsoever.** (b) could not have worked and nothing would have said why. That came out of a work package aimed at something else.
+
+⚠ **Three things remain open and are NOT this plan's to close:** [RT-24a and RT-27](../conformance/matrix.md#5b-rt-24a-and-rt-27--how-these-two-were-discharged-and-on-what) are discharged by a named reviewer who is **not a domain expert**, with a machine review behind them ([`rv6-machine-review-2026-08-24.md`](../conformance/rv6-machine-review-2026-08-24.md)); [RT-12 and RT-17](../conformance/freeze-readiness.md) have **no reviewer and no evidence**; and Windows mDNS is **gated on the next Windows release** ([CA5](#3-decisions-this-plan-fixes)).
 
 ---
 
