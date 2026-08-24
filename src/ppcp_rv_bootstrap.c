@@ -37,6 +37,7 @@
  * it is undetectable from outside.
  */
 #include "ppcp/rv.h"
+#include "ppcp_wipe.h"
 
 #include <string.h>
 
@@ -57,15 +58,6 @@ static const char LABEL_MAC_A[]   = "ppcp1 bs-confirm-a";
 /* The longest info is INFO_CONFIRM (16) followed by the transcript (65). */
 #define BS_INFO_MAX (sizeof(INFO_CONFIRM) - 1u + BS_TRANSCRIPT_BYTES)
 
-/* memset() through a volatile pointer, so a compiler that can see the object
- * is dead cannot delete the erasure.  11.6f and 7.2e are MUSTs and an
- * optimised-away memset satisfies neither. */
-static void wipe(void *p, size_t n)
-{
-    volatile unsigned char *q = (volatile unsigned char *)p;
-    while (n-- > 0u)
-        *q++ = 0u;
-}
 
 void ppcp_rv_bs_commit(const uint8_t pk_i[PPCP_RV_BS_KEY_BYTES],
                        uint8_t ct[PPCP_RV_BS_CT_BYTES])
@@ -102,7 +94,7 @@ void ppcp_rv_bootstrap_wipe(ppcp_rv_bootstrap *out)
      * which is up to the 60 seconds 11.3e allows before either user has
      * affirmed and the pairing exists at all (11.5g).  Computing is not
      * holding, and this is what closes the gap between them. */
-    wipe(out, sizeof(*out));
+    ppcp_wipe(out, sizeof(*out));
 }
 
 ppcp_result ppcp_rv_bootstrap_derive(const uint8_t z[PPCP_RV_BS_KEY_BYTES],
@@ -122,7 +114,7 @@ ppcp_result ppcp_rv_bootstrap_derive(const uint8_t z[PPCP_RV_BS_KEY_BYTES],
     if (z == NULL || pk_i == NULL || pk_a == NULL || out == NULL)
         return PPCP_ERR_INVALID;
 
-    wipe(out, sizeof(*out));
+    ppcp_wipe(out, sizeof(*out));
 
     /* 11.4h1 — `v` is 1..255.  The type carries the upper bound; zero is the
      * only unrepresentable-by-type failure left, and it is a CALLER'S BUG.
@@ -231,25 +223,25 @@ ppcp_result ppcp_rv_bootstrap_derive(const uint8_t z[PPCP_RV_BS_KEY_BYTES],
      * and giving §5.1 a second shape is what A17 argues against one layer up. */
     rc = ppcp_rv_derive(out->sid, PPCP_RV_SID_BYTES, z, PPCP_RV_BS_KEY_BYTES, &keys);
     if (rc != PPCP_OK) {
-        wipe(&keys, sizeof(keys));
+        ppcp_wipe(&keys, sizeof(keys));
         goto fail;
     }
     memcpy(out->prk,   keys.prk,   PPCP_RV_KEY_BYTES);
     memcpy(out->k_tls, keys.k_tls, PPCP_RV_KEY_BYTES);
     memcpy(out->k_id,  keys.k_id,  PPCP_RV_KEY_BYTES);
-    wipe(&keys, sizeof(keys));
+    ppcp_wipe(&keys, sizeof(keys));
 
-    wipe(transcript, sizeof(transcript));
-    wipe(info, sizeof(info));
-    wipe(mac, sizeof(mac));
+    ppcp_wipe(transcript, sizeof(transcript));
+    ppcp_wipe(info, sizeof(info));
+    ppcp_wipe(mac, sizeof(mac));
     return PPCP_OK;
 
 fail:
     /* Nothing half-derived survives a failure, and that includes the rows
      * already written into `out` (11.6f / E51). */
     ppcp_rv_bootstrap_wipe(out);
-    wipe(transcript, sizeof(transcript));
-    wipe(info, sizeof(info));
-    wipe(mac, sizeof(mac));
+    ppcp_wipe(transcript, sizeof(transcript));
+    ppcp_wipe(info, sizeof(info));
+    ppcp_wipe(mac, sizeof(mac));
     return rc;
 }

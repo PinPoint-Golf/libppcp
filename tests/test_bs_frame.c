@@ -275,6 +275,37 @@ int main(void)
         CHECK_EQ_I(ppcp_bs_frame_read(big, n, &g, &consumed), PPCP_ERR_MALFORMED);
     }
 
+    TEST("ENC 4d — a DUPLICATE map key is malformed, exercised rather than assumed");
+    {
+        /* ⛔ Confirmed by running it, not by reading the contract (machine
+         * review, C2).  §11's own repeat check is `ppcp_bs_engine`'s `seen`
+         * mask, and that catches a repeated FRAME, not a repeated KEY inside
+         * one — so the whole of ENC 4d rests on ppcp_cbor_validate here, and
+         * until now nobody had put a duplicate key in front of it.
+         *
+         * Two spellings of one field is two meanings, and this is a place two
+         * implementations could silently disagree: a decoder taking the FIRST
+         * `v` and one taking the LAST read the same octets as different
+         * frames.  §11.4c1 already makes the vocabulary closed; 4d is what
+         * makes a key unambiguous within it.
+         *
+         * A bs_offer with `v` twice — map(4), otherwise byte-identical. */
+        static const char DUP_HEX[] =
+            "00000030"                 /* payload_len = 48                     */
+            "ff" "00" "0000"           /* channel 255, flags, reserved         */
+            "a4"                       /* map(4)                               */
+            "6176" "01"                /* "v": 1                               */
+            "6176" "01"                /* ⛔ "v": 1 AGAIN                      */
+            "626374" "5820"
+            "f32cd8e62f80f76adb4ba21971efbd10eb71aa6715d9e458f5422c1644357a3a"
+            "627479" "01";             /* "ty": 1                              */
+        uint8_t dup[PPCP_BS_MAX_FRAME];
+        size_t  dup_len = ppcp_unhex(DUP_HEX, dup, sizeof(dup));
+
+        CHECK_EQ_I(ppcp_bs_frame_read(dup, dup_len, &g, &consumed),
+                   PPCP_ERR_MALFORMED);
+    }
+
     TEST("ENC 3c — a short buffer is TRUNCATED, and the caller decides");
     {
         size_t k;

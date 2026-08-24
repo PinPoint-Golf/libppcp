@@ -28,6 +28,7 @@
 #include "ppcp/bootstrap.h"
 
 #include <string.h>
+#include "ppcp_wipe.h"
 
 /* 11.4c — a second frame of a type already received is `malformed`.  One bit
  * per type; the exchange is five frames long and there is nothing to
@@ -37,12 +38,6 @@
 #define SEEN_REVEAL  0x04u
 #define SEEN_CONFIRM 0x08u
 
-static void wipe(void *p, size_t n)
-{
-    volatile unsigned char *q = (volatile unsigned char *)p;
-    while (n-- > 0u)
-        *q++ = 0u;
-}
 
 static void step_init(ppcp_bs_step *step)
 {
@@ -57,11 +52,11 @@ void ppcp_bs_engine_wipe(ppcp_bs_engine *e)
      * material, the digits, and — because until 11.5g is met the pairing does
      * not exist — `PRK`, `K_tls`, `K_id` and `sid` too. */
     ppcp_rv_bootstrap_wipe(&e->bs);
-    wipe(&e->pairing, sizeof(e->pairing));
-    wipe(e->pk_i, sizeof(e->pk_i));
-    wipe(e->pk_a, sizeof(e->pk_a));
-    wipe(e->pk_own, sizeof(e->pk_own));
-    wipe(e->peer_mac, sizeof(e->peer_mac));
+    ppcp_wipe(&e->pairing, sizeof(e->pairing));
+    ppcp_wipe(e->pk_i, sizeof(e->pk_i));
+    ppcp_wipe(e->pk_a, sizeof(e->pk_a));
+    ppcp_wipe(e->pk_own, sizeof(e->pk_own));
+    ppcp_wipe(e->peer_mac, sizeof(e->peer_mac));
     e->has_pairing       = false;
     e->affirmed          = false;
     e->peer_verified     = false;
@@ -199,7 +194,7 @@ static void maybe_pair(ppcp_bs_engine *e, ppcp_bs_step *step)
      * instruction for the digits: they are a function of two ephemeral keys
      * and are meaningless outside the attempt that produced them. */
     ppcp_rv_bootstrap_wipe(&e->bs);
-    wipe(e->peer_mac, sizeof(e->peer_mac));
+    ppcp_wipe(e->peer_mac, sizeof(e->peer_mac));
 
     e->state    = PPCP_BS_ST_PAIRED;
     step->event = PPCP_BS_EV_PAIRED;
@@ -413,7 +408,7 @@ static ppcp_result on_reveal(ppcp_bs_engine *e, const ppcp_bs_frame *f,
      * any difference. */
     ppcp_rv_bs_commit(f->pk, recomputed);
     ok = ppcp_rv_ct_equal(recomputed, e->ct, PPCP_RV_BS_CT_BYTES);
-    wipe(recomputed, sizeof(recomputed));
+    ppcp_wipe(recomputed, sizeof(recomputed));
 
     /* "It MUST NOT derive anything from a pk_i that failed this check" — so
      * the key is not stored until the check has passed. */

@@ -7,6 +7,7 @@
  * and RV §10's vectors are the test that this is right.
  */
 #include "ppcp/hash.h"
+#include "ppcp_wipe.h"
 
 #include <string.h>
 
@@ -165,15 +166,25 @@ void ppcp_hmac_sha256(const uint8_t *key, size_t key_len, const uint8_t *msg,
     ppcp_sha256_update(&s, inner, sizeof(inner));
     ppcp_sha256_final(&s, out);
 
-    /* The key schedule is the only secret this function holds; it does not
-     * outlive the call.  (memset is not guaranteed against a determined
-     * optimiser; a volatile write is used so the clear survives -O2.) */
-    {
-        volatile uint8_t *vk = k;
-        for (i = 0; i < PPCP_SHA256_BLOCK; i++) vk[i] = 0;
-    }
-    memset(pad, 0, sizeof(pad));
-    memset(inner, 0, sizeof(inner));
+    /* ⛔ EVERY LOCAL HERE IS KEY-BEARING, AND THREE OF THE FOUR USED TO BE
+     * CLEARED WITH A PLAIN memset (machine review, F1).  The comment on `k`
+     * was right and applied to its neighbours too:
+     *
+     *   k      the key schedule itself;
+     *   pad    holds `k[i] ^ 0x5c` on the way out — XOR is its own inverse, so
+     *          this recovers the key exactly.  For 11.5f's confirmation MACs
+     *          that key is `K_c`, and for hkdf_expand it is the `PRK`;
+     *   inner  the inner digest, a value the outer HMAC is keyed over;
+     *   s      ⚠ the one nobody had noticed.  The context is a 64-octet buffer
+     *          and it is NOT re-initialised on the way out, so after
+     *          hkdf_extract("ppcp1 bootstrap", Z) its tail still holds bytes
+     *          of `Z`, and after any keyed expansion it holds `key ^ 0x5c`.
+     *
+     * All four now go through the one helper (7.2e, 11.6f/E51, 11.11h). */
+    ppcp_wipe(k, sizeof(k));
+    ppcp_wipe(pad, sizeof(pad));
+    ppcp_wipe(inner, sizeof(inner));
+    ppcp_wipe(&s, sizeof(s));
 }
 
 ppcp_result ppcp_hkdf_extract(const uint8_t *salt, size_t salt_len, const uint8_t *ikm,
@@ -233,7 +244,9 @@ ppcp_result ppcp_hkdf_expand(const uint8_t prk[PPCP_SHA256_BYTES], const uint8_t
         done += take;
         counter++;
     }
-    memset(t, 0, sizeof(t));
-    memset(block, 0, sizeof(block));
+    /* `t` is a block of the output key stream and `block` is the PRK-keyed
+     * input that produced it; neither outlives the call (7.2e). */
+    ppcp_wipe(t, sizeof(t));
+    ppcp_wipe(block, sizeof(block));
     return PPCP_OK;
 }

@@ -12,6 +12,7 @@
 #include "ppcp/rv.h"
 
 #include <string.h>
+#include "ppcp_wipe.h"
 
 /* RV §5.1 — ASCII bytes, no terminator. */
 static const char INFO_TLS[]  = "ppcp1 tls-psk";
@@ -59,7 +60,7 @@ ppcp_result ppcp_rv_derive(const uint8_t *sid, size_t sid_len, const uint8_t *ps
     if (rc != PPCP_OK)
         return rc;
     rc = ppcp_rv_derive_from_prk(prk, out);
-    memset(prk, 0, sizeof(prk));
+    ppcp_wipe(prk, sizeof(prk));
     return rc;
 }
 
@@ -82,7 +83,7 @@ static ppcp_result tag8(const uint8_t k_id[PPCP_RV_KEY_BYTES], const char *label
     memcpy(msg + label_len, nonce, PPCP_RV_RN_BYTES);
     ppcp_hmac_sha256(k_id, PPCP_RV_KEY_BYTES, msg, label_len + PPCP_RV_RN_BYTES, mac);
     memcpy(out, mac, PPCP_RV_RID_BYTES);
-    memset(mac, 0, sizeof(mac));
+    ppcp_wipe(mac, sizeof(mac));
     return PPCP_OK;
 }
 
@@ -219,7 +220,7 @@ static ppcp_result resolve(const ppcp_rv_pairing *pairings, size_t count,
             found = i;
             any   = true;
         }
-        memset(computed, 0, sizeof(computed));
+        ppcp_wipe(computed, sizeof(computed));
     }
     if (!any)
         return PPCP_ERR_NOT_FOUND;
