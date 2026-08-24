@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | **Session C1 open**, 24 August 2026 — `libppcp` L18/L19/L20, PinPointStudio H9, PinPointCapture D10 all in flight, three agents in parallel. Nothing was implemented in any repository before today |
+| Status | ✅ **Session C1 CLOSED**, 24 August 2026 — L18, L19, L20, H9 and D10 all done; **gate met with two stated qualifications** ([§8](#8-sessions-and-gates)). ⛔ **C2 is the relay, and [RT-20b](../specification/ppcp-rv.md#9-conformance)/[RT-20c](../specification/ppcp-rv.md#9-conformance) remain unrun — [9g](../specification/ppcp-rv.md#9-conformance) forbids any RV-6 aggregate and none is claimed anywhere** |
 | Date | 24 August 2026 |
 | Against | `PPCP-RV` revision 9 as amended by **errata E30–E55** — [CR-01 closed](../changerequests/README.md), five review passes, no open specification items |
 | Companion plan | [`implementation-plan.md`](implementation-plan.md) — the main programme, **complete and closed**. This is a separate document and does not amend it |
@@ -221,6 +221,21 @@ Three sessions, one agent per repo. **Team L runs one step ahead by construction
 | **C1 — the library, and the discovery halves** | L18, L19, L20 | **H9** (advertising — no library dependency) | **D10** (the window and its advertisement — no library dependency) | `ctest` green; **every row of [§10.4](../specification/ppcp-rv.md#104-guided-pairing) reproduces byte-for-byte**, including both counter-vectors and the interposer quadruple; RT-18, RT-20a(a), RT-24b passing in `libppcp`; PinPointStudio advertises `role: host` on macOS and PinPointCapture browses and resolves it; PinPointCapture's window is discoverable and withdraws on close (RT-22) |
 | **C2 — the relay, then the two roles** | **L21 first**, then L22 | H10 | D11 | ⛔ **The relay exists and both of its own legs complete**; each application completes a guided pairing **against the relay**, and RT-20b passes for each — including its own mirror of the commitment ordering, which is [CA4](#3-decisions-this-plan-fixes)'s point: each team only ever tests its own half |
 | **C3 — the pair** | fixes from interop | H11 | D12 | **RT-20c passes**: the two real implementations either side of the relay, digits differing on both, both declining, neither pairing. Both claim files carry the [9g](../specification/ppcp-rv.md#9-conformance) shape. Every RT-18…RT-27 cell is *passing*, *review* with a named reviewer, or has a named blocker |
+
+### C1 — the gate, item by item, verified from artefacts
+
+✅ **Met, 24 August 2026, with two qualifications that are stated rather than ticked.** Every cell below was re-run by the orchestrator; none is taken from an agent's report ([ground rule 4](implementation-plan.md), and this session it caught a false green twice — [log rows 12 and 13](#10-decisions-findings-and-errata-log)).
+
+| Gate item | Verdict | Evidence |
+|---|---|---|
+| `ctest` green | ✅ | `cmake --build --preset dev -j2 && ctest --preset dev` → **53/53**, ASan and UBSan clean |
+| Every row of [§10.4](../specification/ppcp-rv.md#104-guided-pairing) byte-for-byte, both counter-vectors, the interposer quadruple | ✅ | `-R test_rv_bootstrap`, **against revision 9 as amended by E30–E55** — the erratum level is recorded, which [RT-18](../specification/ppcp-rv.md#9-conformance) requires |
+| RT-18, RT-20a(a), RT-24b passing in `libppcp` | ✅ | as above; `849063` ≠ `576027` with no key agreement |
+| PinPointStudio advertises `role: host` on macOS | ✅ | `ppcp_advertise_test` 14/14, and **watched live**: `dns-sd -L` → `txtvers=1 pv=1.0 role=host rn=… rid=…` on `:47788` |
+| PinPointCapture browses and resolves it | ⚠ **qualified** | DNS-SD resolution yes, and the record is classified correctly as a reconnection instance. **[3.4b](../specification/ppcp-rv.md#34-resolvable-identifiers) *cryptographic* resolution was NOT done — it needs a `K_id` from a pairing these two applications do not have** ([log row 11](#10-decisions-findings-and-errata-log)) |
+| PinPointCapture's window discoverable, withdraws on close ([RT-22](../specification/ppcp-rv.md#9-conformance)) | ⚠ **qualified** | `make test-core` 254/254, `make test-app` 74/74 from the artefact. **Withdrawal is measured at the socket; the record-level assertion — the instance gone from the responder — is not measured** (PinPointCapture #66) |
+
+⛔ **What C1 does not establish, and it is the whole of [§11](../specification/ppcp-rv.md#11-rv-6--guided-pairing)'s point.** Ten green rows in the `libppcp` column and every one of them is arithmetic between two parties that are both behaving. **RT-20b and RT-20c are the only rows in which somebody is attacking. Both are unrun, both need [L21](#5-work-packages--libppcp-team-l), and C2 exists to build it first.**
 
 **Cross-team sync points inside a session** (the orchestrator relays; agents never message each other):
 - When L18's header lands, H and D are told the package is consumable and code against it.
