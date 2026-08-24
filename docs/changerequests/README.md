@@ -25,4 +25,17 @@ Errata numbering is deliberately shared. A reader asking *"what changed since re
 
 | # | Title | Raised by | Date | Status |
 |---|---|---|---|---|
-| [**CR-01**](CR-01-in-band-pairing.md) | An authenticated bootstrap for a first pairing | PinPointCapture | 24 Aug 2026 | **Granted in part** — [disposition](CR-01-disposition.md). `PPCP-RV` §11 (RV-6), §3.7, errata E30–E33. Awaiting review by both teams. |
+| [**CR-01**](CR-01-in-band-pairing.md) | An authenticated bootstrap for a first pairing | PinPointCapture | 24 Aug 2026 | **Granted in part** — [disposition](CR-01-disposition.md). `PPCP-RV` §11 (RV-6), §3.7, errata E30–E33. **Reviewed and accepted by both teams**; six findings applied as E34–E39 — [response](CR-01-review-response.md). Reviews: [PinPointCapture](../specification/reviews/CR-01-review-PinPointCapture.md), [PinPointStudio](../specification/reviews/CR-01-review-PinPointStudio.md) |
+
+## What CR-01 cost, and what it bought
+
+Kept because the next request should know what the process is worth.
+
+The grant was four errata. **The review pass that followed it was six more, two of them blocking**, and both of those were structural rather than editorial: a version field carried on the wire and bound into nothing, and a serialisation rule stated for one side of an exchange and not the other — where the *natural* implementation is the one that breaks it.
+
+Neither was visible in the worked vectors. Neither would have been found by a test written against the section as it stood. Both would have been permanent after either team shipped. That is the same lesson [`PPCP-RV` §4.3b](../specification/ppcp-rv.md#43-payload) taught at the cost of finding out, arriving in the newest section of the document, in work by an author who had just finished writing up the earlier one.
+
+**Two things generalised from it, for the next change request:**
+
+1. **A granted change request is a new section with no review history, however carefully it was written.** It should be reviewed as a first draft and not as an amendment to an approved document, and its status line should say so where a reader will see it.
+2. **The vectors are necessary and not sufficient.** Both teams reproduced every row byte for byte *and* found the two blocking defects, which were in clauses no vector exercises. Recomputation catches divergence; only reading catches an argument that was not carried from one clause to the one beside it.

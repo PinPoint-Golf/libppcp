@@ -6,7 +6,7 @@
 | **Ruling** | **Granted in part.** The code goes. The operator does not. |
 | **Specified in** | [`PPCP-RV`](../specification/ppcp-rv.md) revision 9 — **[§11, RV-6](../specification/ppcp-rv.md#11-rv-6--guided-pairing)**, [§3.7](../specification/ppcp-rv.md#37-the-bootstrap-window), [§10.4](../specification/ppcp-rv.md#104-guided-pairing), errata **E30–E33** |
 | **Decided by** | Protocol owner, 24 August 2026 |
-| **Status** | **Awaiting review by both teams.** Nothing should be implemented against §11 before [B14](../specification/ppcp-rv.md#annex-b--open-issues) is discharged |
+| **Status** | **Reviewed and accepted by both teams**, 24 August 2026 — [PinPointCapture](../specification/reviews/CR-01-review-PinPointCapture.md), [PinPointStudio](../specification/reviews/CR-01-review-PinPointStudio.md). Six findings, all applied as errata E34–E39; see the [response](CR-01-review-response.md). **§6 of this document is the ask-list they answered and is kept as written** |
 
 ---
 
@@ -70,6 +70,8 @@ The consequence is the feature as it was actually asked for:
 | **Every session after** (§3, §5) | the **host** ([3.5c](../specification/ppcp-rv.md#35-who-advertises-and-who-browses), [3.5e](../specification/ppcp-rv.md#35-who-advertises-and-who-browses)) | the **capture device** | 3.5d leaves it no choice |
 
 So **PinPointStudio can discover a phone and connect to it** — at first contact, which is where the operator is standing and where the request said the pain is. The peers then swap roles for the pairing that follows ([11.2b](../specification/ppcp-rv.md#112-why-it-is-not-tls-and-what-that-unlocks)), and the steady state stays exactly where CR-01 §2 correctly declines to reopen it.
+
+> ⚠ **Corrected 24 August 2026, at PinPointCapture's request in its review.** The sentence above is looser than the table above it, and the review was right to say so. On this deployment the **capture device advertises the bootstrap window and the host dials it**. That is Studio *finding* the device, which is what the request wanted — but Studio is **not** the peer that listens, and a reader skimming for "PPS does discovery" could take it that way. The table is the precise statement; this note is here rather than a silent edit because the disposition is a document both teams have already read.
 
 **CR-01 §2's ⚠ needs one correction on this point.** It reads: *"Both halves of a 'Studio finds the phone' product story therefore cannot be delivered on Apple platforms by a specification change alone."* The reconnection half indeed cannot. The **first-contact half can**, and now is.
 
