@@ -5,6 +5,7 @@
 | | |
 |---|---|
 | Status | **Programme complete — five sessions closed 22–23 Aug 2026.** Remaining items are in `docs/conformance/freeze-readiness.md`. This file is the record |
+| Successor | ⚠ **This plan is closed and is not amended.** Work arising from change request CR-01 (RV-6, guided pairing) is tracked separately in [`cr-01-implementation-plan.md`](cr-01-implementation-plan.md), which continues the L/H/D numbering from L18, H9 and D10 so identifiers stay unique across both |
 | Date | 22 August 2026 |
 | Against | `PPCP-CORE` revision 9, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF` 1.0; `PPCP-RV` revision 8 — all approved for implementation |
 | Companion | [`../conformance/matrix.md`](../conformance/matrix.md) — the compliance record this plan exists to fill in |
