@@ -50,17 +50,17 @@
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev", "jobs": 4 },
-    { "name": "san", "configurePreset": "san", "jobs": 4 },
-    { "name": "cov", "configurePreset": "cov", "jobs": 4 },
-    { "name": "rel", "configurePreset": "rel", "jobs": 4 },
-    { "name": "release", "configurePreset": "release", "jobs": 4 }
+    { "name": "dev", "configurePreset": "dev", "configuration": "Debug", "jobs": 4 },
+    { "name": "san", "configurePreset": "san", "configuration": "Debug", "jobs": 4 },
+    { "name": "cov", "configurePreset": "cov", "configuration": "Debug", "jobs": 4 },
+    { "name": "rel", "configurePreset": "rel", "configuration": "RelWithDebInfo", "jobs": 4 },
+    { "name": "release", "configurePreset": "release", "configuration": "Release", "jobs": 4 }
   ],
   "testPresets": [
-    { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
-    { "name": "san", "configurePreset": "san", "output": { "outputOnFailure": true } },
-    { "name": "cov", "configurePreset": "cov", "output": { "outputOnFailure": true } },
-    { "name": "rel", "configurePreset": "rel", "output": { "outputOnFailure": true } },
-    { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } }
+    { "name": "dev", "configurePreset": "dev", "configuration": "Debug", "output": { "outputOnFailure": true } },
+    { "name": "san", "configurePreset": "san", "configuration": "Debug", "output": { "outputOnFailure": true } },
+    { "name": "cov", "configurePreset": "cov", "configuration": "Debug", "output": { "outputOnFailure": true } },
+    { "name": "rel", "configurePreset": "rel", "configuration": "RelWithDebInfo", "output": { "outputOnFailure": true } },
+    { "name": "release", "configurePreset": "release", "configuration": "Release", "output": { "outputOnFailure": true } }
   ]
 }
