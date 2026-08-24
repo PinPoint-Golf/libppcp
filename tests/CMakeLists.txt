@@ -29,7 +29,8 @@ set(PPCP_TESTS
     test_fixtures
     test_rv
     test_rv_bootstrap
-    test_bs_frame)
+    test_bs_frame
+    test_bs_engine)
 
 foreach(t ${PPCP_TESTS})
     add_executable(${t} ${t}.c)
@@ -70,6 +71,17 @@ add_test(NAME CT-I14-no-thresholds
         -DPPCP_SRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../src
         -DPPCP_INC_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../include
         -P ${CMAKE_CURRENT_SOURCE_DIR}/no_thresholds.cmake)
+
+# Plan A3 — every public header compiles ALONE.  A header that leans on
+# something another header happened to provide first still builds here and
+# fails in a consumer: PinPointCapture imports these as a Clang module and
+# found exactly that in C1, in ppcp/bootstrap.h, against a green build here.
+add_test(NAME A3-headers-self-contained
+    COMMAND ${CMAKE_COMMAND}
+        -DPPCP_INC_DIR=${CMAKE_CURRENT_SOURCE_DIR}/../include
+        -DPPCP_BIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DPPCP_C_COMPILER=${CMAKE_C_COMPILER}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/header_self_contained.cmake)
 
 # The purity gate also runs as a test, so `ctest` reports it by name even
 # though the build already failed if it was going to.
