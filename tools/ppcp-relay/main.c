@@ -42,6 +42,11 @@ static void usage(void)
 "  --probe decline --connect H:P\n"
 "                             RT-20b(iii)/(iv): decline, then check the window\n"
 "                             did not reopen.\n"
+"  --probe rt19 --connect H:P     reveal that does not match the commitment\n"
+"                             → commitment_mismatch (11.5d)\n"
+"  --probe rt21 --connect H:P     an HONEST commitment to an all-zero pk\n"
+"                             → invalid_key, and ⛔ not retried (11.6b)\n"
+"  --probe rt24 --listen P        bs_accept.v != the offered v → abort (11.4h)\n"
 "  --peer initiator|acceptor  an HONEST stand-in.  ⛔ NOT a conformant peer:\n"
 "                             it affirms its own comparison in software, which\n"
 "                             is the one thing 11.1d forbids.  It claims\n"
@@ -131,6 +136,43 @@ int main(int argc, char **argv)
         return 2;
     }
     rep.mode = mode;
+
+    /* ⛔ PREFLIGHT THE §11.11 BOUNDARY BEFORE ANY SOCKET EXISTS.  The relay's
+     * key agreement is supplied by a helper process (ground rule 13: X25519
+     * never enters `libppcp`), so `openssl` is a RUNTIME requirement of this
+     * tool.  Discovering that halfway through an exchange produces a leg that
+     * does not complete — which is indistinguishable, to the team on the other
+     * end, from their implementation failing the row.  So it is checked here,
+     * once, and reported in terms nobody can mistake for a verdict.
+     *
+     * Exit codes, and they are the whole point of doing this: 0 pass, 1 a
+     * CONFORMANCE failure, 2 a HARNESS or setup fault. */
+    {
+        rl_agree preflight;
+        uint8_t  pk[PPCP_RV_BS_KEY_BYTES];
+        char     perr[RL_ERR_LEN] = { 0 };
+
+        if (!rl_agree_open(&preflight, helper, perr, sizeof(perr)) ||
+            !rl_agree_keygen(&preflight, pk, perr, sizeof(perr))) {
+            rl_agree_close(&preflight);
+            fprintf(stderr,
+                "⛔ SETUP FAULT — NOT A CONFORMANCE FAILURE.\n"
+                "   The §11.11 key-agreement helper did not answer:\n"
+                "     %s\n"
+                "   helper: %s\n\n"
+                "   ppcp-relay contains no X25519 and never will: ground rule 13\n"
+                "   and CA1 keep the curve out of libppcp, so the primitive is\n"
+                "   SUPPLIED across §11.11's boundary by that script, which needs\n"
+                "   `openssl` and `perl` on PATH. Install openssl, or pass a\n"
+                "   different supplier with --helper PATH.\n\n"
+                "   ⛔ Nothing about your implementation has been measured. Do not\n"
+                "   record a row from this run.\n",
+                perr, helper);
+            return 2;
+        }
+        memset(pk, 0, sizeof(pk));
+        rl_agree_close(&preflight);
+    }
 
     if (strcmp(mode, "selftest") == 0) {
         rc = rl_selftest(helper, (uint8_t)v, &rep, false);

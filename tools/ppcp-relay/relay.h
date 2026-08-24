@@ -160,6 +160,26 @@ int64_t rl_now_ms(void);
  * does — the engine still produces `bs_accept` in the same call that consumed
  * `bs_offer` (11.5c).  Withholding happens above it, on the wire, which is
  * the only place a relay can stand. */
+typedef enum rl_rewrite {
+    RL_RW_NONE = 0,
+    /* RT-19 — reveal a `pk_i` that does NOT hash to the `ct` already
+     * sent.  11.5d: the acceptor recomputes the commitment, compares in
+     * constant time, aborts `commitment_mismatch`, and MUST NOT derive
+     * anything from a `pk_i` that failed the check. */
+    RL_RW_BAD_REVEAL,
+    /* RT-21 — commit to AND reveal an all-zero `pk`.  The commitment is
+     * honest, so the peer gets past 11.5d and reaches key agreement,
+     * where 11.6b bites: an all-zero `Z` and a reported failure are the
+     * same event and both are `invalid_key`.  ⛔ AND IT MUST NOT BE
+     * RETRIED (trap 7): a retry loop around an attack signal eats 3.7b's
+     * single-attempt bound, which is what §11.8 rests on. */
+    RL_RW_ZERO_KEY,
+    /* RT-24 — `bs_accept.v` different from the `v` the initiator offered.
+     * 11.4h/E34 bound the version into the transcript precisely so this
+     * cannot pass silently. */
+    RL_RW_WRONG_V
+} rl_rewrite;
+
 typedef struct rl_leg_ctl {
     /* RT-20b(ii), acceptor mirror.  Relay is the INITIATOR: it never puts
      * `bs_reveal` on the wire, so the peer under test never sees `pk_i`.
@@ -183,6 +203,15 @@ typedef struct rl_leg_ctl {
      * `pk_own` is fixed at init — so the reordering is imposed above it, here,
      * which is the only place it could live. */
     bool defer_accept;
+
+    /* ⛔ FRAME REWRITES — the `injected` method of §9, and the reason a relay
+     * can run rows a unit test cannot.  Each rewrites ONE field of ONE
+     * outbound frame on the wire, above the engine, and asserts what a
+     * conforming peer does about it.  libppcp's own suite already covers each
+     * of these against its own engine; what these add is the SAME assertion
+     * against an implementation that shares no code with it, which is the
+     * whole of what CONF §2c is about. */
+    rl_rewrite rewrite;
     int  exchange_timeout_ms;
     int  affirm_timeout_ms;
 } rl_leg_ctl;
@@ -210,6 +239,7 @@ typedef struct rl_leg {
     bool            peer_eof;
     bool            sent_offer, sent_accept, sent_reveal, sent_confirm;
     bool            withheld_reveal, withheld_accept;
+    bool            rewrote;
     bool            saw_offer, saw_accept, saw_reveal, saw_confirm, saw_abort;
     ppcp_bs_reason  peer_abort_rc;
     /* ⛔ RT-20b(ii)'s whole finding, in one flag: `bs_accept` carrying `pk_a`

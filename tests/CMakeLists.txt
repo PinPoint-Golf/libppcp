@@ -29,6 +29,7 @@ set(PPCP_TESTS
     test_fixtures
     test_rv
     test_rv_bootstrap
+    test_rv_sas_uniform
     test_bs_frame
     test_bs_engine)
 
@@ -424,4 +425,27 @@ if(TARGET ppcp-relay)
         message(STATUS "tests: no openssl CLI — RT-20b(v), the relay self-test, "
                        "cannot run and the relay's own legs are UNVERIFIED")
     endif()
+endif()
+
+# RT-24c's CURVE half — the R-11 witness of RV §10.4.
+#
+# ⛔ X25519 IS NOT CONTRIBUTORY, and this is the demonstration rather than the
+# assertion.  §10.4 publishes `pk_a` and `pk_a'`; both yield a bit-identical,
+# NON-ZERO `Z`, so `BK`, `sid` and `PRK` are the same under the substitution
+# and only `sas_raw` separates the two peers — 435948 against 485158.  That is
+# why 11.6c2 forbids dropping `pk_i ‖ pk_a` from the SAS info "because Z
+# already depends on them" (trap 5): the binding is the ONLY thing that
+# separates them, and removing it is undetectable from outside.
+#
+# The DERIVATION half is in test_rv_bootstrap and needs no curve.  This half
+# needs one, so it runs `openssl` directly rather than through ppcp-relay's
+# agreement helper — that helper draws its own keypair and refuses to be told
+# one (11.5a), which is correct for a handshake and useless for a witness over
+# a published vector.  Skipped where the CLI is absent, like the RT-4 rows.
+find_program(PPCP_OPENSSL_CLI openssl)
+if(PPCP_OPENSSL_CLI)
+    add_test(NAME RT-24c-r11-witness
+             COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/../tools/rv-r11-witness.sh
+                     ${PPCP_OPENSSL_CLI})
+    set_tests_properties(RT-24c-r11-witness PROPERTIES TIMEOUT 60)
 endif()

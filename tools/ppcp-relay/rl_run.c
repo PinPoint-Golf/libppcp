@@ -813,6 +813,142 @@ int rl_selftest(const char *helper, uint8_t v, rl_report *rep, bool quiet)
         rl_leg_finish(&leg);
     }
 
+    /* ---- 7-9. THE INJECTED ROWS ----------------------------------------- */
+    /* RT-19, RT-21 and RT-24 against an honest stand-in.  libppcp's own suite
+     * already asserts each of these against its own engine; running them from
+     * here proves the PROBE works, so that when H and D point it at their
+     * implementations a red row is about their code and not about this tool.
+     * Same discipline as step 6: an instrument is not trusted until it has
+     * been shown to produce the answer on a case whose answer is known. */
+    {
+        struct {
+            const char    *id;
+            const char    *what;
+            const char    *asserts;
+            rl_rewrite     rewrite;
+            ppcp_bs_role   relay_role;
+            ppcp_bs_reason want;
+        } probes[3];
+        size_t k;
+
+        probes[0].id      = "RT-19";
+        probes[0].what    = "a reveal that does not hash to the commitment aborts "
+                            "with commitment_mismatch, and nothing is derived (11.5d)";
+        probes[0].asserts = "one bit of pk_i flipped after the commitment was sent";
+        probes[0].rewrite = RL_RW_BAD_REVEAL;
+        probes[0].relay_role = PPCP_BS_ROLE_INITIATOR;
+        probes[0].want    = PPCP_BS_RC_COMMITMENT_MISMATCH;
+
+        probes[1].id      = "RT-21";
+        probes[1].what    = "an all-zero pk aborts with invalid_key, nothing is "
+                            "derived, and it is NOT retried (11.6b, 11.11f)";
+        probes[1].asserts = "an HONEST commitment to an all-zero key, so the peer "
+                            "reaches key agreement rather than stopping at 11.5d";
+        probes[1].rewrite = RL_RW_ZERO_KEY;
+        probes[1].relay_role = PPCP_BS_ROLE_INITIATOR;
+        probes[1].want    = PPCP_BS_RC_INVALID_KEY;
+
+        probes[2].id      = "RT-24";
+        probes[2].what    = "bs_accept.v different from the offered v aborts (11.4h)";
+        probes[2].asserts = "the acceptor's v incremented on the wire";
+        probes[2].rewrite = RL_RW_WRONG_V;
+        probes[2].relay_role = PPCP_BS_ROLE_ACCEPTOR;
+        probes[2].want    = PPCP_BS_RC_UNSUPPORTED_VERSION;
+
+        for (k = 0; k < 3; k++) {
+            char        err[RL_ERR_LEN] = { 0 };
+            int         port = 0;
+            int         lfd, cfd, afd = -1;
+            rl_child    ch;
+            rl_peer_out po;
+            rl_leg      leg;
+            rl_leg     *legs[1];
+            rl_leg_ctl  probe = ctl, peer_ctl = ctl;
+            rl_row     *r;
+            bool        relay_is_initiator =
+                            (probes[k].relay_role == PPCP_BS_ROLE_INITIATOR);
+
+            fprintf(stderr, "\n=== %zu. %s ===\n", 7 + k, probes[k].id);
+            probe.rewrite             = probes[k].rewrite;
+            probe.exchange_timeout_ms = 4000;
+            probe.affirm_timeout_ms   = 4000;
+            peer_ctl.exchange_timeout_ms = 5000;
+            peer_ctl.affirm_timeout_ms   = 5000;
+
+            lfd = rl_listen(0, &port, err, sizeof(err));
+            if (lfd < 0) { fprintf(stderr, "selftest: %s\n", err); return 2; }
+
+            if (relay_is_initiator) {
+                int nothing = -1;
+                if (!spawn_peer(&ch, PPCP_BS_ROLE_ACCEPTOR, v, lfd, true, helper,
+                                &peer_ctl, &nothing, 1)) {
+                    fprintf(stderr, "selftest: fork failed\n"); return 2;
+                }
+                cfd = rl_connect("127.0.0.1", port, 5000, err, sizeof(err));
+                if (cfd < 0) { fprintf(stderr, "selftest: %s\n", err); return 2; }
+                afd = cfd;
+            } else {
+                int close_lfd = lfd;
+                cfd = rl_connect("127.0.0.1", port, 5000, err, sizeof(err));
+                if (cfd < 0) {
+                    fprintf(stderr, "selftest: %s\n", err);
+                    rl_close(lfd); return 2;
+                }
+                if (!spawn_peer(&ch, PPCP_BS_ROLE_INITIATOR, v, cfd, false, helper,
+                                &peer_ctl, &close_lfd, 1)) {
+                    fprintf(stderr, "selftest: fork failed\n"); return 2;
+                }
+                afd = rl_accept(lfd, 10000, err, sizeof(err));
+                rl_close(lfd);
+                if (afd < 0) { fprintf(stderr, "selftest: %s\n", err); return 2; }
+            }
+
+            if (!rl_leg_init(&leg, "probe", probes[k].relay_role, v, afd,
+                             helper, &probe)) {
+                fprintf(stderr, "selftest: %s\n", leg.err);
+                rl_leg_finish(&leg);
+                return 2;
+            }
+            (void)rl_leg_begin(&leg);
+            legs[0] = &leg;
+            (void)rl_pump(legs, 1, rl_now_ms() + 15000);
+            (void)reap_peer(&ch, &po);
+
+            r = rl_row_add(rep, probes[k].id, probes[k].what, "injected",
+                           probes[k].asserts);
+            snprintf(r->command, sizeof(r->command), "ppcp-relay --selftest");
+            if (leg.failed) {
+                rl_row_set(r, RL_FAIL, "harness fault: %s", leg.err);
+                rc = 1;
+            } else if (!leg.rewrote) {
+                rl_row_set(r, RL_FAIL, "the probe never got far enough to rewrite "
+                                       "a frame; nothing was measured");
+                rc = 1;
+            } else if (po.paired || leg.paired) {
+                rl_row_set(r, RL_FAIL, "⛔ A PAIRING WAS ESTABLISHED over a frame "
+                                       "this probe deliberately corrupted");
+                rc = 1;
+            } else if (leg.saw_abort && leg.peer_abort_rc == probes[k].want) {
+                rl_row_set(r, RL_PASS, "the peer aborted with `%s`, and no pairing "
+                                       "exists at either end",
+                           rl_reason_name(probes[k].want));
+            } else if (leg.saw_abort) {
+                rl_row_set(r, RL_FAIL, "the peer aborted with `%s`, expected `%s` — "
+                                       "the right refusal for the wrong reason is "
+                                       "still a divergence",
+                           rl_reason_name(leg.peer_abort_rc),
+                           rl_reason_name(probes[k].want));
+                rc = 1;
+            } else {
+                rl_row_set(r, RL_FAIL, "no bs_abort arrived; the peer neither "
+                                       "paired nor refused");
+                rc = 1;
+            }
+            fprintf(stderr, "  %s\n", r->reason);
+            rl_leg_finish(&leg);
+        }
+    }
+
     return rc;
 }
 
@@ -1072,6 +1208,94 @@ int rl_probe_main(const char *what, int listen_port, const char *host, int port,
             }
             fprintf(stderr, "%s: %s\n", r->id, r->reason);
         }
+        return rc;
+    }
+
+    /* The three `injected` rows of §9 that need a counterpart rather than a
+     * unit test.  Each corrupts ONE field of ONE frame on the wire and
+     * asserts the peer's refusal — and asserts the REASON, because the right
+     * refusal for the wrong reason is still a divergence and is exactly the
+     * class §10.4's counter-vectors exist to catch. */
+    if (strcmp(what, "rt19") == 0 || strcmp(what, "rt21") == 0 ||
+        strcmp(what, "rt24") == 0) {
+        ppcp_bs_role   role;
+        ppcp_bs_reason want;
+        const char    *id, *inv;
+        bool           dial;
+
+        if (strcmp(what, "rt19") == 0) {
+            ctl.rewrite = RL_RW_BAD_REVEAL;  role = PPCP_BS_ROLE_INITIATOR;
+            want = PPCP_BS_RC_COMMITMENT_MISMATCH;  dial = true;
+            id = "RT-19";
+            inv = "a reveal that does not hash to the commitment aborts with "
+                  "commitment_mismatch, and nothing is derived (11.5d)";
+        } else if (strcmp(what, "rt21") == 0) {
+            ctl.rewrite = RL_RW_ZERO_KEY;    role = PPCP_BS_ROLE_INITIATOR;
+            want = PPCP_BS_RC_INVALID_KEY;   dial = true;
+            id = "RT-21";
+            inv = "an all-zero pk aborts with invalid_key, nothing is derived, "
+                  "and it is NOT retried (11.6b, 11.11f)";
+        } else {
+            ctl.rewrite = RL_RW_WRONG_V;     role = PPCP_BS_ROLE_ACCEPTOR;
+            want = PPCP_BS_RC_UNSUPPORTED_VERSION; dial = false;
+            id = "RT-24";
+            inv = "bs_accept.v different from the offered v aborts (11.4h)";
+        }
+
+        if (dial) {
+            if (host == NULL) {
+                fprintf(stderr, "probe %s needs --connect host:port\n", what);
+                return 2;
+            }
+            fd = rl_connect(host, port, 5000, err, sizeof(err));
+        } else {
+            int bound = 0;
+            int lfd = rl_listen(listen_port, &bound, err, sizeof(err));
+            if (lfd < 0) { fprintf(stderr, "probe: %s\n", err); return 2; }
+            fprintf(stderr, "probe: listening on %d; dial it with the peer "
+                            "under test\n", bound);
+            fd = rl_accept(lfd, 180000, err, sizeof(err));
+            rl_close(lfd);
+        }
+        if (fd < 0) { fprintf(stderr, "probe: %s\n", err); return 2; }
+        if (!rl_leg_init(&leg, "probe", role, v, fd, helper, &ctl)) {
+            fprintf(stderr, "probe: %s\n", leg.err);
+            rl_leg_finish(&leg);
+            return 2;
+        }
+        (void)rl_leg_begin(&leg);
+        legs[0] = &leg;
+        (void)rl_pump(legs, 1, rl_now_ms() + observe_ms + 10000);
+
+        r = rl_row_add(rep, id, inv, "injected",
+                       "one field of one frame corrupted on the wire; the peer "
+                       "must refuse, with the reason the clause names");
+        snprintf(r->command, sizeof(r->command),
+                 "ppcp-relay --probe %s %s", what,
+                 dial ? "--connect HOST:PORT" : "--listen PORT");
+        if (leg.failed) {
+            rl_row_set(r, RL_FAIL, "harness fault: %s", leg.err); rc = 2;
+        } else if (!leg.rewrote) {
+            rl_row_set(r, RL_FAIL, "the probe never reached the frame it rewrites; "
+                                   "nothing was measured");
+            rc = 1;
+        } else if (leg.paired) {
+            rl_row_set(r, RL_FAIL, "⛔ a pairing was established over a frame this "
+                                   "probe deliberately corrupted");
+            rc = 1;
+        } else if (leg.saw_abort && leg.peer_abort_rc == want) {
+            rl_row_set(r, RL_PASS, "the peer aborted with `%s`", rl_reason_name(want));
+        } else if (leg.saw_abort) {
+            rl_row_set(r, RL_FAIL, "the peer aborted with `%s`, expected `%s`",
+                       rl_reason_name(leg.peer_abort_rc), rl_reason_name(want));
+            rc = 1;
+        } else {
+            rl_row_set(r, RL_FAIL, "no bs_abort arrived; the peer neither paired "
+                                   "nor refused");
+            rc = 1;
+        }
+        fprintf(stderr, "%s: %s\n", r->id, r->reason);
+        rl_leg_finish(&leg);
         return rc;
     }
 

@@ -141,7 +141,15 @@ static bool ask(rl_agree *a, const char *cmd, char *reply, size_t reply_len,
             return false;
         }
         if (r == 0) {
-            seterr(err, errlen, "agreement helper exited unexpectedly%s", "");
+            /* ⛔ THE MOST LIKELY CAUSE BY FAR IS A MISSING `openssl`, AND IT
+             * MUST NOT READ AS A CONFORMANCE FAILURE.  H and D run this on
+             * their own machines; a setup fault reported as "the handshake
+             * did not complete" sends a team looking for a defect in its own
+             * §11 code that is not there. */
+            seterr(err, errlen,
+                   "the §11.11 agreement helper exited before replying — is "
+                   "`openssl` on PATH? ⛔ THIS IS A HARNESS FAULT, NOT A "
+                   "CONFORMANCE FAILURE%s", "");
             return false;
         }
         if (c == '\n')

@@ -160,6 +160,76 @@ static bool handle(rl_leg *l, ppcp_bs_step *st)
                     l->deferred_len = st->out_len;
                 }
             }
+            /* ⛔ THE REWRITE HAPPENS HERE, ON THE WIRE, AND NOT IN THE
+             * ENGINE.  The engine is the same code both applications embed
+             * (CA2) and it stays exactly that: it produced a correct frame
+             * and this decodes it, changes one field, and re-encodes.  A
+             * harness that reached inside the engine to emit a bad frame
+             * would be testing a modified engine, and the row would say
+             * nothing about the peer. */
+            if (!withhold && l->ctl.rewrite != RL_RW_NONE) {
+                ppcp_bs_frame f;
+                size_t        used = 0, n2 = 0;
+                uint8_t       out2[PPCP_BS_MAX_FRAME];
+                bool          changed = false;
+
+                if (ppcp_bs_frame_read(st->out, st->out_len, &f, &used) != PPCP_OK) {
+                    fail(l, "cannot decode our own frame to rewrite it");
+                    return false;
+                }
+                switch (l->ctl.rewrite) {
+                case RL_RW_BAD_REVEAL:
+                    if (f.ty == PPCP_BS_REVEAL) {
+                        /* One bit is enough and one bit is the point: 11.5d's
+                         * comparison is over the whole digest, so a peer that
+                         * checked a prefix, or checked nothing, is caught by
+                         * the smallest possible change. */
+                        f.pk[0] ^= 0x01u;
+                        changed = true;
+                    }
+                    break;
+                case RL_RW_ZERO_KEY:
+                    if (f.ty == PPCP_BS_OFFER) {
+                        uint8_t zero[PPCP_RV_BS_KEY_BYTES];
+                        memset(zero, 0, sizeof(zero));
+                        /* An HONEST commitment to a dishonest key, so the peer
+                         * reaches 11.6b rather than stopping at 11.5d. */
+                        ppcp_rv_bs_commit(zero, f.ct);
+                        changed = true;
+                    } else if (f.ty == PPCP_BS_REVEAL) {
+                        memset(f.pk, 0, sizeof(f.pk));
+                        changed = true;
+                    }
+                    break;
+                case RL_RW_WRONG_V:
+                    if (f.ty == PPCP_BS_ACCEPT) {
+                        f.v = (uint8_t)(f.v == 255u ? 1u : f.v + 1u);
+                        changed = true;
+                    }
+                    break;
+                default:
+                    break;
+                }
+                if (changed) {
+                    if (ppcp_bs_frame_write(&f, out2, sizeof(out2), &n2) != PPCP_OK) {
+                        fail(l, "cannot re-encode the rewritten frame");
+                        return false;
+                    }
+                    if (!rl_write_all(l->fd, out2, n2, l->err, sizeof(l->err))) {
+                        l->failed = true;
+                        return false;
+                    }
+                    l->rewrote = true;
+                    switch (ty) {
+                    case PPCP_BS_OFFER:  l->sent_offer  = true; break;
+                    case PPCP_BS_ACCEPT: l->sent_accept = true; break;
+                    case PPCP_BS_REVEAL: l->sent_reveal = true; break;
+                    default: break;
+                    }
+                    withhold = true;   /* already written, in its altered form */
+                }
+            }
+
             if (!withhold) {
                 if (!rl_write_all(l->fd, st->out, st->out_len, l->err, sizeof(l->err))) {
                     l->failed = true;
