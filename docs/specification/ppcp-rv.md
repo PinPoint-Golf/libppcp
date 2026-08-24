@@ -11,7 +11,7 @@
 | Date | 22 August 2026 |
 | Versioned | Independently of PPCP. Same repository. |
 | Relates to | [`PPCP-CORE`](ppcp-core.md) §3 (transport contract), §5.2.1 (peer identity), §12 (security considerations) |
-| Reviews | [`reviews/`](reviews/) — first-pass reviews from PinPointCapture and PinPointStudio, dispositioned in [`rv-review-disposition-2026-08-22.md`](rv-review-disposition-2026-08-22.md) |
+| Reviews | [`reviews/`](reviews/) — first-pass reviews from PinPointCapture and PinPointStudio, dispositioned in [`rv-review-disposition-2026-08-22.md`](reviews/rv-review-disposition-2026-08-22.md) |
 | Revision | 9 — adds RV-6 (guided pairing), plus errata E34–E55 from **five** review passes over it. **CR-01 is closed: no open specification items.** Revision 8 was final; [CR-01](../changerequests/CR-01-in-band-pairing.md) reopened it. |
 | Change requests | [`../changerequests/`](../changerequests/) — [CR-01](../changerequests/CR-01-in-band-pairing.md), its [disposition](../changerequests/CR-01-disposition.md), and the responses to the [first](../changerequests/CR-01-review-response.md), [second](../changerequests/CR-01-review-response-2.md), [third](../changerequests/CR-01-review-response-3.md) and [fourth](../changerequests/CR-01-review-response-4.md) review passes |
 | Conformance | **Implementing `PPCP-RV` is OPTIONAL.** Implementing PPCP is not. |

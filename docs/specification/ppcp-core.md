@@ -20,7 +20,7 @@
 
 ## 0. Status of this document
 
-**This is the approved text.** Both first-party implementation teams reviewed three times and signed off at each round; the closing findings of the third round are carried here. The reviews are in [`reviews/`](reviews/) and every finding across all four rounds is dispositioned in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md).
+**This is the approved text.** Both first-party implementation teams reviewed three times and signed off at each round; the closing findings of the third round are carried here. The reviews are in [`reviews/`](reviews/) and every finding across all four rounds is dispositioned in [`review-disposition-2026-08-22.md`](reviews/review-disposition-2026-08-22.md).
 
 | Round | Reviewed | Findings | Outcome |
 |---|---|---|---|
@@ -1454,7 +1454,7 @@ Tracked against Draft 1. Each is expected to close before `ppcp/1.0` is declared
 | — | Found while writing: Captures anchored to Candidates had nowhere to attach | **Fixed.** `Capture.anchor` is exactly one of a Shot or a Candidate ([§5.14](#514-capture)); `Candidate.id` added; I27 added. |
 | — | Found while writing: rolling-shutter row formula was ambiguous | **Fixed.** `readout_ns` and the row formula defined exactly ([§6.2](#62-rolling-shutter)). |
 
-The full disposition, including points deliberately **not** actioned, is in [`review-disposition-2026-08-22.md`](review-disposition-2026-08-22.md).
+The full disposition, including points deliberately **not** actioned, is in [`review-disposition-2026-08-22.md`](reviews/review-disposition-2026-08-22.md).
 
 ## What changed in Draft 2
 
