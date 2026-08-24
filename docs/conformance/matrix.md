@@ -139,12 +139,12 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-22 | paired | `bs`, no `rn`, no `rid`; `bs`+`rid` ignored; withdrawn on close | D10 | n/a | n/a | pass (socket half — **record-level withdrawal not measured**) |
 | RT-23 | **review** | ephemeral key, `Z`, `BK`, `K_c` erased on completion **and abort** | D11 | n/a | n/a | review — reviewer unassigned |
 | RT-24 | injected | `bs_accept.v` ≠ sent `v` aborts; both-directions rewrite diverges | L19, L20 | pass (first half) | — | — |
-| RT-24a | **review** | transcript bound into `sas_raw` and `K_c` **and nothing else** | L18 | review — reviewer unassigned | — | — |
+| RT-24a | **review** | transcript bound into `sas_raw` and `K_c` **and nothing else** | L18 | ⚠ **review — maintainer-accepted, NOT independently reviewed** ([§5b](#5b-two-review-rows-are-accepted-rather-than-discharged)) | — | — |
 | RT-24b | static | both derivation counter-vectors: `PRK 9b779245…`, `sid 18dd04b1…` | L18 | pass | — | — |
 | RT-24c | static | the R-11 witness — **needs a curve**, so application-side | H10, D11 | pass (derivation half) | — | — |
 | RT-25 | **review** | one attempt at a time; digits for one (trap 3) | H10 | n/a | — | n/a |
 | RT-26 | **review** | affirmative control not the default; no retry affordance | H10, D11 | n/a | — | — |
-| RT-27 | **review** | only `pk` and `Z` cross the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary; both failure halves → `invalid_key` | L18, H10, D11 | pass (library half) | — | — |
+| RT-27 | **review** | only `pk` and `Z` cross the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary; both failure halves → `invalid_key` | L18, H10, D11 | ⚠ **review — maintainer-accepted, NOT independently reviewed** (library half; [§5b](#5b-two-review-rows-are-accepted-rather-than-discharged)) | — | — |
 
 **Reproducing the `libppcp` column:** `cmake --preset dev && cmake --build --preset dev -j2 && ctest --preset dev` — 53/53, ASan and UBSan clean. RT-18/RT-20a(a)/RT-24b are `ctest --preset dev -R test_rv_bootstrap`; RT-19/RT-24 are `-R test_bs_engine`.
 
@@ -155,6 +155,21 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 ✅ **This row failed first and passed second, and the first result was the useful one.** The withdrawal assertion's initial failure was a **real defect, not a flaky test**: `NWListener.cancel()` is asynchronous, `close(on:)` returned inside the gap, and a dial arriving there completed its TCP handshake into the accept backlog before being reset — logged as `SO_ERROR [54: Connection reset by peer]` at 17:25:12. A bootstrap endpoint answering after its window has closed is what [11.9b](../specification/ppcp-rv.md#119-aborting-and-the-one-attempt-rule) exists to prevent.
 
 ⚠ **Four rows here are `review` and that is not an accident.** RT-23, RT-24a, RT-25, RT-26 and RT-27 each catch something that produces **byte-identical handshakes** — a peer violating [11.3d1](../specification/ppcp-rv.md#113-roles-and-the-connection) is conformant on the wire, and one that compares the digits in software passes every static test in the document. They join [RT-12](../specification/ppcp-rv.md#9-conformance) and RT-17 in the set nothing external can check. **Each needs a named reviewer and a commit, and none has one yet.**
+
+### 5b. Two review rows are accepted rather than discharged
+
+⚠ **`RT-24a` and `RT-27` (library half) are NOT independently reviewed, and their cells say so deliberately.** They are recorded as **maintainer-accepted**: on 24 August 2026 the maintainer read the reasoning for each, **stated plainly that he is not qualified to approve a cryptographic review and that there is no one else available to consult**, and accepted the residual risk on that basis.
+
+**This is not a `pass` and must not be promoted to one by anyone tidying this table.** A `review` row exists precisely because no test can substitute for a competent human reading the code — a wrong implementation of either row produces byte-identical handshakes. Recording the maintainer as "the reviewer" would convert an *unmet* requirement into a discharged one and would be the exact failure mode [9g](../specification/ppcp-rv.md#9-conformance) is written against, one row down.
+
+**What is genuinely covered, and what is not:**
+
+| | Covered by a test today | Needs a qualified human |
+|---|---|---|
+| `RT-24a` | ✅ the **values** — [RT-18](../specification/ppcp-rv.md#9-conformance) reproduces the published `PRK`, and a bound transcript would change it | ❌ that the code's **shape** makes a third binding site hard to add by accident, and that it is re-read whenever this code is touched |
+| `RT-27` | ✅ the **zero-`Z`** half, and that the derivation is a pure function of `Z, v, pk_i, pk_a` | ❌ that no key material leaks across the [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) boundary in a way a boundary's invisibility on the wire would hide |
+
+⛔ **Both rows stay open until an independent, qualified reviewer reads them.** That is a condition on declaring `ppcp/1.0` stable, recorded in [`freeze-readiness.md`](freeze-readiness.md) alongside [RT-12](../specification/ppcp-rv.md#9-conformance) and [RT-17](../specification/ppcp-rv.md#9-conformance), which are unassigned for the same reason.
 
 **Rows RT-7 and RT-8 moved this session too** — PinPointStudio now advertises, so their host halves are no longer browser-only. See §5 above; the cells there read `pass` from `ctest --test-dir build/ppcp-tests -R ppcp_advertise_test` at `8ed4259`. ⚠ RT-8's **cryptographic** half is demonstrated on each side against its **own** key and **not across the two** — no pairing exists between these applications yet.
 
