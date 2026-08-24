@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| Status | **Not started.** No session open, nothing implemented in any repository |
+| Status | **Session C1 open**, 24 August 2026 — `libppcp` L18/L19/L20, PinPointStudio H9, PinPointCapture D10 all in flight, three agents in parallel. Nothing was implemented in any repository before today |
 | Date | 24 August 2026 |
 | Against | `PPCP-RV` revision 9 as amended by **errata E30–E55** — [CR-01 closed](../changerequests/README.md), five review passes, no open specification items |
 | Companion plan | [`implementation-plan.md`](implementation-plan.md) — the main programme, **complete and closed**. This is a separate document and does not amend it |
@@ -102,7 +102,7 @@ Numbered from L18, continuing the main plan's L0–L17 so the identifiers stay g
 | Spec | `RV` [§11.6](../specification/ppcp-rv.md#116-derivation), [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from), [§10.4](../specification/ppcp-rv.md#104-guided-pairing) |
 | Traps | 4, 5, 6, 7 (zero half) |
 | Unlocks | RT-18, RT-20a(a), RT-24a, RT-24b, RT-27 (library half) |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C1, opened 24 Aug 2026 |
 
 ### L19 — Bootstrap frames
 
@@ -112,7 +112,7 @@ Numbered from L18, continuing the main plan's L0–L17 so the identifiers stay g
 | Spec | `RV` [§11.4](../specification/ppcp-rv.md#114-frames), [`PPCP-ENC` §3](../specification/ppcp-encoding.md#3-framing) |
 | Traps | 1 |
 | Unlocks | the wire half of RT-19, RT-24 |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C1, opened 24 Aug 2026 |
 
 ### L20 — The exchange as a sans-I/O engine
 
@@ -122,7 +122,7 @@ Numbered from L18, continuing the main plan's L0–L17 so the identifiers stay g
 | Spec | `RV` [§11.5](../specification/ppcp-rv.md#115-the-exchange), [§11.9](../specification/ppcp-rv.md#119-aborting-and-the-one-attempt-rule), [§11.10](../specification/ppcp-rv.md#1110-what-must-not-cross-a-bootstrap-connection) |
 | Traps | 2, 6, 7 |
 | Unlocks | RT-19, RT-21 (library half), RT-24 |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C1, opened 24 Aug 2026 |
 
 ### L21 — The relay (`tools/ppcp-relay`) ⛔ **built before either application implements its role**
 
@@ -157,7 +157,7 @@ Numbered from H9.
 | Deliverable | `DNSServiceRegister` on macOS, additive to the existing browser in `src/Ppcp/ppcp_discovery.*` — **it does not bind UDP 5353**, it asks the same responder over the same IPC socket the browse path already uses, which is the objection that header records and which does not apply. TXT per [3.3a](../specification/ppcp-rv.md#33-txt-record): `txtvers`, `pv`, `role: host`, `rn`, `rid`, all of which `libppcp` already computes. **A stable per-registration instance name** ([3.2d](../specification/ppcp-rv.md#32-instance-name)) with only the TXT rotating — a rename is a deregister/probe/announce cycle and at seconds-scale that is the condition [3.6a](../specification/ppcp-rv.md#36-multicast-is-not-to-be-relied-on) says breaks discovery. **Rotation sized on pairings *held*, not devices present** ([3.4d3](../specification/ppcp-rv.md#34-resolvable-identifiers) as amended by E55) — [7.4a](../specification/ppcp-rv.md#74-persistent-pairings) gives a persisted pairing no expiry, so a studio host accumulates them indefinitely. **Windows deferred** ([CA5](#3-decisions-this-plan-fixes)), recorded not silently skipped. |
 | Spec | `RV` [3.2d](../specification/ppcp-rv.md#32-instance-name), [3.3](../specification/ppcp-rv.md#33-txt-record), [3.4d1/d3](../specification/ppcp-rv.md#34-resolvable-identifiers), [3.5e](../specification/ppcp-rv.md#35-who-advertises-and-who-browses) |
 | Unlocks | RT-7, RT-8 (host half); makes [§7.4](../specification/ppcp-rv.md#74-persistent-pairings) persistence useful at all |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C1, opened 24 Aug 2026 |
 
 ### H10 — The initiator
 
@@ -190,7 +190,7 @@ Numbered from D10.
 | Deliverable | A window opened **only by an explicit user action** ([3.7a](../specification/ppcp-rv.md#37-the-bootstrap-window)), closing on the earliest of one completed pairing, one abort or rejection, a peer timeout of **at most 180 s**, or a further user action ([3.7b](../specification/ppcp-rv.md#37-the-bootstrap-window)) — and **not reopening without a further user action** ([11.9b](../specification/ppcp-rv.md#119-aborting-and-the-one-attempt-rule)). `bn` fresh per window, instance name `PPCP-` + 8 hex ([3.2c](../specification/ppcp-rv.md#32-instance-name)), TXT carrying `bs=1` and an optional operator-set `dl` and **no `rn`, no `rid`** ([3.3f](../specification/ppcp-rv.md#33-txt-record), [3.3g](../specification/ppcp-rv.md#33-txt-record) — `dl` never defaulted from a device or user name). A **listener on an endpoint distinct from the PPCP listener** ([3.7f](../specification/ppcp-rv.md#37-the-bootstrap-window)), refusing anything whose first frame is not a well-formed `bs_offer`, and **one attempt at a time** ([11.3d](../specification/ppcp-rv.md#113-roles-and-the-connection)). |
 | Spec | `RV` [§3.7](../specification/ppcp-rv.md#37-the-bootstrap-window), [3.2c](../specification/ppcp-rv.md#32-instance-name), [3.3f/g](../specification/ppcp-rv.md#33-txt-record) |
 | Unlocks | RT-22 |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C1, opened 24 Aug 2026 |
 
 ### D11 — The acceptor
 
@@ -245,7 +245,7 @@ Three sessions, one agent per repo. **Team L runs one step ahead by construction
 
 | # | Date | Item |
 |---|---|---|
-| — | — | *(nothing yet — no session has run)* |
+| 1 | 2026-08-24 | **Session C1 opened.** L18/L19/L20, H9 and D10 briefed and launched in parallel; §4 carried verbatim in all three briefs. Orchestrator note on [ground rule 9](#1-ground-rules): three agents means `-j3` each would total 9, so `libppcp` builds at **`-j2`** this session and the stated ≤ 8 holds |
 
 ---
 
