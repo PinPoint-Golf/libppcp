@@ -133,7 +133,7 @@ Numbered from L18, continuing the main plan's L0–L17 so the identifiers stay g
 | Why first | [CA3](#3-decisions-this-plan-fixes). Both remaining security-touching tests depend on it, it needs no application to exist, and **building it produces the third implementation carrying both roles** — the only slack the interoperable set has ([§2](#2-what-is-claimed--and-what-9g-forbids-anyone-claiming)). It is also what each application develops against from day one. |
 | Spec | `RV` [RT-20b, RT-20c](../specification/ppcp-rv.md#9-conformance), [§11.8](../specification/ppcp-rv.md#118-what-the-comparison-proves) |
 | Unlocks | RT-20b against either peer; RT-20c against both |
-| Status | ⧗ **in progress** — C2, opened 24 Aug 2026. ⛔ Running alone; H10/D11 gated on it |
+| Status | ✅ **done** — C2, `80467a0`. `--selftest` is **six assertions and all six pass**, re-run by the orchestrator: both own legs complete; the interposition end to end over real sockets with the two legs showing **different** digits; both ordering mirrors; and ⛔ **a NEGATIVE CONTROL** — the same probe against a stand-in built to carry [trap 2](#4-the-traps) must report a failure, and does. Without it the ordering probes would be untested tests, since trap 2 is invisible on the wire. `ctest` 54/54, ASan/UBSan clean. No RV-6 aggregate is emitted and no code path could emit one |
 
 ### L22 — Conformance rows, and the 9g claim shape
 
@@ -143,7 +143,7 @@ Numbered from L18, continuing the main plan's L0–L17 so the identifiers stay g
 | Spec | `RV` [§9](../specification/ppcp-rv.md#9-conformance), [`PPCP-CONF` §1](../specification/ppcp-conformance.md#1-claiming-conformance) |
 | Traps | 9 |
 | Unlocks | the matrix rows themselves |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C2 |
 
 ---
 
@@ -168,7 +168,7 @@ Numbered from H9.
 | Spec | `RV` [§11.2](../specification/ppcp-rv.md#112-why-it-is-not-tls-and-what-that-unlocks)–[§11.9](../specification/ppcp-rv.md#119-aborting-and-the-one-attempt-rule), [§3.7](../specification/ppcp-rv.md#37-the-bootstrap-window) |
 | Traps | 3, 7, 8, and the two UX MUSTs |
 | Unlocks | RT-20b (initiator mirror), RT-22 (browse half), RT-24c, RT-25, RT-26, RT-27 (host half) |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C2 |
 
 ### H11 — Conformance claim
 
@@ -201,7 +201,7 @@ Numbered from D10.
 | Spec | `RV` [§11.5](../specification/ppcp-rv.md#115-the-exchange)–[§11.7](../specification/ppcp-rv.md#117-the-short-authentication-string), [§11.11](../specification/ppcp-rv.md#1111-where-x25519-comes-from) |
 | Traps | 2, 6, 7, 8, and the two UX MUSTs |
 | Unlocks | RT-20b (acceptor mirror), RT-21 (throw half), RT-23, RT-24c, RT-26, RT-27 (device half) |
-| Status | ☐ not started |
+| Status | ⧗ **in progress** — C2 |
 
 ### D12 — Conformance claim
 
@@ -282,6 +282,10 @@ Three sessions, one agent per repo. **Team L runs one step ahead by construction
 | 19 | 2026-08-24 | **Session C2 opened, and [condition 7](../conformance/freeze-readiness.md) is explicitly NOT allowed to block it** (maintainer). ⛔ **L21 launched ALONE.** [CA3](#3-decisions-this-plan-fixes) and [§11.3](#11-how-an-orchestration-session-is-run) both require the relay to land before H10 and D11 begin, and §11.3 names this as *"the ordering decision this plan exists to protect from slipping"* — so it is not being run in parallel for speed. ⚠ **CA8 carried into the C2 brief as new**: the relay holds **both legs'** key material, which makes it the rule's first real test. **A `Fable` review of RT-24a/RT-27 is recorded as a candidate route** — evidence to hand an eventual reviewer, not a substitute for one. |
 | 20 | 2026-08-24 | ✅ **`RT-24a` and `RT-27` DISCHARGED — named reviewer Mark Liversedge, at `4b47dee`.** The position reversed within the session and **the reason is recorded rather than the outcome alone**: he first declined, on the ground that he is not qualified and had no one to consult; the [machine review](../conformance/rv6-machine-review-2026-08-24.md) then reimplemented [§10.4](../specification/ppcp-rv.md#104-guided-pairing) from scratch, reproduced every value, and found no defect breaking the security property or interoperability — *"that is genuinely helpful. I am good now and happy to approve."* **The discharge rests on a documented independent reproduction, not on an assertion.** ⚠ Not cancelled by it: the reviewer is not a domain expert, the review is machine-generated and verified at **source only**, and RT-27's far half in the two applications is unexamined by construction. **Freeze condition 7 moves from blocking to wanted**; RT-12 and RT-17 stay blocking, having neither reviewer nor evidence. |
 | 21 | 2026-08-24 | **F1 (the `memset` hygiene finding) is accepted by the maintainer for inclusion and is queued to team L**, behind L21 so the relay's ordering is not disturbed ([CA3](#3-decisions-this-plan-fixes)). One shared volatile-wipe helper replacing two private `wipe()` copies and the scattered `memset`s in `src/ppcp_sha256.c` / `ppcp_rv_derive.c`. ⛔ **To land before [RT-23](../specification/ppcp-rv.md#9-conformance) is signed** — 7.2e/11.6f/E51 are MUSTs about memory and RT-23 is their row. Orchestrator to verify it in the C2 close-out rather than take the report for it. |
+| 22 | 2026-08-24 | ✅ **L21 landed and the C2 sync point fired — H10 and D11 launched against the relay.** Verified by the orchestrator running `--selftest`, not from the report: six of six, and the interposition leg showed **different digits from the agent's own run** (`613 016`/`732 454`), which is what distinguishes real per-run key agreement from replayed fixtures. |
+| 23 | 2026-08-24 | ✅ **[CA8](#3-decisions-this-plan-fixes)'s first real test, and it passes — the relay's X25519 helper APPROVED as an application of CA8, not a new decision.** The relay needs real key agreement on both legs (RT-20b(i)/(iii)/(v) are unreachable without it) and [ground rule 13](#1-ground-rules) forbids a curve in the library, so it supplies itself **across the same boundary §11.11 defines** — `tools/ppcp-relay/x25519-agree.sh` holds the scalar in-process, speaks over a pipe, and **only `pk` and `Z` cross**. Checked rather than accepted: no key-shaped literal under `tools/ppcp-relay/`, no linked crypto library, no install rule, purity gate still green. ⚠ **The deciding argument is that the relay never holds a private scalar at all**, so [11.11h](../specification/ppcp-rv.md#1111-where-x25519-comes-from)'s *"a component that never held them has nothing to erase"* holds **structurally rather than by discipline** — a stronger position than the library's own under CA8, where key material transits caller-owned structs. Precedent: `tests/CMakeLists.txt` already does `find_program(openssl)` for RT-4. **Consequence to state: a RUNTIME dependency on `openssl` on `PATH`** — its absence must read as a missing tool, never as a handshake failure. |
+| 24 | 2026-08-24 | **RT-24c stays `pass (derivation half)`, and may be promoted in L22 — an orchestrator ruling.** Team L observed correctly that the plan's premise ("application-side since it needs a curve") has partly shifted, because `tools/` now has a curve at arm's length, and it reproduced the R-11 witness through the helper. ⛔ **But [ground rule 4](implementation-plan.md) says a `pass` comes from a re-runnable command and that reproduction was by hand.** If L22 wires the witness as an actual `ppcp-conform` row, the row is earned; if it stays a hand reproduction, it stays the derivation half. |
+| 25 | 2026-08-24 | ⚠ **The relay's self-test FAILED on its first run, and that is the entry worth keeping.** After withholding `bs_reveal` the relay went on to send `bs_confirm`; the honest peer correctly rejected an out-of-order frame as `malformed` ([11.4c](../specification/ppcp-rv.md#114-frames)) and aborted **for a reason the harness had manufactured**, so its own [11.3e](../specification/ppcp-rv.md#113-roles-and-the-connection) timer never ran. The assertion still held, but the abort code described **the instrument rather than the implementation**. ⛔ **Left undiscovered, this would have surfaced in C2 as "PinPointCapture aborts against the relay" — diagnosed in the wrong repository, by a team that cannot see the relay's code.** That is [CA3](#3-decisions-this-plan-fixes)'s ordering earning its keep on day one, and it is the same instinct as the negative control one level up. |
 
 ---
 
