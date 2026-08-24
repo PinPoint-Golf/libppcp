@@ -6,6 +6,7 @@
 | **Ruling** | **Granted in part.** The code goes. The operator does not. |
 | **Specified in** | [`PPCP-RV`](../specification/ppcp-rv.md) revision 9 — **[§11, RV-6](../specification/ppcp-rv.md#11-rv-6--guided-pairing)**, [§3.7](../specification/ppcp-rv.md#37-the-bootstrap-window), [§10.4](../specification/ppcp-rv.md#104-guided-pairing), errata **E30–E33** |
 | **Decided by** | Protocol owner, 24 August 2026 |
+| ⚠ **Premise** | **CR-01's stated situation — *"a venue where a range operator sets up several bays"* — does not describe this deployment.** The host is never at the range. Confirmed by the protocol owner 24 August 2026, after four review passes none of which questioned it. The *requirement* still stands and RV-6 is kept; the **justification is narrower** than §3 below argues. See [E53](../specification/ppcp-core.md#errata-after-revision-9) and [§11's preamble](../specification/ppcp-rv.md#11-rv-6--guided-pairing) |
 | **Status** | **Reviewed and accepted by both teams**, 24 August 2026 — [PinPointCapture](../specification/reviews/CR-01-review-PinPointCapture.md), [PinPointStudio](../specification/reviews/CR-01-review-PinPointStudio.md). Six findings, all applied as errata E34–E39; see the [response](CR-01-review-response.md). **§6 of this document is the ask-list they answered and is kept as written** |
 
 ---
