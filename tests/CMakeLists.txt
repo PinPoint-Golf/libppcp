@@ -384,3 +384,44 @@ add_test(NAME L16-adjacent-must
     COMMAND $<TARGET_FILE:audit-adjacent-must>
             ${CMAKE_CURRENT_SOURCE_DIR}/../docs/specification
             --out ${CMAKE_CURRENT_BINARY_DIR}/adjacent-must-sweep.md)
+
+# ⛔ RT-20b(v) — THE RELAY'S OWN LEGS, AND THE ONE ASSERTION MOST EASILY
+# SKIPPED.  §9's own wording: "each of the relay's own legs completes on
+# demand, OR THE HARNESS IS TESTING ITS OWN BUG."  Every other row `ppcp-relay`
+# emits is a statement about somebody else's code and each is worthless until
+# this passes, because a peer failing against a broken relay fails in a way
+# that looks exactly like a defect in the peer — and the cost lands on the team
+# least able to see the cause.
+#
+# This row needs no application, which is why it can be the FIRST thing run
+# rather than the last (CA3).  It covers six things:
+#   the relay's initiator leg completes against an honest acceptor;
+#   its acceptor leg completes against an honest initiator;
+#   an interposition end to end, in which the two honest peers see DIFFERENT
+#     six digits — §11.8 over sockets rather than as arithmetic;
+#   11.5c's ordering, both mirrors (E54/R-23);
+#   ⛔ and a NEGATIVE CONTROL: the same probe run against a stand-in built to
+#     carry trap 2 must report a FAILURE.  Without it the ordering rows would
+#     be untested tests — trap 2 is invisible on the wire, so nothing else in
+#     this repository would notice a probe that had gone blind.
+#
+# ⚠ It is NOT RT-20c and nothing here may be read as it: both honest ends are
+# `libppcp`'s own engine.  RT-20c needs PinPointStudio and PinPointCapture in
+# those two places and nothing smaller substitutes for it (9g, B7).
+#
+# Skipped where the OpenSSL CLI is absent, on the same footing as the RT-4 rows
+# above: X25519 never enters `libppcp` (ground rule 13, CA1), so the relay
+# obtains key agreement across §11.11's boundary from a helper process, and
+# `openssl` is the peer under test's supplier rather than a dependency of
+# anything that ships.
+if(TARGET ppcp-relay)
+    find_program(PPCP_OPENSSL_CLI openssl)
+    if(PPCP_OPENSSL_CLI)
+        add_test(NAME RT-20b-relay-selftest
+                 COMMAND $<TARGET_FILE:ppcp-relay> --selftest)
+        set_tests_properties(RT-20b-relay-selftest PROPERTIES TIMEOUT 180)
+    else()
+        message(STATUS "tests: no openssl CLI — RT-20b(v), the relay self-test, "
+                       "cannot run and the relay's own legs are UNVERIFIED")
+    endif()
+endif()
