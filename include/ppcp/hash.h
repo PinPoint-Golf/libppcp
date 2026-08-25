@@ -9,7 +9,8 @@
  * for the key derivation of RV §5.1 — and all three are short enough to read.
  *
  * ⚠ These are the correctness half of RV's security model, not the whole of
- * it.  RT-12 — entropy quality, protected storage, erasure — is a *review*
+ * it.  RT-12 — entropy quality and erasure (storage left the row under
+ * erratum E56, RV 7.2c being a SHOULD) — is a *review*
  * method precisely because nothing here can demonstrate it: the library never
  * generates a random byte (RV 7.2a is the embedding's obligation) and never
  * stores one.  Every random input below is a parameter.

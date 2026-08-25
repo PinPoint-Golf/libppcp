@@ -114,7 +114,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | RT-9 | paired | diagnostic export carries no secret or payload | H6, D7 | n/a | pass | pass |
 | RT-10 | injected | `session_resume` refused without a completed handshake | H1, D1 | n/a | impl | impl |
 | RT-11 | injected | unknown identity and wrong key indistinguishable | H1 | n/a | pass | n/a (code path; plan §9, narrowed) |
-| RT-12 | **review** | CSPRNG at full width, protected storage, erasure | H6, D7 | n/a | review | review |
+| RT-12 | **review** | CSPRNG at full width, erasure (**storage dropped by [E56](../specification/ppcp-core.md#errata-after-revision-9)** — `RV` 7.2c is a SHOULD; the reviewer records where secrets are held, and does not fail the row for a store that is not the platform's protected one) | H6, D7 | n/a | review | review |
 | RT-13 | **review** | network join with consent; not left attached | D7 | n/a | n/a | review |
 | RT-14 | static | §10.2 PSK identity; differs per connection; empty hint at TLS 1.2 | L12, H1, D1 | pass | pass (wire) | impl |
 | RT-15 | paired | publisher refuses past `exp`; untrusted clock attempts | H6, D7 | n/a | pass (publisher half) | impl |

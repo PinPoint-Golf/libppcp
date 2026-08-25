@@ -77,7 +77,7 @@ Most of the forty-eight are of the first kind. That is a defect in the **record*
 | CT-I30's third assertion | `pass (own half)` | `capture_update` carrying `achieved_frames` only for `transfer: failed` |
 | CT-I36a under induced contention | `pass (own half)` | A phone **and** a host |
 | IOP-2's other half | row passes | A phone's camera declaration meeting a foreign one — `declared_camera: false` today |
-| RT-15's Keychain half | `impl` | `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` behaves differently on a simulator, and the property that matters is not observable from a test at all |
+| ~~RT-15's Keychain half~~ | *closed by [E56](../specification/ppcp-core.md#errata-after-revision-9)* | The gap was `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` behaving differently on a simulator, with the property that mattered unobservable from a test. **PinPointCapture no longer uses the Keychain**, and a file-backed store **is** testable — so this stops being a hardware-blocked row and becomes ordinary test coverage |
 | `NEHotspotConfiguration` | deferred | A phone **and an App ID capability** — an account decision, not only hardware |
 | The microphone path end to end | deferred | A phone |
 | `RingBufferRecorder`'s segment delivery | deferred | A phone, **and it is not wired**: `extractClip` answers `absent`/`outside_buffer` on every device today. This is unfinished product work, not merely untested work |
@@ -94,7 +94,7 @@ Most of the forty-eight are of the first kind. That is a defect in the **record*
 
 | Cell | State | What it needs |
 |---|---|---|
-| RT-12, PinPointStudio and PinPointCapture | `review` | **A named reviewer.** `RV` §9 says plainly that RT-12 — CSPRNG width, protected storage, erasure — is *"the requirement on which the whole model rests and the one no test can catch"*. Both repositories name the exact files and commits to read; neither has an assigned reviewer, and an author cannot discharge it |
+| RT-12, PinPointStudio and PinPointCapture | `review` | **A named reviewer.** `RV` §9 says plainly that RT-12 — CSPRNG width and erasure — is *"the requirement on which the whole model rests and the one no test can catch"*. Both repositories name the exact files and commits to read; neither has an assigned reviewer, and an author cannot discharge it. ⚠ **[E56](../specification/ppcp-core.md#errata-after-revision-9) dropped protected storage from this row** (`RV` 7.2c is now a SHOULD) — it **narrows what the reviewer reads and does not discharge the row**, which stays blocking on the CSPRNG and erasure halves |
 | RT-17, both applications | `review` | A named reviewer, and a re-read whenever a platform SDK is updated |
 | RT-13, PinPointCapture | `review` | A named reviewer for the network-join consent path |
 | RT-16, PinPointCapture | `review` | PinPointStudio raised this one to `pass` by making 7.4f's refusal observable; PinPointCapture has not |

@@ -314,11 +314,11 @@ Prefix **H**. The host. GPL. Consumes `libppcp` by `FetchContent`. Every package
 
 | | |
 |---|---|
-| Deliverable | Publish a pairing code: fresh `psk`/`sid` per code from a CSPRNG, every reachable address in `ep` (wired, wireless, hotspot), `mu: 1`, `exp` short, optional `wifi`; rendered as a QR at ECC ≥ M in a "Pair a device" panel. Outstanding-code table with single-use and close-invalidation (7.3a, b, e). mDNS **browse only** (querier role, never binding 5353): resolve `rid` against persisted pairings (`PRK` in the OS keychain/secret store, opt-in and revocable, 7.4b), dial on match, never dial an unresolved `rid` (3.4c). Discovery failure is silent fallback (3.6). Diagnostic export provably free of secrets and payloads (RT-9). |
+| Deliverable | Publish a pairing code: fresh `psk`/`sid` per code from a CSPRNG, every reachable address in `ep` (wired, wireless, hotspot), `mu: 1`, `exp` short, optional `wifi`; rendered as a QR at ECC ≥ M in a "Pair a device" panel. Outstanding-code table with single-use and close-invalidation (7.3a, b, e). mDNS **browse only** (querier role, never binding 5353): resolve `rid` against persisted pairings (`PRK` in the application's own settings store, opt-in and revocable, 7.4b; **`PRK` was in the OS keychain until [E56](../specification/ppcp-core.md#errata-after-revision-9) made 7.2c a SHOULD** — the keychain path existed on macOS only and left Windows and Linux with no persistence at all), dial on match, never dial an unresolved `rid` (3.4c). Discovery failure is silent fallback (3.6). Diagnostic export provably free of secrets and payloads (RT-9). |
 | Spec | `RV` §3, §4, §5, §7 |
 | Unlocks | RT-5, RT-6, RT-7 (browser half), RT-8, RT-9, RT-12 (review), RT-15, RT-16 (review) |
 | Depends | L12, H1 |
-| Status | ☑ done — S4 (`6b9b1af`). `ctest --test-dir build/ppcp-tests -R ppcp_rendezvous_test`; RT-5/7/8/9/15/16 pass, RT-6/13 n/a, RT-12 review. Found erratum E3 (`mu` counts pairings). Keychain store and `DNSServiceBrowse` compiled, not exercised at runtime; browser not yet started by `PpcpHostService` |
+| Status | ☑ done — S4 (`6b9b1af`). `ctest --test-dir build/ppcp-tests -R ppcp_rendezvous_test`; RT-5/7/8/9/15/16 pass, RT-6/13 n/a, RT-12 review. Found erratum E3 (`mu` counts pairings). Keychain store and `DNSServiceBrowse` compiled, not exercised at runtime; browser not yet started by `PpcpHostService`. ⚠ **Superseded by [E56](../specification/ppcp-core.md#errata-after-revision-9)** — the keychain store is removed and the settings store that replaces it is exercised on all three platforms |
 
 ### H7 — Markup and annotations
 
@@ -416,11 +416,11 @@ Prefix **D**. The device. Consumes `libppcp` by SwiftPM. All protocol state live
 
 | | |
 |---|---|
-| Deliverable | Scan a `ppcp:` code (the existing `PairingView`): decode via the library, unknown `v` → "needs a newer app" (4.2b), expired → "expired" unless the clock is untrusted (4.4a/a1), `wifi` → `NEHotspotConfiguration` with consent **before** the endpoint walk (4.3f, 6a) and removal on session end or left to the user (6b), then walk `ep` in order. Secrets in the Keychain; `PRK` persisted only opt-in, visible, revocable, never from `mu > 1` (7.4). mDNS **advertise** `_ppcp._tcp` as `PPCP-<rid[0..3]>` with the TXT of 3.3 and nothing else, `rn` rotated every registration and ≤ 15 min; a listener for the discovery path. Local-network-permission denial detected and explained (`LocalNetworkBlockedView`, `RV` §8). Payloads never logged or exported (4.4c, 7.2b). |
+| Deliverable | Scan a `ppcp:` code (the existing `PairingView`): decode via the library, unknown `v` → "needs a newer app" (4.2b), expired → "expired" unless the clock is untrusted (4.4a/a1), `wifi` → `NEHotspotConfiguration` with consent **before** the endpoint walk (4.3f, 6a) and removal on session end or left to the user (6b), then walk `ep` in order. Secrets in the app's own settings store, excluded from device backup; `PRK` persisted only opt-in, visible, revocable, never from `mu > 1` (7.4). **Was the Keychain until [E56](../specification/ppcp-core.md#errata-after-revision-9) made 7.2c a SHOULD** — `WhenUnlockedThisDeviceOnly` made held pairings unreadable while the phone was locked, so the reconnection sweep reported *no pairings held*. mDNS **advertise** `_ppcp._tcp` as `PPCP-<rid[0..3]>` with the TXT of 3.3 and nothing else, `rn` rotated every registration and ≤ 15 min; a listener for the discovery path. Local-network-permission denial detected and explained (`LocalNetworkBlockedView`, `RV` §8). Payloads never logged or exported (4.4c, 7.2b). |
 | Spec | `RV` §2, §3, §4, §6, §7 |
 | Unlocks | RT-3, RT-6, RT-7, RT-8, RT-9, RT-12 (review), RT-13 (review), RT-15, RT-16 (review) |
 | Depends | L12, D1 |
-| Status | ☑ done — S4 (`d732f8f`, `dd6e556`). `make test-core`: RT-3/6/7/8/9 pass, RT-15 impl, RT-12/13/16 review. Mic-to-ball distance setting in (§9 decision). Keychain ThisDeviceOnly and HotspotConfiguration entitlement unverified on a phone |
+| Status | ☑ done — S4 (`d732f8f`, `dd6e556`). `make test-core`: RT-3/6/7/8/9 pass, RT-15 impl, RT-12/13/16 review. Mic-to-ball distance setting in (§9 decision). HotspotConfiguration entitlement unverified on a phone. ⚠ **Keychain `ThisDeviceOnly` is gone under [E56](../specification/ppcp-core.md#errata-after-revision-9)** — it was the cause of the locked-device reconnection failure, not merely unverified |
 
 ### D8 — Markup
 
