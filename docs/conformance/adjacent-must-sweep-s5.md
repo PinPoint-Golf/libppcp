@@ -267,7 +267,7 @@ Each section below contains at least one of them. **Read the whole section**, no
 | | Clause | Modal | Text |
 |---|---|---|---|
 | ☐ | **7.4a** | MAY | Both peers persist `PRK` after a successful pairing, so a later session can be established without displaying a new code. This is what makes the discovery path of [§3](#3-rv-1--service-discovery) useful. |
-| ☐ | **7.4b** | MUST | Persistence is opt-in, visible to the user, and individually revocable. |
+| ☐ | **7.4b** | ~~MUST~~ **SHOULD** | Persistence is opt-in, visible to the user, and individually revocable. ⚠ *Relaxed by erratum E57, 25 August 2026* — it is a statement about screens, not about the wire, and no longer binds. It stays in this sweep as advice worth checking, not as a MUST that can fail. |
 | ☐ | **7.4c** | MUST | A persisted pairing is scoped to the counterpart peer identity learned inside the authenticated channel. It is not transferable. |
 | ☐ | **7.4d** | MUST | Revocation on either side is honoured immediately by that side, and results in a failed handshake for the other. |
 | ☐ | **7.4h** | MAY | *Erratum E26, 23 August 2026 — a decision, reversible.* A peer persisting a pairing under 7.4a **also persist the network name `wifi.s`** from the code that created it, and **only** that field, as a hint for rejoining. It **MUST NOT** persist `wifi.k`, and [4.4c](#44-handling-a-scanned-code)'s prohibition on retaining a decoded payload is scoped by this clause to that one field. A network name is not a secret — it is broadcast by the access point — and a passphrase is, which is why the disjunction falls where it does. The peer offers the name to the **user**, who joins or does not; it M |
