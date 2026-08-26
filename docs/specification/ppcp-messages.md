@@ -723,21 +723,27 @@ actuator_command      { actuator_id: Id,
 actuator_command_ack  { actuator_id: Id,
                          verdict: applied | refused,
                          reason: Kind (refused: 1),
-                         state: { on: bool (optional), level: float (optional) } (applied: 1) }
+                         state: { on: bool (present iff Actuator.control == "on_off"),
+                                   level: float (present iff Actuator.control == "level") } (applied: 1) }
 ```
 
 - **(12.1a) MUST** `actuator_command` carries `on` **or** `level`, chosen by the named Actuator's declared `control` — never neither, never both (I39). A peer receiving one that does not match the Actuator's declared `control` responds `error` / `malformed`.
 - **(12.1b) MUST** `actuator_command_ack.reason` is present if and only if `verdict: refused`. Open registry — `no_actuator`, `busy`, `thermal_limit`, `permission_denied`, `unsupported` — matching the pattern of `stream_open_ack.reason`.
 - **(12.1c) MUST** `actuator_command_ack.state` reports what the Actuator is **actually** doing after the command is applied, not an echo of the request. Where a platform clamps a requested level (a torch driver rounding to a discrete step), `state` carries the achieved value.
+- **(12.1c1) MUST** *Erratum E63, 26 August 2026 — CR-02 review round 1, both teams independently.* `state`'s `on`/`level` cardinality is bound by the named Actuator's `control` on exactly the same terms as the request (I39, extended). An `applied` ack with `state` carrying neither field, or both, is malformed — I39's "never neither, never both" governs the response as well as the request, not the request alone. As first specified, `on` and `level` inside `state` were each independently marked optional, which let a conformant peer send `state: {}` and satisfy the schema while contradicting 12.1c's own prose (finding F1, PinPointCapture; finding R-1, PinPointStudio, independently).
 - **(12.1d) MUST NOT** A peer send `actuator_command` naming an Actuator not present in the target peer's last-known `Peer.actuators`. The responder MUST answer `error` / `not_declared` where it is (`PPCP-MSG` §10).
 
 ### 12.2 `actuator_state`
 
 ```
-actuator_state { actuator_id: Id, state: { on: bool (optional), level: float (optional) }, since: Instant }
+actuator_state { actuator_id: Id,
+                  state: { on: bool (present iff Actuator.control == "on_off"),
+                            level: float (present iff Actuator.control == "level") },
+                  since: Instant }
 ```
 
 - **(12.2a) MUST** A peer emits `actuator_state` whenever an Actuator's state changes for a reason **other than** an `actuator_command` it just acknowledged — a platform-driven thermal cutoff, a user toggling a physical control locally. It is not sent to confirm a command the requester already has `actuator_command_ack` for.
+- **(12.2a1) MUST** *Erratum E63, 26 August 2026 — CR-02 review round 1.* `actuator_state.state`'s `on`/`level` cardinality is bound by I39 on the same terms as `actuator_command` and `actuator_command_ack.state` (12.1c1).
 - **(12.2b) MUST** `actuator_state` is broadcast (`owner → any`), unlike `actuator_command`'s host-only origination (12a), so an `observer` or a second capture peer in the Session sees current Actuator state without asking the host to relay it.
 
 ---
