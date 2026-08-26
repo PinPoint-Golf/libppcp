@@ -99,6 +99,7 @@ An implementation need not implement all of PPCP. Requiring that would be hostil
 | **Live** | Sync exchange, heartbeat, event/payload split, session control over a live link | Core | I21 |
 | **Markup** | `Annotation` — user artefacts and device-advisory navigation anchors, in either direction | Core | I37 |
 | **Offline** | Bundle read and write, SessionLink, session-level reconciliation | Core | I15, I16, I25, I34 |
+| **Actuate** | *Erratum E58, 26 August 2026 — CR-02.* `Actuator` declaration; `actuator_command`; `actuator_command_ack`; `actuator_state` | Core | I39 |
 
 **Core is mandatory.** Every other profile has the dependencies stated above and no others.
 
@@ -148,8 +149,8 @@ This is why a third-party host may declare `Core + Arbitrate + Live + Offline` w
 | Implementation | Profiles |
 |---|---|
 | Offline-only video capture device (v1 PinPointCapture) | Core + Capture + Detect + **Mint** + Offline |
-| Full mobile capture device | Core + Capture + Detect + Mint + Live + Offline + Markup |
-| PinPointStudio host | Core + Capture + Detect + Arbitrate + Live + Offline + Markup |
+| Full mobile capture device | Core + Capture + Detect + Mint + Live + Offline + Markup + **Actuate** *(erratum E58, owns a torch)* |
+| PinPointStudio host | Core + Capture + Detect + Arbitrate + Live + Offline + Markup + **Actuate** *(erratum E58, commands one)* |
 | Second-screen observer (UC-5) | Core + Live |
 | Third-party host with no cameras | Core + Arbitrate + Live + Offline |
 | Bundle-reading analysis tool | Core + Offline |
@@ -253,6 +254,7 @@ The participant. **`Peer` is not a synonym for device**: a host is a Peer, decla
 | `timebases` | `[Timebase]` | 1..n | |
 | `relations` | `[TimebaseRelation]` | 0..n | |
 | `sources` | `[Source]` | 0..n | A Peer owning no Sources participates fully. |
+| `actuators` | `[Actuator]` | 0..n | *Erratum E58, 26 August 2026 — CR-02.* See [§5.19](#519-actuator). A Peer owning no Actuators participates fully, exactly as one owning no Sources does. |
 | `product` | `{ vendor, model, version }` | 0..1 | Informational. MUST NOT be used to infer behaviour that the protocol requires be declared (I19). |
 
 - **(5.2a) MUST** `role` is declared at session join and does not change for the lifetime of the session.
@@ -535,6 +537,7 @@ The resolution is not to weaken I5. Exempting `method: estimated_online` from I5
 |---|---|---|---|
 | `id` | `Id` | 1 | UUID. Assigned by the host where one exists, otherwise minted by the capturing peer. |
 | `peers` | `[Peer]` | 1..n | With roles. |
+| `opened_at` | `Instant` | 1 | *Erratum E61, 26 August 2026 — CR-02.* In `timebase_ref`. When the Session opened. See [§5.10h](#510-session). |
 | `timebase_ref` | `Id` | 1 | The session's canonical timebase. **IMMUTABLE once set** (I16). |
 | `epoch` | `{ wall_utc_ns: int64, at: Instant }` | 0..1 | Wall-clock **label** only. Never used to compute an interval (I15). |
 | `coincidence_window_ns` | `Duration` | host: 1 | **Pairwise tolerance**: are two nominations the same event. See [§8.2](#82-arbitration). Default `50000000` (50 ms). |
@@ -553,6 +556,7 @@ The resolution is not to weaken I5. Exempting `method: estimated_online` from I5
 
 5.10e matters more than it looks. Both are arbitration parameters and neither has any meaning in a hostless session, which is the **normal** case for an entry-level capture device. Making them unconditionally mandatory would have every range bundle carry two numbers nothing consults, from which a reader could reasonably infer arbitration was in play — and a mandatory field cannot be made optional after 1.0.
 - **(5.10d) MUST** `completeness` is asserted by the peer that owns the data. A partially transferred session MUST NOT present as whole.
+- **(5.10h) MUST** *Erratum E61, 26 August 2026 — CR-02.* `opened_at` is set once, when the Session opens, and never revised. It is the one Session-level timestamp missing before this erratum: a consumer wanting "how long has this session run" had to fabricate a start time from the first message it happened to observe, which is exactly the kind of locally-invented instant [§6.5](#65-wall-clock) and I15 exist to prevent elsewhere. `Session.shots` and every `Capture.transfer` already state everything else a shot count or a committed-capture count needs (`CR-02` §4c) — nothing further is added here for those.
 
 **`ContextChange`** is a timestamped change, not a per-shot attribute: "7-iron from shot 12" is one record, not twelve.
 
@@ -871,6 +875,55 @@ A **user artefact**: something a person drew, wrote or marked, or a coarse navig
 
 The cost of a separate type is one entity and one message. The cost of the alternative is the model's spine.
 
+### 5.19 Actuator
+
+*Erratum E58, 26 August 2026 — CR-02.* A commandable physical device that produces no samples: an onboard light, an indicator LED, a vibration motor. Where a `Source` is observed, an `Actuator` is **commanded** — the two are disjoint, and a device that both senses and signals (a future connected sensor with its own indicator) declares one of each.
+
+| Field | Type | Card. | Notes |
+|---|---|---|---|
+| `id` | `Id` | 1 | Unique within the owning peer. |
+| `peer_id` | `Id` | 1 | Owning peer. |
+| `kind` | `Kind` | 1 | Open registry — `torch`, `indicator_led`, `vibration`, … |
+| `control` | `Kind` | 1 | Open registry — `on_off`, `level`, … What shape a command to this Actuator takes. |
+| `label` | string | 0..1 | Human-readable, informational. |
+
+- **(5.19a) MUST** Every Actuator a peer intends to accept commands for is declared in `Peer.actuators` before any `actuator_command` names it.
+- **(5.19b) MUST NOT** A Source be declared as an Actuator, or an Actuator as a Source. `Source.kind` ([§5.6](#56-source)) and `Actuator.kind` are disjoint open registries. An Actuator carries no `CaptureProfile`: nothing about capture format, rate or calibration applies to something that is switched rather than sampled.
+- **(5.19c)** A peer declaring no Actuators participates fully, exactly as one declaring no Sources does ([§5.6](#56-source)).
+
+`control` exists because not every actuator is a switch. A torch that only supports on/off and one that supports a continuous brightness are different contracts for `actuator_command` to make ([`PPCP-MSG` §12.1](ppcp-messages.md#121-actuator_command--actuator_command_ack)), and which one a given device is is not something the protocol should guess or fix in advance — it is an open registry for the same reason `Source.kind` is: CR-02 named a connected device's indicator as a plausible future Actuator, and `control` needs room for a vocabulary neither application has built yet without a further change request.
+
+### 5.20 DeviceStatus
+
+*Erratum E59, 26 August 2026 — CR-02.* What crosses the wire to answer "can this Source be used right now" — a **measurement**, in `Readiness`'s family ([§5.15](#515-readiness)), not a device state name.
+
+| Field | Type | Card. | Notes |
+|---|---|---|---|
+| `source_id` | `Id` | 1 | The Source this reports on. |
+| `available` | `bool` | 1 | Can this Source be opened or armed right now. |
+| `reason` | `Kind` | `available == false`: 1 | Open registry — `in_use`, `permission_denied`, `disconnected`, `thermal_limit`, `storage_full`, `no_source`, … |
+| `since` | `Instant` | 1 | When `available` last changed, in the timebase this Source declares. |
+
+- **(5.20a) MUST NOT** `reason`, or any other field of `DeviceStatus`, carry a device state-machine name or a value describing what the Source is presently **doing** rather than **why it cannot be used**. This restates [5.15a](#515-readiness) for this entity rather than creating an exception to it: `DeviceStatus` is `Readiness`'s partner, answering a narrower and earlier question — not its replacement, and not a general status channel.
+- **(5.20b)** `DeviceStatus` does not supersede `Readiness`. A Source may be `available: true` and, once armed, still report `settled: false` — the first says the Source can be used at all; the second, only reachable once a Stream on it is armed, says whether the *next* shot would land in focus. Neither is derivable from the other.
+- **(5.20c)** Whether an already-armed Source is currently the target of an open capture Stream is not carried here. It is already visible to any peer already receiving `stream_open`, `arm` and `capture_announce` traffic for that Source, and adding a second field that says the same thing would be exactly the redundant-field pattern this specification avoids elsewhere (5.7d, I14).
+
+### 5.21 BufferMargin
+
+*Erratum E60, 26 August 2026 — CR-02.* What crosses the wire in place of "how full is your ring buffer". A **live, re-emitted measurement**, in `Readiness`'s family rather than a field on `Stream` or `Capture`: it changes on `Readiness`'s rhythm — every frame a Source sits idle-but-armed — and it describes something that sits **behind** the Stream abstraction, since a `shot_windowed` Stream's continuous content is, by [§5.11](#511-stream), never materialised at all.
+
+| Field | Type | Card. | Notes |
+|---|---|---|---|
+| `stream_id` | `Id` | 1 | The Stream whose ring buffer this reports. `continuity: shot_windowed` ([§5.11](#511-stream)). |
+| `retained_from` | `Instant` | 1 | The earliest instant the buffer currently reaches back to, in the Stream's own timebase. |
+| `retention_target` | `Duration` | 0..1 | How far back the buffer is configured to try to reach, where the peer has a fixed target. |
+| `discarded_since_open` | `uint64` | 1 | Count of frames or fragments the ring buffer itself has discarded since the Stream opened, **before** any of them was ever offered to a Capture. |
+| `last_discard` | `{ since: Instant, duration: Duration }` | 0..1 | The most recent internally-discarded span, if any — sized and timestamped, so a stall is diagnosable rather than merely visible. |
+
+- **(5.21a) MUST** `discarded_since_open` counts only frames or fragments that **never became part of any Capture**. A frame later extracted into a `partial` Capture is accounted for in that Capture's own `achieved_summary` ([§5.14](#514-capture)) and is not counted twice.
+- **(5.21b) MUST NOT** `BufferMargin` be read as, or substitute for, `absent_reason: outside_buffer` on a specific Capture ([§8.4b](#84-orphan-capture-requests)). That names what a **particular already-failed request** lost; this reports the buffer's **current standing margin**, before anything has failed.
+- **(5.21c)** `BufferMargin` is emitted for a `shot_windowed` Stream only. A `continuous` Stream already accounts for the whole of its open interval via `gaps` and `absent` segments (I36); there is no undisclosed margin for `BufferMargin` to report there.
+
 ---
 
 ## 6. Timing
@@ -1186,7 +1239,7 @@ The window is expressed in released versions with a time floor rather than in el
 
 ### 10.3 Registries
 
-`Source.kind`, `Stream.kind`, `Candidate.basis`, `Calibration.kind`, `ContextChange.kind`, `ShotLink.basis`, `ClockDiscontinuity.cause` and `Capture.absent_reason` are **open registries**.
+`Source.kind`, `Stream.kind`, `Candidate.basis`, `Calibration.kind`, `ContextChange.kind`, `ShotLink.basis`, `ClockDiscontinuity.cause` and `Capture.absent_reason` are **open registries**. *Erratum E58/E59, 26 August 2026 — CR-02.* So are `Actuator.kind`, `Actuator.control` and `DeviceStatus.reason`.
 
 **Every other enumerated vocabulary in this specification is closed** (erratum E11): `Peer.role`, `Timebase.kind` ([5.3c](#53-timebase)), `Stream.continuity`, `Capture.completeness`, `Capture.transfer`, `Shot.authority`, `TimebaseRelation.kind`, `timing.convention`, `provenance`, `exposure_provenance`, `ThermalLevel` and `MeasuredCapability.method`. [10.1d](#101-version-negotiation)'s tolerance of an unknown `kind` value is scoped to the list above; an unrecognised value in a closed vocabulary is `malformed`, because ignoring it would mean silently choosing one of the values it is not.
 
@@ -1201,7 +1254,7 @@ Without 10.3b the first third party to add a sensor type either collides with a 
 
 ## 11. Invariants
 
-**Thirty-eight invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2, I33–I35 in Draft 3, I36 in revision 5 and I37–I38 in revision 7. I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
+**Thirty-nine invariants.** Each is a conformance test; [`PPCP-CONF`](ppcp-conformance.md) maps each to its required test. Identifiers are stable: I1–I21 keep the numbers used before the specification existed, I22–I28 were added in Draft 1, I29–I32 in Draft 2, I33–I35 in Draft 3, I36 in revision 5, I37–I38 in revision 7, and I39 as an erratum after revision 9 ([E58](#errata-after-revision-9), CR-02). I6, I8, I17, I23, I30 and I32 have been amended in text without renumbering.
 
 ### 11.1 The rule for writing an invariant
 
@@ -1258,6 +1311,7 @@ Both read as constraints and were in fact instructions to decide. The corrected 
 | **I33** | `Candidate.at` is the canonical instant, converted by the nominating peer. A consumer never applies the canonical-instant conversion to a Candidate a second time. | Detect |
 | **I34** | Capture identity is `Capture.id`, scoped by `Session.id` and the owning `Peer.id`. `Capture.digest` is a content check where present, never the identifier. | Offline |
 | **I35** | A host that has received a device-minted Shot referencing a Candidate it holds attaches to that Shot rather than issuing a competing one. Where both were issued, they are linked, never withdrawn or merged. | Arbitrate |
+| **I39** | An `actuator_command` carries `on` if and only if the named Actuator's `control` is `on_off`, and `level` if and only if it is `level` — never neither, never both. *(Added as an erratum after revision 9, [E58](#errata-after-revision-9), CR-02.)* | Actuate |
 
 ---
 
@@ -1272,6 +1326,7 @@ What this specification does require:
 - **(12a) MUST** An implementation that carries capture payload over an untrusted network does so over an authenticated, encrypted transport. PPCP does not provide one.
 - **(12b) MUST NOT** A peer accept declarations, capture requests or session control from an unauthenticated counterpart.
 - **(12c)** `Peer.id` is a persistent identifier with a privacy dimension ([§5.2.1](#521-peer-identity)). Its generation and lifetime rules are normative here; its exposure during rendezvous is a `PPCP-RV` concern.
+- **(12d) MUST** *Erratum E58, 26 August 2026 — CR-02.* An `actuator_command` is **session control** for the purposes of 12b. A peer MUST NOT accept, and MUST NOT act on, an `actuator_command` from an unauthenticated counterpart, on exactly the same terms as a capture request or a declaration.
 
 ## 13. Privacy considerations
 
@@ -1279,6 +1334,7 @@ What this specification does require:
 - **(13b) MUST NOT** The protocol require, or an implementation silently perform, retention of a continuous audio track.
 - **(13c)** Candidate-attached retention means audio is kept for events that were **not** shots — an adjacent player, a dropped club, speech. The count of such events is not bounded by anything the user does. An implementation's user-visible retention statement is an application obligation, but the protocol's shape is what makes an honest statement possible, and implementers should not read "audio attaches to candidates" as a smaller retention posture than it is.
 - **(13d) MUST NOT** PPCP carry telemetry. Diagnostic export is user-initiated and out of band.
+- **(13e)** *Erratum E62, 26 August 2026 — CR-02.* `DeviceStatus`, `BufferMargin` and `Session.opened_at` are not what 13d forbids. Telemetry, in 13d's sense, is data that leaves the pair of peers running a session — collected for a vendor, an analytics pipeline, or anyone not a party to it. These three travel **only between the peers already in the session**, exist only while it is open, answer a question one of those peers is asking to run the session it is already in (can this be armed, how much margin does the buffer have, how long has this been running), and are carried by no bundle, no export and no diagnostic channel 13d already governs. A peer MUST NOT relay `DeviceStatus` or `BufferMargin` to anything outside the session that produced them; doing so would be exactly the telemetry 13d forbids, carried through a door this erratum did not open for that purpose.
 
 ---
 
@@ -1390,6 +1446,18 @@ The corollary for a mobile team: the protocol layer is not Swift or Kotlin. It i
 | **E55** | [`PPCP-RV` 3.4d3](ppcp-rv.md#34-resolvable-identifiers) | **Amended, 24 August 2026 — PinPointStudio.** E53 carried into the clause's body, which still argued from a venue where devices move between bays. **The clause survives the premise on a better reason:** `RV` 7.4a gives a persisted pairing **no expiry** — it ends on revocation and nothing else — so a coaching-studio host **accumulates pairings indefinitely**, and the count setting the reconnection wait is that accumulated total rather than the devices present. Size the rotation on **pairings held**. 7.4b's visible, individually revocable persistence is the only pruning mechanism and it is a user action. |
 | **E56** | [`PPCP-RV` 7.2c](ppcp-rv.md#72-handling-the-pairing-secret), [7.1](ppcp-rv.md#71-threat-model), [§7.4](ppcp-rv.md#74-persistent-pairings) closing, [RT-12](ppcp-rv.md#9-conformance) | **Amended, 25 August 2026 — both implementations. The first erratum after [CR-01](../changerequests/CR-01-in-band-pairing.md) closed, and unrelated to it.** **`RV` 7.2c becomes a SHOULD.** As a MUST it spent a **user-facing permission on the consuming application's behalf** — and `RV` §1.3 lists *platform permission handling* and *how a peer stores its own secrets at rest* among the things that document explicitly does not decide. The clause reached into its own stated exclusion. ⛔ **It was breaking `RV` §7.4 and §7.5 in both implementations, from opposite directions**: one has protected storage on **one platform of three** and so offered no persistence at all on the other two, forgetting every pairing on launch; the other holds secrets in a class **unreadable while the device is locked**, so the reconnection sweep reported *no pairings held*, which is false and indistinguishable from the true answer. Neither implementation was wrong — both did what the clause said. **This is E3's shape**: a clause read correctly and literally, making a section unreachable, found only on implementation. ⚠ A `PRK` in ordinary settings is readable by anything running as that user, so `RV` 7.4a is a weaker offer and 7.4b's opt-in, visible, individually revocable persistence is now the load-bearing control. **No compensating MUST was added**, deliberately — every candidate was another storage decision, which is what this erratum hands back. ⚠ **Risk accepted by the maintainer, 25 August 2026**, on the reasoning that an attacker with access to the disk can read the data at rest anyway, with **full-disk encryption** as the deployment mitigation ([§8](#8-operational-notes)). ⛔ **That reasoning covers most of the exposure and not all of it**, and the two exceptions are recorded so the acceptance is not read wider than it was given: a `PRK` read from one device authenticates to its **counterpart**, whose sessions were never on the compromised disk; and with no forward secrecy at the TLS 1.2 PSK floor, traffic **recorded earlier** decrypts once the key is obtained at any later date, having never been at rest on that disk at all. Encrypting the volume reduces both and removes neither — an attacker running as the user reads through it. |
 | **E57** | [`PPCP-RV` 7.4b](ppcp-rv.md#74-persistent-pairings), [`PPCP-RV` 7.1](ppcp-rv.md#71-threat-model) threat model, [`PPCP-RV` 5.4h](ppcp-rv.md#54-resolved-the-mechanism), [`PPCP-RV` 3.4d3](ppcp-rv.md#34-resolvable-identifiers), [`PPCP-RV` §8](ppcp-rv.md#8-operational-notes) | **Amended, 25 August 2026 — the protocol owner. Same movement as [E56](#errata-after-revision-9), the same day.** **7.4b becomes a SHOULD.** ⛔ **The objection is to *opt-in* specifically: a user deliberately pairing a device has already said what they want**, and requiring a second agreement before the pairing may be remembered puts a consent step inside a flow whose whole purpose was consent — friction bought with nothing. Both implementations hit the predictable result: a default-off toggle on one screen of two, and a paired device silently forgotten at the end of the session. **And the general point decides it:** it is overstepping for a protocol to tell an application how to behave. Opt-in, visible and individually revocable is a statement about **screens**, `RV` §1.3 already puts *user interface* out of scope, nothing in the clause is observable between peers — two implementations, one with a revocation list and one without, produce **byte-identical** traffic — and the reference library cannot implement a line of it. ⚠ **What it costs, because [E56](#errata-after-revision-9) leaned on this clause by name:** E56 relaxed 7.2c partly on the reasoning that 7.4b remained a MUST and carried the weight. **After E57 nothing normative protects a persisted `PRK`** — not where it is stored, not that a user can see or remove it. ⛔ **The sharp edge:** 7.4d is unchanged and still a MUST, so a revocation *is* honoured immediately — but nothing now requires that a means of revoking **exists**, and 7.4a gives a persisted pairing no expiry. What still binds is narrow: 7.4c scopes it to the counterpart, 7.4f forbids persisting from a multi-use code. The clause is **kept as advice, not deleted** — it is still the better product. |
+
+## Errata after revision 9 — change request CR-02 and its review
+
+*[CR-02](../changerequests/CR-02-device-status-and-control.md) asked for three things revision 9 did not serve: live per-Source device status, host-commanded onboard actuator control, and session/device/ring-buffer statistics. The [disposition](../changerequests/CR-02-disposition.md) carries the ruling. **E58–E62 are the grant.** Both implementation teams review it against this table's own three-round cap; findings from that review, where applied, are recorded here as further errata rather than by editing the rows below.*
+
+| # | Clause | Change |
+|---|---|---|
+| **E58** | [§2.2](#22-conformance-profiles), [§5.19](#519-actuator), [12d](#12-security-considerations), [I39](#11-invariants), [`PPCP-MSG` §12](ppcp-messages.md#12-actuator-control) | **Added, 26 August 2026 — CR-02, granted in part.** A new **Actuate** profile (requires Core only) confers `Actuator` declaration and the `actuator_command` / `actuator_command_ack` / `actuator_state` exchange — a peer commanding another peer's non-capturing hardware, starting with a phone's torch. `Actuator.kind` and `Actuator.control` are open registries, extensible to a future connected device's own actuator without a further change request. An `actuator_command` is session control (12d): a peer MUST NOT accept one from an unauthenticated counterpart, on the same terms as a capture request. `CR-02` §3b's own open question — on/off only, or a continuous level — is answered by `control` naming which shape a given Actuator takes; the protocol does not pick one shape for every actuator. |
+| **E59** | [§5.20](#520-devicestatus), [`PPCP-MSG` §5.5](ppcp-messages.md#55-device_status) | **Added, 26 August 2026 — CR-02, granted in part.** `DeviceStatus` and the `device_status` event: a per-Source `available` / `reason` / `since` measurement, in `Readiness`'s family rather than a device state name (5.15a governs it directly rather than being worked around). **Deliberately narrower than CR-02 §3a's four-value illustration**: it answers *can this Source be used*, not *what is it doing* — the latter is already visible to any peer already receiving `stream_open`/`arm`/`capture_announce` traffic for that Source (5.20c), and a second field restating it would be the redundant-field pattern 5.7d and I14 already forbid elsewhere. Peer-level battery, thermal and storage are unchanged and stay on `heartbeat_ack` (`CORE` 7.4b); this is the per-Source gap CR-02 §4a identified that `heartbeat_ack` cannot reach. |
+| **E60** | [§5.21](#521-buffermargin), [`PPCP-MSG` §5.6](ppcp-messages.md#56-buffer_status) | **Added, 26 August 2026 — CR-02, granted in part.** `BufferMargin` and the `buffer_status` event: a live, re-emitted report of a `shot_windowed` Stream's ring buffer — how far back it currently reaches, its configured target where one exists, and a timestamped, sized account of frames or fragments the buffer discarded before any Capture ever saw them. **Answers CR-02 §3c's ring-buffer half only**, on the basis PinPointStudio's review argued: the buffer sits behind the Stream abstraction in no entity §5 previously modelled, and changes on `Readiness`'s rhythm rather than a declare-once field's. Distinct from `absent_reason: outside_buffer` (§8.4b), which names what one already-failed request lost rather than the buffer's current standing margin. |
+| **E61** | [§5.10h](#510-session) | **Added, 26 August 2026 — CR-02, granted in part.** `Session.opened_at`: the one Session-level timestamp genuinely missing, so "session duration so far" is computable without a consumer fabricating a local start time. **The rest of CR-02 §3c's session/device half is declined as already served, not as a gap**: shot count is `len(Session.shots)`; captures-committed and per-peer drop totals are already fully derivable by walking `Capture.transfer` and `achieved_summary` across Captures every peer already receives (`capture_announce`/`capture_update` are `owner → any`); clock offset and drift already travel via `relation_update`; and device uptime and link throughput are locally observable by whichever peer is asking, from traffic it already has, without any wire content at all. Recorded here so a future reader does not read CR-02 §3c as a field list still owed. |
+| **E62** | [13e](#13-privacy-considerations) | **Added, 26 August 2026 — CR-02.** States why `DeviceStatus`, `BufferMargin` and `Session.opened_at` are not the telemetry 13d forbids: they travel only between the peers already in the session, exist only while it is open, and answer a question one of those peers is asking to run the session it is in. A peer relaying either outside the session that produced it **is** what 13d forbids — this erratum narrows nothing about 13d itself. |
 
 ---
 

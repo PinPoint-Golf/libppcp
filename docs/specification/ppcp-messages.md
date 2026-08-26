@@ -32,7 +32,7 @@ BCP 14 keywords are used as in [`PPCP-CORE` §2.1](ppcp-core.md#21-requirement-k
 
 - **(1a) MUST** A peer that receives a well-formed message whose behaviour it does not implement respond `error` / `profile_not_supported` if the message is a request, and ignore it if the message is an event.
 - **(1b) MUST NOT** A peer close the transport in response to an unknown message type, an unknown field, or an unimplemented behaviour.
-- **(1c) MUST** *Erratum E18, 23 August 2026.* A peer that receives a Request **answers** it, with the Response its own section names — `hello_accept`, `declare_ack`, `session_joined`, `stream_open_ack`, `heartbeat_ack`, `sync_reply` or `session_accept` — or with `error` ([§10](#10-errors)) where it cannot comply. The class table above said this in prose and no numbered clause carried it, so a peer that received `hello`, `declare`, `session_open`, `stream_open`, `heartbeat` or `sync_probe` and simply never replied was violating nothing at all: each of those seven responses was required by no normative clause anywhere in the set, and a message nothing requires is a message nothing tests. Found by the adjacent-MUST sweep of [`PPCP-CONF` 5b2](ppcp-conformance.md#5-interoperability), run over all forty-five messages in session S4.
+- **(1c) MUST** *Erratum E18, 23 August 2026; extended by erratum E58, 26 August 2026 — CR-02.* A peer that receives a Request **answers** it, with the Response its own section names — `hello_accept`, `declare_ack`, `session_joined`, `stream_open_ack`, `heartbeat_ack`, `sync_reply`, `session_accept` or `actuator_command_ack` — or with `error` ([§10](#10-errors)) where it cannot comply. The class table above said this in prose and no numbered clause carried it, so a peer that received `hello`, `declare`, `session_open`, `stream_open`, `heartbeat` or `sync_probe` and simply never replied was violating nothing at all: each of those seven responses was required by no normative clause anywhere in the set, and a message nothing requires is a message nothing tests. Found by the adjacent-MUST sweep of [`PPCP-CONF` 5b2](ppcp-conformance.md#5-interoperability), run over all forty-five messages in session S4.
 
 ---
 
@@ -268,6 +268,8 @@ session_close  { session_id, reason: Kind }
 | `disarm` | Request | host → capture peer | control | Live |
 | `readiness` | Event | capture peer → any | control | Capture |
 | `interruption` | Event | capture peer → any | control | Capture |
+| `device_status` | Event | owner → any | control | Capture |
+| `buffer_status` | Event | owner → any | control | Capture |
 | `heartbeat` | Request | host → peer | control | Live |
 | `heartbeat_ack` | Response | peer → host | control | Live |
 
@@ -317,6 +319,33 @@ heartbeat_ack  { seq: uint,
 - **(5.4a) MUST** The heartbeat rate does **not** set the synchronisation rate ([`PPCP-CORE` §6.3d](ppcp-core.md#63-clock-synchronisation)). Liveness and measurement are separate concerns sharing a channel.
 - **(5.4b) MUST** Thermal state is reported here as a first-class field, so a host can report degradation rather than silently accepting worse data.
 - **(5.4c) MUST** A peer treats the link as lost after three consecutive missed intervals.
+
+### 5.5 `device_status`
+
+*Erratum E59, 26 August 2026 — CR-02.*
+
+```
+device_status { source_id, available: bool, reason: Kind (optional), since: Instant }
+```
+
+- **(5.5a) MUST** Carries `DeviceStatus` verbatim ([`PPCP-CORE` §5.20](ppcp-core.md#520-devicestatus)). Emitted whenever `available` or `reason` changes for a declared Source, unprompted — the same push discipline as `readiness` (5.2a). It is not a reply to a poll and there is no request that solicits one.
+- **(5.5b) MUST NOT** `reason` be present when `available: true`.
+- **(5.5c) MUST** The originating peer is the Source's owner (`Source.peer_id`). A peer MUST NOT emit `device_status` for a Source it does not own.
+
+### 5.6 `buffer_status`
+
+*Erratum E60, 26 August 2026 — CR-02.*
+
+```
+buffer_status { stream_id, retained_from: Instant,
+                 retention_target: Duration (optional),
+                 discarded_since_open: uint64,
+                 last_discard: { since: Instant, duration: Duration } (optional) }
+```
+
+- **(5.6a) MUST** Carries `BufferMargin` verbatim ([`PPCP-CORE` §5.21](ppcp-core.md#521-buffermargin)). Sent only for a Stream whose `continuity` is `shot_windowed` ([`PPCP-CORE` §5.11](ppcp-core.md#511-stream)).
+- **(5.6b) SHOULD** A peer re-emits `buffer_status` whenever `retained_from` moves discontinuously — a discard occurred — and MAY additionally re-emit it at its own cadence while a Stream is open.
+- **(5.6c) MUST NOT** `buffer_status` be required or implied to run at any particular rate; like `readiness`, what it reports is a measurement, not a heartbeat, and 7.4a's cadence of `CORE` governs liveness separately.
 
 ---
 
@@ -587,7 +616,7 @@ error { code: Kind, message: string, in_reply_to: uint (optional), detail: map (
 | `unknown_session` | no | `session_id` not known to this peer. |
 | `unknown_stream` | no | `stream_id` not known or already closed. |
 | `unknown_capture` | no | `capture_id` not known. |
-| `not_declared` | no | A message referenced a Source, Timebase or Calibration that was never declared. |
+| `not_declared` | no | A message referenced a Source, Timebase, Calibration or *(erratum E58, CR-02)* Actuator that was never declared. |
 | `relation_missing` | no | Conversion required a relation that does not exist (`unrelated` or absent). |
 | `relation_uncertain` | no | A relation exists but its sigma exceeds the receiver's policy. |
 | `not_armed` | no | Capture requested while disarmed. |
@@ -603,7 +632,7 @@ error { code: Kind, message: string, in_reply_to: uint (optional), detail: map (
 
 ## 11. Message index
 
-Forty-five messages. `R` request, `S` response, `E` event.
+Fifty messages — forty-five plus `device_status`, `buffer_status`, `actuator_command`, `actuator_command_ack` and `actuator_state`, added by erratum E58–E60 (CR-02, 26 August 2026). `R` request, `S` response, `E` event.
 
 *Erratum E18, 23 August 2026 — the **Required by** column added.* The audit of [`PPCP-CONF` 5b1](ppcp-conformance.md#5-interoperability) found that **27 of these 45 messages were required by no normative clause anywhere in the set**, and a message nothing requires is a message nothing tests. The sweep of [5b2](ppcp-conformance.md#5-interoperability) read all twenty-seven, and the answers were of three kinds.
 
@@ -642,6 +671,8 @@ The column names **the clause requiring a peer to originate the message at all**
 | `interruption` | E | control | Capture | 5.3a | [5.3](#53-interruption) |
 | `heartbeat` | R | control | Live | 7.4a of `CORE` | [5.4](#54-heartbeat--heartbeat_ack) |
 | `heartbeat_ack` | S | control | Live | 1c | [5.4](#54-heartbeat--heartbeat_ack) |
+| `device_status` | E | control | Capture | 5.5a | [5.5](#55-device_status) |
+| `buffer_status` | E | control | Capture | **opt** | [5.6](#56-buffer_status) |
 | `sync_probe` | R | control | Live | 6.1d | [6.1](#61-sync_probe--sync_reply) |
 | `sync_reply` | S | control | Live | 1c | [6.1](#61-sync_probe--sync_reply) |
 | `sync_residual` | E | control | Live | **opt** | [6.2](#62-sync_residual) |
@@ -663,7 +694,51 @@ The column names **the clause requiring a peer to originate the message at all**
 | `session_manifest` | E | control | Offline | `ENC` 7c | [9.2](#92-session_manifest) |
 | `shot_link` | E | control | **Core** | 4.3c | [9.3](#93-shot_link) |
 | `session_link` | E | control | Offline | **opt** | [9.4](#94-session_link) |
+| `actuator_command` | R | control | **Actuate** | **opt** | [12.1](#121-actuator_command--actuator_command_ack) |
+| `actuator_command_ack` | S | control | **Actuate** | 1c | [12.1](#121-actuator_command--actuator_command_ack) |
+| `actuator_state` | E | control | **Actuate** | **opt** | [12.2](#122-actuator_state) |
 | `error` | R/S/E | either | — | 1a | [10](#10-errors) |
+
+---
+
+## 12. Actuator control
+
+*Erratum E58, 26 August 2026 — CR-02.* A peer commanding another peer's non-capturing hardware — starting with a phone's onboard torch. Where every other message class in this document either declares what a peer already is, opens or closes data flow a Source already produces, or carries data one side already has, this one **changes what a peer's hardware does**.
+
+| Message | Class | Direction | Channel | Profile |
+|---|---|---|---|---|
+| `actuator_command` | Request | host → owner | control | Actuate |
+| `actuator_command_ack` | Response | owner → host | control | Actuate |
+| `actuator_state` | Event | owner → any | control | Actuate |
+
+- **(12a) MUST** `actuator_command` is accepted only from the peer with `role: host` in the current Session — narrower than `stream_open`'s `any → owner`, deliberately: 3b of CR-02 asked for a host commanding a device, not a general peer-to-peer actuation primitive, and there is no requirement here to widen it.
+- **(12b) MUST** An `actuator_command` is session control ([`PPCP-CORE` 12d](ppcp-core.md#12-security-considerations)). A peer MUST NOT accept or act on one from an unauthenticated counterpart.
+
+### 12.1 `actuator_command` / `actuator_command_ack`
+
+```
+actuator_command      { actuator_id: Id,
+                         on: bool (present iff Actuator.control == "on_off"),
+                         level: float 0.0..1.0 (present iff Actuator.control == "level") }
+actuator_command_ack  { actuator_id: Id,
+                         verdict: applied | refused,
+                         reason: Kind (refused: 1),
+                         state: { on: bool (optional), level: float (optional) } (applied: 1) }
+```
+
+- **(12.1a) MUST** `actuator_command` carries `on` **or** `level`, chosen by the named Actuator's declared `control` — never neither, never both (I39). A peer receiving one that does not match the Actuator's declared `control` responds `error` / `malformed`.
+- **(12.1b) MUST** `actuator_command_ack.reason` is present if and only if `verdict: refused`. Open registry — `no_actuator`, `busy`, `thermal_limit`, `permission_denied`, `unsupported` — matching the pattern of `stream_open_ack.reason`.
+- **(12.1c) MUST** `actuator_command_ack.state` reports what the Actuator is **actually** doing after the command is applied, not an echo of the request. Where a platform clamps a requested level (a torch driver rounding to a discrete step), `state` carries the achieved value.
+- **(12.1d) MUST NOT** A peer send `actuator_command` naming an Actuator not present in the target peer's last-known `Peer.actuators`. The responder MUST answer `error` / `not_declared` where it is (`PPCP-MSG` §10).
+
+### 12.2 `actuator_state`
+
+```
+actuator_state { actuator_id: Id, state: { on: bool (optional), level: float (optional) }, since: Instant }
+```
+
+- **(12.2a) MUST** A peer emits `actuator_state` whenever an Actuator's state changes for a reason **other than** an `actuator_command` it just acknowledged — a platform-driven thermal cutoff, a user toggling a physical control locally. It is not sent to confirm a command the requester already has `actuator_command_ack` for.
+- **(12.2b) MUST** `actuator_state` is broadcast (`owner → any`), unlike `actuator_command`'s host-only origination (12a), so an `observer` or a second capture peer in the Session sees current Actuator state without asking the host to relay it.
 
 ---
 
