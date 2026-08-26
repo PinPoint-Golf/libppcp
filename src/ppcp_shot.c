@@ -376,6 +376,22 @@ ppcp_result ppcp_mint_pump(ppcp_mint *m, int64_t now_ref_ns, size_t *out_minted)
     if (out_minted != NULL)
         *out_minted = 0;
 
+    /* ⛔ Reclaim what the LAST pump resolved, before this one does anything
+     * else.  `ppcp_mint_shot_at()`/`ppcp_mint_shot_for()` already document a
+     * minted Shot as "valid until the next ppcp_mint_pump()" — this is that
+     * promise, kept: a slot that minted, was answered by someone else's
+     * `shot`, or was declined by policy carries no further meaning once the
+     * caller has had this whole call (and everything before it) to read it,
+     * and `pend[]` is a fixed table that must free a slot to accept a new
+     * Candidate.  A Candidate genuinely stuck pending forever (8.2i1, no
+     * expressible `timebase_ref`) never sets any of these three flags, so it
+     * is never touched here — reclaim only ever fires on RESOLVED slots. */
+    for (i = 0; i < PPCP_MINT_MAX_PENDING; i++) {
+        mint_pending *e = &m->pend[i];
+        if (e->in_use && (e->minted || e->answered || e->declined))
+            memset(e, 0, sizeof(*e));
+    }
+
     ref  = ppcp_peer_timebase_ref(m->p);
     sess = ppcp_peer_session_id(m->p);
     if (ref == NULL || sess == NULL)
