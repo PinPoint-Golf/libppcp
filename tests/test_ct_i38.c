@@ -203,6 +203,129 @@ static void add(ppcp_transfer_table *t, const char *id, ppcp_anchor_kind kind,
     if (ppcp_transfer_observe_announce(t, &c, preview) != PPCP_OK) abort();
 }
 
+/* One announce, with the result handed back rather than aborted on — the
+ * limit is the thing under test here. */
+static ppcp_result announce_one(ppcp_transfer_table *t, const char *id, bool preview)
+{
+    ppcp_capture  c;
+    ppcp_digest   d;
+    uint8_t       v[PPCP_SHA256_BYTES];
+    ppcp_interval iv = ivl("tb:dev", 0, 1000);
+
+    if (preview) {
+        if (ppcp_capture_make_segment(&c, id, "st:prev", PPCP_COMPLETE, &iv) != PPCP_OK)
+            abort();
+    } else {
+        if (ppcp_capture_make_shot(&c, id, "shot:1", "st:1", PPCP_COMPLETE) != PPCP_OK)
+            abort();
+    }
+    memset(v, 0x5a, sizeof(v));
+    if (ppcp_digest_set(&d, v) != PPCP_OK) abort();
+    if (ppcp_capture_set_digest(&c, &d, 700) != PPCP_OK) abort();
+    /* 8.1i — preview is never `pending`. */
+    if (preview && ppcp_capture_set_transfer(&c, PPCP_TRANSFER_PRESENT) != PPCP_OK)
+        abort();
+    return ppcp_transfer_observe_announce(t, &c, preview);
+}
+
+/* 5.14g — the table reclaims what the protocol has finished with, and REFUSES
+ * to reclaim what it has not.
+ *
+ * ⛔ **The regression this pins is the one that took capture down.** Every
+ * announced Capture used to hold its slot for the peer's lifetime, so a
+ * `preview` Stream at ~10 fps spent all 128 in about thirteen seconds and the
+ * next SHOT announce failed with PPCP_ERR_LIMIT — preview stopping capture,
+ * 5.11i exactly inverted.  Found on hardware 27 Aug 2026.
+ *
+ * ⚠ The second half matters more than the first: a fix that simply made room
+ * would have traded a stalled preview for silently dropped swings, which is
+ * the failure I38 exists to prevent.  So this asserts BOTH that preview
+ * segments are reclaimed and that unconfirmed shot payload never is — not even
+ * to make room, not even under pressure. */
+static void test_table_reclaims_only_what_5_14g_released(void)
+{
+    ppcp_transfer_table t;
+    char                id[32];
+    size_t              i;
+
+    /* ── 1. A long-running preview does not exhaust the table ───────────── */
+    TEST("a preview Stream announcing for ten table-fulls never exhausts it, "
+         "and a shot still gets in afterwards (5.14g, 5.11i)");
+    ppcp_transfer_table_init(&t);
+    /* Ten times the table's size: an hour of preview, not a burst. */
+    for (i = 0; i < PPCP_TRANSFER_MAX * 10; i++) {
+        snprintf(id, sizeof(id), "cap:prev:%zu", i);
+        CHECK_EQ_I(announce_one(&t, id, true), PPCP_OK);
+    }
+    CHECK(ppcp_transfer_table_count(&t) <= PPCP_TRANSFER_MAX);
+
+    /* ⛔ And a SHOT still gets in afterwards — the actual reported failure. */
+    CHECK_EQ_I(announce_one(&t, "cap:shot:after-preview", false), PPCP_OK);
+
+    /* ── 2. Unconfirmed shot payload SURVIVES a reclaim ─────────────────── */
+    TEST("reclaiming for preview never touches shot payload no receiver has "
+         "confirmed (I38)");
+    ppcp_transfer_table_init(&t);
+    for (i = 0; i < 64; i++) {
+        snprintf(id, sizeof(id), "cap:shot:%zu", i);
+        CHECK_EQ_I(announce_one(&t, id, false), PPCP_OK);
+    }
+    /* Enough preview to force many reclaims across the remaining slots. */
+    for (i = 0; i < PPCP_TRANSFER_MAX * 10; i++) {
+        snprintf(id, sizeof(id), "cap:prev2:%zu", i);
+        CHECK_EQ_I(announce_one(&t, id, true), PPCP_OK);
+    }
+    /* Every one of them is still here, and still says what it said. */
+    for (i = 0; i < 64; i++) {
+        const ppcp_transfer_entry *e;
+        ppcp_id                    q;
+        snprintf(id, sizeof(id), "cap:shot:%zu", i);
+        q = id_of(id);
+        e = ppcp_transfer_find(&t, &q);
+        CHECK(e != NULL);
+        CHECK_EQ_I(e->transfer, PPCP_TRANSFER_PENDING);
+        CHECK(!ppcp_transfer_is_evictable(&t, &q));
+    }
+
+    /* ── 3. A table full of unconfirmed payload STILL refuses ───────────── */
+    TEST("a table full of unconfirmed payload still answers PPCP_ERR_LIMIT — "
+         "a peer refuses to arm rather than drop a swing (5.14g1)");
+    ppcp_transfer_table_init(&t);
+    for (i = 0; i < PPCP_TRANSFER_MAX; i++) {
+        snprintf(id, sizeof(id), "cap:hold:%zu", i);
+        CHECK_EQ_I(announce_one(&t, id, false), PPCP_OK);
+    }
+    CHECK_EQ_I(ppcp_transfer_table_count(&t), PPCP_TRANSFER_MAX);
+    /* ⛔ I38: nothing here is evictable, so the answer is still no — for a
+     * preview segment as much as for another shot.  A peer under this pressure
+     * refuses to arm; it does not drop what a consumer has not received. */
+    CHECK_EQ_I(announce_one(&t, "cap:one-too-many", false), PPCP_ERR_LIMIT);
+    CHECK_EQ_I(announce_one(&t, "cap:prev-too-many", true), PPCP_ERR_LIMIT);
+    CHECK_EQ_I(ppcp_transfer_table_count(&t), PPCP_TRANSFER_MAX);
+
+    /* ── 4. Confirming one makes room for exactly one ───────────────────── */
+    TEST("a `capture_committed` releases exactly its own slot (5.14g exit 1)");
+    {
+        ppcp_body_capture_committed cm;
+        ppcp_digest                 d;
+        uint8_t                     v[PPCP_SHA256_BYTES];
+        ppcp_id                     gone = id_of("cap:hold:0");
+        ppcp_id                     kept = id_of("cap:hold:1");
+
+        memset(v, 0x5a, sizeof(v));
+        CHECK_EQ_I(ppcp_digest_set(&d, v), PPCP_OK);
+        memset(&cm, 0, sizeof(cm));
+        cm.capture_id = gone;
+        cm.digest     = d;
+        CHECK_EQ_I(ppcp_transfer_on_committed(&t, &cm), PPCP_OK);
+        CHECK(ppcp_transfer_is_evictable(&t, &gone));
+        CHECK_EQ_I(announce_one(&t, "cap:now-there-is-room", false), PPCP_OK);
+        /* ⚠ And the one that made room is the one that went. */
+        CHECK(ppcp_transfer_find(&t, &gone) == NULL);
+        CHECK(ppcp_transfer_find(&t, &kept) != NULL);
+    }
+}
+
 static void test_eviction(void)
 {
     ppcp_transfer_table t;
@@ -598,6 +721,7 @@ int main(void)
 {
     test_payload_codec();
     test_eviction();
+    test_table_reclaims_only_what_5_14g_released();
     test_preview_live_only();
     test_preview_never_in_a_bundle();
     test_coverage();

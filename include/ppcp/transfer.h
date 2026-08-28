@@ -135,7 +135,13 @@ PPCP_API const ppcp_transfer_entry *ppcp_transfer_find(const ppcp_transfer_table
  * MSG 8.1i / CORE 5.11j: a preview Capture announced `transfer: pending` is
  * refused here, because preview is live-only — what could not be delivered
  * promptly is discarded and announced `absent` with `not_retained`, and a
- * queue told nothing else fills with the cheapest data in the session. */
+ * queue told nothing else fills with the cheapest data in the session.
+ *
+ * ⚠ **PPCP_ERR_LIMIT means the table is full of Captures 5.14g has NOT
+ * finished with** — payload no receiver has confirmed.  Entries the protocol
+ * has released (the four exits of ppcp_transfer_is_evictable()) are reclaimed
+ * here first, so a `continuous` Stream announcing ten segments a second does
+ * not spend the table and take capture down with it. */
 PPCP_API ppcp_result ppcp_transfer_observe_announce(ppcp_transfer_table *t,
                                                     const ppcp_capture *c,
                                                     bool is_preview);

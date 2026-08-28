@@ -172,6 +172,78 @@ size_t ppcp_transfer_table_count(const ppcp_transfer_table *t)
     return (t == NULL) ? 0 : t->count;
 }
 
+/* I38 / 5.14g's four exits, over one entry.
+ *
+ * ⚠ Factored out of ppcp_transfer_is_evictable() so the rule has ONE
+ * definition: the reclaim below has to apply exactly the predicate an owner
+ * applies before deleting a file, and a second copy of four conditions is a
+ * second copy that drifts. */
+static bool entry_is_evictable(const ppcp_transfer_entry *e)
+{
+    if (e == NULL)
+        return false;
+    if (e->transfer == PPCP_TRANSFER_CONFIRMED)   /* exit 1 */
+        return true;
+    if (e->completeness == PPCP_ABSENT)           /* exit 2 */
+        return true;
+    if (e->already_present)                       /* exit 3 */
+        return true;
+    if (e->shed_permitted)                        /* exit 4 */
+        return true;
+    /* 5.14g / I38: everything else holds payload no receiver has confirmed,
+     * and a peer under storage pressure refuses to arm rather than dropping
+     * swings a consumer has not received. */
+    return false;
+}
+
+/* Release the entries the protocol has already finished with.  Returns how
+ * many slots that freed.
+ *
+ * ⛔ **A CONTINUOUS STREAM MAKES THIS TABLE UNBOUNDED, AND IT WAS NOT.**  Every
+ * announced Capture took a slot for the peer's lifetime, whatever 5.14g said
+ * about it.  A `preview` Stream (5.11) announces a segment ~10 times a second
+ * and every one of them is `shed_permitted` on arrival — exit 4, 5.11j, it was
+ * never going to be transferred — so 128 slots were spent in about thirteen
+ * seconds and the NEXT announce failed with PPCP_ERR_LIMIT.  The next announce
+ * is usually a shot: preview filling this table stopped capture, which is
+ * 5.11i exactly inverted (preview degrades before transfer, transfer before
+ * capture).  Observed on hardware 27 Aug 2026, worked around in the embedding
+ * with a 64-segment cap that made preview stop after 6.4 seconds.
+ *
+ * ⚠ **The same unreclaimed-table pattern as 2de4c9d's mint slots**, which is
+ * the second instance; the remaining one (ppcp_arbiter's arb_group) is still
+ * left alone for the reasons that commit gives.
+ *
+ * ⛔ **ONLY WHEN THE TABLE IS FULL, never on a whim.**  Unlike the mint pump,
+ * which reclaims eagerly at the top of every call, an entry here stays
+ * readable through ppcp_transfer_find() for as long as there is room for it —
+ * taking a `confirmed` Capture out from under a caller that had every right to
+ * still be looking at it would trade one defect for a subtler one.  This runs
+ * at exactly the moment the alternative is PPCP_ERR_LIMIT, so nothing that
+ * fits today behaves differently tomorrow.
+ *
+ * ⛔ **And an unconfirmed payload is NEVER released here.**  entry_is_evictable()
+ * is 5.14g and only 5.14g: a Capture holding payload no receiver has confirmed
+ * stays, the table fills, and the announce fails — because I38 makes that the
+ * peer's obligation, and silently dropping a swing nobody has received is the
+ * failure this whole table exists to prevent. */
+static size_t transfer_reclaim(ppcp_transfer_table *t)
+{
+    size_t i, kept = 0, freed;
+    for (i = 0; i < t->count; i++) {
+        if (entry_is_evictable(&t->entries[i]))
+            continue;
+        if (kept != i)
+            t->entries[kept] = t->entries[i];
+        kept++;
+    }
+    freed = t->count - kept;
+    if (freed > 0)
+        memset(&t->entries[kept], 0, freed * sizeof(t->entries[0]));
+    t->count = kept;
+    return freed;
+}
+
 static ppcp_transfer_entry *find_mut(ppcp_transfer_table *t, const ppcp_id *id)
 {
     size_t i;
@@ -215,6 +287,12 @@ ppcp_result ppcp_transfer_observe_announce(ppcp_transfer_table *t, const ppcp_ca
 
     e = find_mut(t, &c->id);
     if (e == NULL) {
+        /* 5.14g — make room out of what the protocol has already finished
+         * with before refusing.  See transfer_reclaim(): without this a
+         * `preview` Stream spends the whole table in thirteen seconds and the
+         * next SHOT announce is the one that fails. */
+        if (t->count == PPCP_TRANSFER_MAX)
+            (void)transfer_reclaim(t);
         if (t->count == PPCP_TRANSFER_MAX)
             return PPCP_ERR_LIMIT;
         e = &t->entries[t->count++];
@@ -338,21 +416,7 @@ bool ppcp_capture_is_evictable(const ppcp_capture *c)
 
 bool ppcp_transfer_is_evictable(const ppcp_transfer_table *t, const ppcp_id *capture_id)
 {
-    const ppcp_transfer_entry *e = ppcp_transfer_find(t, capture_id);
-    if (e == NULL)
-        return false;
-    if (e->transfer == PPCP_TRANSFER_CONFIRMED)   /* exit 1 */
-        return true;
-    if (e->completeness == PPCP_ABSENT)           /* exit 2 */
-        return true;
-    if (e->already_present)                       /* exit 3 */
-        return true;
-    if (e->shed_permitted)                        /* exit 4 */
-        return true;
-    /* 5.14g / I38: everything else holds payload no receiver has confirmed,
-     * and a peer under storage pressure refuses to arm rather than dropping
-     * swings a consumer has not received. */
-    return false;
+    return entry_is_evictable(ppcp_transfer_find(t, capture_id));
 }
 
 /* ======================================= I36 — stream-anchored coverage */
