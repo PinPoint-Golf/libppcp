@@ -51,7 +51,7 @@ Build order matters here: each of these is needed to test the layer above it, an
 
 ## 3. The invariant test matrix
 
-Thirty-eight invariants, thirty-nine tests — I36 carries two, because the coverage rule and the preview-shedding rule fail in different ways. Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
+Thirty-nine invariants, forty tests — I36 carries two, because the coverage rule and the preview-shedding rule fail in different ways. *Erratum E65, 1 September 2026 — this header still read "thirty-eight invariants, thirty-nine tests" after [I39](ppcp-core.md#11-invariants) was added by [E58](ppcp-core.md#errata-after-revision-9) (CR-02), so this document and `PPCP-CORE` §11 contradicted each other on the count.* Identifiers match [`PPCP-CORE` §11](ppcp-core.md#11-invariants).
 
 *Erratum E19, 23 August 2026.* **`CT-I36a` is the second test of I36. There is no invariant I36a**, and the identifier is a test identifier that happens to be formed from an invariant's. It is spelled that way because test identifiers are quoted by number across three implementations and a conformance matrix, and renaming one costs more than saying what it means (F-D4-4, PinPointCapture, session S3).
 

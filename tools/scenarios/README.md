@@ -55,6 +55,9 @@ The tool exits non-zero on any of these, whichever end produced them:
 | A malformed frame, or one past the channel's `ENC` §8 limit | `ENC` 4, 8a |
 | A held relation spanning two clocks of one peer — the only shape a composition can take | I18, 5.4c |
 | A first frame on a stream that is not `link_bind`, or one whose channel disagrees with its header | `ENC` 2.1c |
+| An `applied` `actuator_command_ack` whose `state` carries neither `on` nor `level`, or both | I39, 12.1c1, erratum E63 |
+| An `actuator_command` the embedding cannot answer — the engine refusing the ack it wrote | 1c, 12.1c |
+| A `refused` ack with no `reason`, or an `actuator_state` that is neither shape or both | 12.1b, 12.2a1 |
 
 The profile check is the one worth pointing at: it is I24 asserted **from the other side**, and it is exactly the check an implementation talking only to itself never makes.
 
@@ -75,6 +78,9 @@ The profile check is the one worth pointing at: it is I24 asserted **from the ot
 | `three-timebase-capture.json` | capture | Core, Capture, Detect, Mint, Live, Offline | Camera, audio and network clocks, each with its own offset and skew. One probe sequence per timebase, never a composition (I21, I18) |
 | `three-timebase-host.json` | host | Core, Capture, Detect, Arbitrate, Live, Offline | The same, on the **host** side: two cameras on independent clocks, which is what CT-S5 assertion 4 asks for by name |
 | `preview-capture.json` | capture | Core, Capture, Detect, Mint, Live, Offline | Drives the `continuous` + `preview` Stream shape of I36 and 5.11j |
+| `torch-capture.json` | capture | Core, Capture, Live, **Actuate** | The only declaration that **owns Actuators** (erratum E58): a torch declared `control: on_off` and an indicator LED declared `control: level`, so both halves of I39's iff have a real declaration to be read against. `actuators` sits at the **top level, beside `sources`** — erratum E66, which exists because E58 left `MSG` 3.3's schema block untouched and two conformant peers would each have declared Actuators the other could not see |
+| `actuating-host.json` | host | Core, Capture, Live, **Actuate** | A host that commands somebody else's Actuator. Owns no Source of its own, because what it is for is originating `actuator_command` |
+| `actuating-nonhost.json` | capture | Core, Capture, Live, **Actuate** | A peer that is **not** the Session's host and commands anyway. 12a is the whole reason this file exists |
 
 Every declaration is validated by the library on load, so a file that violates I19, I3, I28 or 5.6e is refused with a reason rather than put on a wire.
 
@@ -110,6 +116,9 @@ That is `CONF` 2a's injectable clock: an offset and a skew are simulated, never 
 | `preview-capture` | capture | IOP-9, CT-I36, CT-I36a | A `continuous` metadata Stream and a live-only `preview` alongside shot-windowed video; announces a segment and the discarded preview as `absent` / `not_retained` |
 | `offer-session` | capture | IOP-3, IOP-10, CT-I12 | Offers a stored Session and replays its bundle onto the live link when the host accepts |
 | `offer-session-twice` | capture | CT-I34 | The same offer, replayed twice: the importer sees each Capture once |
+| `torch-capture` | capture | **CT-I39**, 12.1c | Owns the Actuators and answers commands about them — the **embedding** writes the `applied` ack, because since L30 the library writes none. Its simulated driver moves a `level` Actuator in four discrete steps and reports the step at or below the request, so a command of `0.5` is answered `state: {level: 0.25}`: the achieved value, not an echo (12.1c). Commands nothing itself |
+| `actuating-host` | host | **CT-I39 (12.1d, 12.1c)** | Commands the counterpart's first **`level`** Actuator — preferred over an `on_off` one because a switch has nothing between on and off for a clamp to show up in — in the shape its `control` names, then names one that was never declared. ⚠ The second goes out through `ppcp_peer_send()` precisely **because** `ppcp_peer_actuator_command()` refuses it: the row asserts what the RESPONDER answers, and a peer without that check is what the responder has to face |
+| `actuating-nonhost` | capture | **CT-I39 (12a)** | One well-formed command at a declared Actuator, from a peer that is not the host. It must be **refused**, not acted on |
 
 ---
 
@@ -136,6 +145,8 @@ Registered in [`tests/CMakeLists.txt`](../../tests/CMakeLists.txt); `ctest --pre
 | `CT-S4-sockets-silent-host` | `silent-host` ↔ `nominating-capture` |
 | `IOP-5-sockets-unrelated` | `reference-host` ↔ `unrelated-capture` |
 | `IOP-9-sockets-preview` | `reference-host` ↔ `preview-capture` |
+| `CT-I39-sockets-not-declared` | `torch-capture` ↔ `actuating-host` |
+| `CT-I39-sockets-non-host` | `torch-capture` ↔ `actuating-nonhost` |
 
 ---
 

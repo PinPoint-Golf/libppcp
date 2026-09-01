@@ -1,0 +1,39 @@
+{
+  "peer_id": "sim:torch",
+  "role": "capture",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "live", "actuate"],
+  "product": { "vendor": "ppcp-sim", "model": "torch-capture", "version": "1" },
+  "timebases": [
+    { "id": "tb:dev", "kind": "monotonic", "epoch_stable": true, "resolution_ns": 1000,
+      "offset_ns": 1700000000000 }
+  ],
+  "sync_timebase": "tb:dev",
+  "sources": [
+    {
+      "id": "src:back", "kind": "camera", "timebase": "tb:dev", "physical": true,
+      "optics": "wide", "label": "rear wide",
+      "profiles": [
+        {
+          "id": "cp:1080p240",
+          "timing": { "convention": "nominal_frame_start",
+                      "frame_start_to_exposure_offset_ns": 0,
+                      "offset_provenance": "assumed" },
+          "geometry": { "kind": "rolling_shutter", "readout_ns": 8000000,
+                        "readout_provenance": "assumed",
+                        "direction": "top_to_bottom", "rows": 1080 },
+          "intrinsics": "per_frame",
+          "format": { "codec": "hevc", "width": 1920, "height": 1080, "pixel_format": "nv12" },
+          "rate": { "nominal_mhz": 240000, "min_mhz": 30000, "max_mhz": 240000 },
+          "optical": { "exposure_min_ns": 100000, "exposure_max_ns": 20000000,
+                       "iso_min": 34, "iso_max": 3072 }
+        }
+      ]
+    }
+  ],
+  "actuators": [
+    { "id": "act:torch", "kind": "torch", "control": "on_off", "label": "rear torch" },
+    { "id": "act:led", "kind": "indicator_led", "control": "level", "label": "status LED" }
+  ],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:dev" }
+}

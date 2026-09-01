@@ -327,6 +327,69 @@ PPCP_API ppcp_result ppcp_source_validate(const ppcp_source *s);
 PPCP_API ppcp_result ppcp_source_encode(ppcp_cbor_writer *w, const ppcp_source *s);
 PPCP_API ppcp_result ppcp_source_decode(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_source *out);
 
+/* ===================================================== CORE 5.19 — Actuator
+ *
+ * Erratum E58 — CR-02.  Where a Source is OBSERVED, an Actuator is COMMANDED,
+ * and 5.19b makes the two disjoint: `Source.kind` and `Actuator.kind` are
+ * separate open registries, and an Actuator carries no CaptureProfile because
+ * nothing about capture format, rate or calibration applies to something that
+ * is switched rather than sampled.  That is why this is its own entity and not
+ * a flag on ppcp_source.
+ */
+
+/* Open registries (5.19), so these are spellings and not an enumeration. */
+#define PPCP_ACTUATOR_KIND_TORCH         "torch"
+#define PPCP_ACTUATOR_KIND_INDICATOR_LED "indicator_led"
+#define PPCP_ACTUATOR_KIND_VIBRATION     "vibration"
+/* `control` says what SHAPE a command to this Actuator takes (MSG 12.1, I39). */
+#define PPCP_ACTUATOR_CONTROL_ON_OFF     "on_off"
+#define PPCP_ACTUATOR_CONTROL_LEVEL      "level"
+
+typedef struct ppcp_actuator {
+    ppcp_id id;         /* unique within the owning peer */
+    ppcp_id peer_id;    /* owning peer */
+    ppcp_id kind;       /* open registry: torch, indicator_led, vibration, … */
+    ppcp_id control;    /* open registry: on_off, level, … */
+    bool    has_label;
+    ppcp_id label;      /* informational */
+} ppcp_actuator;
+
+PPCP_API ppcp_result ppcp_actuator_make(ppcp_actuator *out, const char *id,
+                                        const char *peer_id, const char *kind,
+                                        const char *control);
+PPCP_API ppcp_result ppcp_actuator_set_label(ppcp_actuator *a, const char *label);
+/* True when `control` is the on/off shape — the question MSG 12.1a and I39 ask
+ * of every command, ack and state that names this Actuator. */
+PPCP_API bool        ppcp_actuator_control_is_on_off(const ppcp_actuator *a);
+PPCP_API bool        ppcp_actuator_control_is_level(const ppcp_actuator *a);
+PPCP_API ppcp_result ppcp_actuator_validate(const ppcp_actuator *a);
+PPCP_API ppcp_result ppcp_actuator_encode(ppcp_cbor_writer *w, const ppcp_actuator *a);
+PPCP_API ppcp_result ppcp_actuator_decode(ppcp_cbor_reader *r, ppcp_actuator *out);
+
+/* I39, as extended by erratum E63 — what an Actuator is being told to do, or
+ * reporting that it is doing.  `on` if and only if the named Actuator's
+ * `control` is `on_off`, `level` if and only if it is `level`; never neither,
+ * never both.  The invariant binds all THREE of `actuator_command`,
+ * `actuator_command_ack.state` and `actuator_state.state`, so there is one
+ * type here rather than three, and it has TWO constructors and no
+ * ppcp_actuator_setting_make(): the wrong shape is unconstructible rather than
+ * rejected, which is how ppcp_readiness_settled / _not_settled carry 5.15a. */
+typedef struct ppcp_actuator_setting {
+    bool   has_on;
+    bool   on;
+    bool   has_level;
+    double level;      /* 0.0..1.0 (MSG 12.1) */
+} ppcp_actuator_setting;
+
+PPCP_API ppcp_result ppcp_actuator_setting_on_off(ppcp_actuator_setting *out, bool on);
+PPCP_API ppcp_result ppcp_actuator_setting_level(ppcp_actuator_setting *out, double level);
+PPCP_API ppcp_result ppcp_actuator_setting_validate(const ppcp_actuator_setting *s);
+/* I39 against a DECLARED Actuator: the shape carried must be the shape that
+ * Actuator's `control` names.  MSG 12.1a answers a mismatch `error`/`malformed`
+ * and this is the function that sees one. */
+PPCP_API bool        ppcp_actuator_setting_matches(const ppcp_actuator_setting *s,
+                                                   const ppcp_actuator *a);
+
 /* ========================================================== CORE 5.2 — Peer */
 
 typedef enum ppcp_role {
@@ -360,6 +423,10 @@ typedef struct ppcp_peer_desc {
     size_t        relation_count;
     const ppcp_source *sources;  /* 0..n — a Peer owning none participates fully */
     size_t        source_count;
+    /* 5.19c, erratum E58 — 0..n, on exactly the terms `sources` is: a Peer
+     * owning no Actuators participates fully. */
+    const ppcp_actuator *actuators;
+    size_t        actuator_count;
     ppcp_product  product;       /* 5.2c: never used to infer behaviour (I19) */
 } ppcp_peer_desc;
 
@@ -369,6 +436,9 @@ PPCP_API ppcp_result ppcp_peer_desc_make(ppcp_peer_desc *out, const char *id, pp
                                          const ppcp_timebase *timebases, size_t timebase_count);
 PPCP_API ppcp_result ppcp_peer_desc_set_sources(ppcp_peer_desc *p, const ppcp_source *sources,
                                                 size_t count);
+PPCP_API ppcp_result ppcp_peer_desc_set_actuators(ppcp_peer_desc *p,
+                                                  const ppcp_actuator *actuators,
+                                                  size_t count);
 PPCP_API ppcp_result ppcp_peer_desc_set_relations(ppcp_peer_desc *p,
                                                   const ppcp_timebase_relation *rel, size_t count);
 PPCP_API ppcp_result ppcp_peer_desc_set_extensions(ppcp_peer_desc *p, const ppcp_id *ext,
@@ -381,7 +451,7 @@ PPCP_API ppcp_result ppcp_peer_desc_encode(ppcp_cbor_writer *w, const ppcp_peer_
 PPCP_API ppcp_result ppcp_peer_desc_decode(ppcp_cbor_reader *r, ppcp_arena *a,
                                            ppcp_peer_desc *out);
 
-/* The eight profiles of CORE §2.2.  Held as strings on the wire; these are the
+/* The nine profiles of CORE §2.2.  Held as strings on the wire; these are the
  * spellings, so a caller never invents one. */
 #define PPCP_PROFILE_CORE      "core"
 #define PPCP_PROFILE_CAPTURE   "capture"
@@ -391,6 +461,9 @@ PPCP_API ppcp_result ppcp_peer_desc_decode(ppcp_cbor_reader *r, ppcp_arena *a,
 #define PPCP_PROFILE_LIVE      "live"
 #define PPCP_PROFILE_MARKUP    "markup"
 #define PPCP_PROFILE_OFFLINE   "offline"
+/* Erratum E58 — CR-02.  Requires Core only; confers Actuator declaration and
+ * the `actuator_command` / `actuator_command_ack` / `actuator_state` exchange. */
+#define PPCP_PROFILE_ACTUATE   "actuate"
 
 /* ======================================================= CORE 5.10 — Session */
 
@@ -436,6 +509,12 @@ typedef struct ppcp_session {
     const ppcp_peer_desc *peers;
     size_t             peer_count;
     ppcp_id            timebase_ref;      /* IMMUTABLE once set (I16) */
+    /* 5.10h, erratum E61 — set once when the Session opens and never revised,
+     * expressed in `timebase_ref`.  Mandatory, so it is a constructor
+     * parameter: before it, a consumer asking "how long has this session run"
+     * had to FABRICATE a start time from the first message it happened to see,
+     * which is the locally-invented instant 6.5 and I15 exist to prevent. */
+    ppcp_instant       opened_at;
     ppcp_epoch         epoch;
     /* 5.10e: present if and only if a peer with role host is in the roster.
      * Their absence is the structural statement that no arbitration occurs. */
@@ -461,9 +540,11 @@ typedef struct ppcp_session {
 /* 5.10e made structural: the hostless constructor cannot be given the two
  * arbitration parameters, and there is no setter for them. */
 PPCP_API ppcp_result ppcp_session_make_hostless(ppcp_session *out, const char *id,
-                                                const char *timebase_ref);
+                                                const char *timebase_ref,
+                                                const ppcp_instant *opened_at);
 PPCP_API ppcp_result ppcp_session_make_hosted(ppcp_session *out, const char *id,
                                               const char *timebase_ref,
+                                              const ppcp_instant *opened_at,
                                               ppcp_duration_ns coincidence_window_ns,
                                               ppcp_duration_ns issue_hold_ns);
 PPCP_API ppcp_result ppcp_session_set_epoch(ppcp_session *s, int64_t wall_utc_ns,
@@ -709,6 +790,72 @@ PPCP_API ppcp_result ppcp_readiness_set_blocked(ppcp_readiness *r, const char *r
 PPCP_API ppcp_result ppcp_readiness_validate(const ppcp_readiness *r);
 PPCP_API ppcp_result ppcp_readiness_encode(ppcp_cbor_writer *w, const ppcp_readiness *r);
 PPCP_API ppcp_result ppcp_readiness_decode(ppcp_cbor_reader *r, ppcp_readiness *out);
+
+/* ================================================== CORE 5.20 — DeviceStatus
+ *
+ * Erratum E59 — CR-02.  "Can this Source be used right now", as a MEASUREMENT
+ * in Readiness's family and not a device state name (5.20a restates 5.15a for
+ * this entity).  5.20b: it does not supersede Readiness and neither is
+ * derivable from the other.
+ */
+typedef struct ppcp_device_status {
+    ppcp_id      source_id;
+    bool         available;
+    bool         has_reason;   /* MSG 5.5b: present iff !available */
+    ppcp_id      reason;       /* open registry: in_use, disconnected, … */
+    ppcp_instant since;        /* when `available` last changed */
+} ppcp_device_status;
+
+/* 5.5b made structural, exactly as 5.15a is: there is no constructor that
+ * takes an `available` flag and a reason independently, so an available Source
+ * carrying a reason cannot be built. */
+PPCP_API ppcp_result ppcp_device_status_available(ppcp_device_status *out,
+                                                  const char *source_id,
+                                                  const ppcp_instant *since);
+PPCP_API ppcp_result ppcp_device_status_unavailable(ppcp_device_status *out,
+                                                    const char *source_id,
+                                                    const char *reason,
+                                                    const ppcp_instant *since);
+PPCP_API ppcp_result ppcp_device_status_validate(const ppcp_device_status *d);
+PPCP_API ppcp_result ppcp_device_status_encode(ppcp_cbor_writer *w,
+                                               const ppcp_device_status *d);
+PPCP_API ppcp_result ppcp_device_status_decode(ppcp_cbor_reader *r, ppcp_device_status *out);
+
+/* ================================================= CORE 5.21 — BufferMargin
+ *
+ * Erratum E60 — CR-02.  The ring buffer's CURRENT STANDING MARGIN, re-emitted
+ * on Readiness's rhythm; 5.21b forbids reading it as a particular failed
+ * request's `absent_reason`, and 5.21c confines it to a `shot_windowed`
+ * Stream.  The gap histogram is deliberately absent: it is receiver-side
+ * aggregation over repeated readings, not wire content.
+ */
+typedef struct ppcp_buffer_margin {
+    ppcp_id          stream_id;
+    ppcp_instant     retained_from;
+    bool             has_retention_target;
+    ppcp_duration_ns retention_target_ns;
+    /* 5.21a: only what NEVER became part of any Capture.  A frame later
+     * extracted into a `partial` Capture is that Capture's `achieved_summary`
+     * to account for and is not counted twice. */
+    uint64_t         discarded_since_open;
+    bool             has_last_discard;
+    ppcp_instant     last_discard_since;
+    ppcp_duration_ns last_discard_duration_ns;
+} ppcp_buffer_margin;
+
+PPCP_API ppcp_result ppcp_buffer_margin_make(ppcp_buffer_margin *out, const char *stream_id,
+                                             const ppcp_instant *retained_from,
+                                             uint64_t discarded_since_open);
+PPCP_API ppcp_result ppcp_buffer_margin_set_retention_target(ppcp_buffer_margin *b,
+                                                             ppcp_duration_ns target_ns);
+/* `last_discard` is one statement — a span — so both halves arrive together. */
+PPCP_API ppcp_result ppcp_buffer_margin_set_last_discard(ppcp_buffer_margin *b,
+                                                         const ppcp_instant *since,
+                                                         ppcp_duration_ns duration_ns);
+PPCP_API ppcp_result ppcp_buffer_margin_validate(const ppcp_buffer_margin *b);
+PPCP_API ppcp_result ppcp_buffer_margin_encode(ppcp_cbor_writer *w,
+                                               const ppcp_buffer_margin *b);
+PPCP_API ppcp_result ppcp_buffer_margin_decode(ppcp_cbor_reader *r, ppcp_buffer_margin *out);
 
 /* ====================================================== CORE 5.16 — ShotLink */
 

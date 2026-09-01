@@ -338,7 +338,9 @@ static void test_zero_host(void)
     }
 
     TEST("CT-S4 (1) / 4.1d — a hostless Session carries NEITHER arbitration parameter");
-    CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:solo", "tb:dev"), PPCP_OK);
+    ppcp_instant opened_at_341;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_341, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:solo", "tb:dev", &opened_at_341), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(d.p, &s), PPCP_OK);
     /* F-H5-2 / F-D6-3 — the ORIGINATOR reads its own parameters back.  Until
      * S4 it did not: `has_session_params` was set on the receiving path only,
@@ -483,7 +485,9 @@ static void test_hosted_pair(void)
     rig_new(&host, PPCP_ROLE_HOST,    "peer:host", "tb:host", hprof, 5);
 
     /* 5.10 default window is 50 ms and the two Candidates are 10 ms apart. */
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:live", "tb:host",
+    ppcp_instant opened_at_486;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_486, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:live", "tb:host", &opened_at_486,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(host.p, &s), PPCP_OK);
@@ -574,7 +578,9 @@ static void test_silent_host(void)
     rig_new(&host, PPCP_ROLE_HOST,    "peer:host", "tb:host", hprof, 3);
     rig_new(&dev,  PPCP_ROLE_CAPTURE, "peer:dev",  "tb:dev",  dprof, 5);
 
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:silent", "tb:host",
+    ppcp_instant opened_at_577;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_577, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:silent", "tb:host", &opened_at_577,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(host.p, &s), PPCP_OK);
@@ -816,7 +822,9 @@ static void test_hostless_end_to_end(void)
      * in S2: ENC §7 does not require it, and it must). */
     record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
 
-    CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:e2e", "tb:dev"), PPCP_OK);
+    ppcp_instant opened_at_819;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_819, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:e2e", "tb:dev", &opened_at_819), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(d.p, &s), PPCP_OK);
     record(d.p, w, PPCP_CHANNEL_CONTROL, bundle, sizeof(bundle), &len);
     CHECK(ppcp_bundle_writer_is_hostless(w));

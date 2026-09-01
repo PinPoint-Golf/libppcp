@@ -37,7 +37,8 @@
 #endif
 
 static const char *const known_profiles[] = {
-    "core", "capture", "detect", "mint", "arbitrate", "live", "offline", "markup"
+    "core", "capture", "detect", "mint", "arbitrate", "live", "offline", "markup",
+    "actuate"
 };
 
 static void usage(void)

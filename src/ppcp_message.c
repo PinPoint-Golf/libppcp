@@ -52,6 +52,8 @@ static const ppcp_msg_info msg_table[PPCP_MSG_COUNT] = {
  { "interruption",       PPCP_MT_INTERRUPTION,       PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_CAPTURE,   "5.3" },
  { "heartbeat",          PPCP_MT_HEARTBEAT,          PPCP_MSG_REQUEST,  PPCP_MSGCH_CONTROL, PPCP_PROFILE_LIVE,      "5.4" },
  { "heartbeat_ack",      PPCP_MT_HEARTBEAT_ACK,      PPCP_MSG_RESPONSE, PPCP_MSGCH_CONTROL, PPCP_PROFILE_LIVE,      "5.4" },
+ { "device_status",      PPCP_MT_DEVICE_STATUS,      PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_CAPTURE,   "5.5" },
+ { "buffer_status",      PPCP_MT_BUFFER_STATUS,      PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_CAPTURE,   "5.6" },
  { "sync_probe",         PPCP_MT_SYNC_PROBE,         PPCP_MSG_REQUEST,  PPCP_MSGCH_CONTROL, PPCP_PROFILE_LIVE,      "6.1" },
  { "sync_reply",         PPCP_MT_SYNC_REPLY,         PPCP_MSG_RESPONSE, PPCP_MSGCH_CONTROL, PPCP_PROFILE_LIVE,      "6.1" },
  { "sync_residual",      PPCP_MT_SYNC_RESIDUAL,      PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_LIVE,      "6.2" },
@@ -80,6 +82,9 @@ static const ppcp_msg_info msg_table[PPCP_MSG_COUNT] = {
   * socket, by peers that may implement no bundle handling at all. */
  { "shot_link",          PPCP_MT_SHOT_LINK,          PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_CORE,      "9.3" },
  { "session_link",       PPCP_MT_SESSION_LINK,       PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_OFFLINE,   "9.4" },
+ { "actuator_command",     PPCP_MT_ACTUATOR_COMMAND,     PPCP_MSG_REQUEST,  PPCP_MSGCH_CONTROL, PPCP_PROFILE_ACTUATE, "12.1" },
+ { "actuator_command_ack", PPCP_MT_ACTUATOR_COMMAND_ACK, PPCP_MSG_RESPONSE, PPCP_MSGCH_CONTROL, PPCP_PROFILE_ACTUATE, "12.1" },
+ { "actuator_state",       PPCP_MT_ACTUATOR_STATE,       PPCP_MSG_EVENT,    PPCP_MSGCH_CONTROL, PPCP_PROFILE_ACTUATE, "12.2" },
  { "error",              PPCP_MT_ERROR,             PPCP_MSG_EVENT,    PPCP_MSGCH_ANY,     NULL,                   "10"  }
 };
 
@@ -220,6 +225,12 @@ static const ppcp_enum_map join_verdict_map[] = {
 };
 static const ppcp_enum_map stream_verdict_map[] = {
     { "opened", PPCP_STREAM_OPENED }, { "refused", PPCP_STREAM_REFUSED }, { NULL, 0 }
+};
+
+/* MSG 12.1 — `applied` is `stream_open_ack`'s `opened` for an Actuator, and
+ * the reason registry of 12.1b follows `stream_open_ack.reason`'s pattern. */
+static const ppcp_enum_map actuator_verdict_map[] = {
+    { "applied", PPCP_ACTUATOR_APPLIED }, { "refused", PPCP_ACTUATOR_REFUSED }, { NULL, 0 }
 };
 static const ppcp_enum_map offer_verdict_map[] = {
     { "accept",       PPCP_OFFER_ACCEPT       },
@@ -621,6 +632,16 @@ static ppcp_result declare_src_r(ppcp_cbor_reader *r, void *dst, void *ctx)
     return ppcp_peer_sources_read(r, c->arena, c->peer);
 }
 
+/* Erratum E58 — `Peer.actuators` (CORE 5.2, 5.19).  A top-level key of
+ * `declare`, exactly as `sources` is: 3.3's `peer` is "a Peer without the
+ * lists", and the actuator list is a list. */
+static ppcp_result declare_act_r(ppcp_cbor_reader *r, void *dst, void *ctx)
+{
+    declare_ctx *c = (declare_ctx *)ctx;
+    (void)dst;
+    return ppcp_peer_actuators_read(r, c->arena, c->peer);
+}
+
 static ppcp_result dec_connection(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_msg *m)
 {
     ppcp_rfield f[10];
@@ -705,6 +726,7 @@ static ppcp_result dec_connection(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_msg *
         f[n++] = ppcp_rf_sub("timebases", declare_tb_r, NULL, &dc, NULL);
         f[n++] = ppcp_rf_sub("relations", declare_rel_r, NULL, &dc, NULL);
         f[n++] = ppcp_rf_sub("sources", declare_src_r, NULL, &dc, NULL);
+        f[n++] = ppcp_rf_sub("actuators", declare_act_r, NULL, &dc, NULL);
         rc = ppcp_rec_read(r, f, n);
         if (rc != PPCP_OK) return rc;
         if (!s_gen || !s_peer) return PPCP_ERR_MALFORMED;
@@ -938,6 +960,22 @@ static ppcp_result dec_stream(ppcp_cbor_reader *r, ppcp_msg *m)
          * affected Captures (I11). */
         if (!s_kind || !s_iv || !s_rec) return PPCP_ERR_MALFORMED;
         return PPCP_OK;
+    }
+    /* 5.5a / 5.6a — each carries its entity VERBATIM, so the body's field
+     * table IS the entity's and there is not a second copy of it here. */
+    case PPCP_MT_DEVICE_STATUS: {
+        ppcp_device_status_seen seen;
+        n  = ppcp_device_status_rfields(f, &m->body.device_status.status, &seen);
+        rc = ppcp_rec_read(r, f, n);
+        if (rc != PPCP_OK) return rc;
+        return ppcp_device_status_finish(&m->body.device_status.status, &seen);
+    }
+    case PPCP_MT_BUFFER_STATUS: {
+        ppcp_buffer_margin_seen seen;
+        n  = ppcp_buffer_margin_rfields(f, &m->body.buffer_status.margin, &seen);
+        rc = ppcp_rec_read(r, f, n);
+        if (rc != PPCP_OK) return rc;
+        return ppcp_buffer_margin_finish(&m->body.buffer_status.margin, &seen);
     }
     case PPCP_MT_HEARTBEAT: {
         bool s_seq = false;
@@ -1305,6 +1343,68 @@ static ppcp_result dec_offline(ppcp_cbor_reader *r, ppcp_msg *m)
     }
 }
 
+/* MSG §12 — actuator control.  I39 is enforced by ppcp_actuator_setting's two
+ * constructors, and on the way IN by its validator: a body carrying neither
+ * `on` nor `level`, or both, never becomes a ppcp_msg at all. */
+static ppcp_result dec_actuator(ppcp_cbor_reader *r, ppcp_msg *m)
+{
+    ppcp_rfield f[4];
+    size_t      n = 0;
+    ppcp_result rc;
+
+    switch (m->type) {
+    case PPCP_MT_ACTUATOR_COMMAND: {
+        ppcp_body_actuator_command *b = &m->body.actuator_command;
+        bool s_aid = false;
+        f[n++] = ppcp_rf("actuator_id", PPCP_F_ID, &b->actuator_id, &s_aid);
+        f[n++] = ppcp_rf("on", PPCP_F_BOOL, &b->setting.on, &b->setting.has_on);
+        f[n++] = ppcp_rf("level", PPCP_F_DOUBLE, &b->setting.level, &b->setting.has_level);
+        rc = ppcp_rec_read(r, f, n);
+        if (rc != PPCP_OK) return rc;
+        if (!s_aid) return PPCP_ERR_MALFORMED;
+        /* 12.1a / I39 — never neither, never both. */
+        if (ppcp_actuator_setting_validate(&b->setting) != PPCP_OK)
+            return PPCP_ERR_MALFORMED;
+        return PPCP_OK;
+    }
+    case PPCP_MT_ACTUATOR_COMMAND_ACK: {
+        ppcp_body_actuator_command_ack *b = &m->body.actuator_command_ack;
+        bool s_aid = false, s_verd = false;
+        int  verd = 0;
+        f[n++] = ppcp_rf("actuator_id", PPCP_F_ID, &b->actuator_id, &s_aid);
+        f[n++] = ppcp_rf_enum("verdict", actuator_verdict_map, &verd, &s_verd);
+        f[n++] = ppcp_rf("reason", PPCP_F_ID, &b->reason, &b->has_reason);
+        f[n++] = ppcp_rf_sub("state", ppcp_actuator_setting_read, &b->state, NULL,
+                             &b->has_state);
+        rc = ppcp_rec_read(r, f, n);
+        if (rc != PPCP_OK) return rc;
+        if (!s_aid || !s_verd) return PPCP_ERR_MALFORMED;
+        b->verdict = (ppcp_actuator_verdict)verd;
+        /* 12.1b — `reason` iff `refused`; 12.1c1 / E63 — `state` iff
+         * `applied`, and `state: {}` is malformed (the sub-reader saw to
+         * that). */
+        if ((b->verdict == PPCP_ACTUATOR_REFUSED) != b->has_reason)
+            return PPCP_ERR_MALFORMED;
+        if ((b->verdict == PPCP_ACTUATOR_APPLIED) != b->has_state)
+            return PPCP_ERR_MALFORMED;
+        return PPCP_OK;
+    }
+    case PPCP_MT_ACTUATOR_STATE: {
+        ppcp_body_actuator_state *b = &m->body.actuator_state;
+        bool s_aid = false, s_state = false, s_since = false;
+        f[n++] = ppcp_rf("actuator_id", PPCP_F_ID, &b->actuator_id, &s_aid);
+        f[n++] = ppcp_rf_sub("state", ppcp_actuator_setting_read, &b->state, NULL, &s_state);
+        f[n++] = ppcp_rf_sub("since", ppcp_sub_read_instant, &b->since, NULL, &s_since);
+        rc = ppcp_rec_read(r, f, n);
+        if (rc != PPCP_OK) return rc;
+        if (!s_aid || !s_state || !s_since) return PPCP_ERR_MALFORMED;
+        return PPCP_OK;
+    }
+    default:
+        return PPCP_ERR_INVALID;
+    }
+}
+
 ppcp_result ppcp_msg_decode(const uint8_t *payload, size_t len, ppcp_cbor_limits lim,
                             ppcp_arena *arena, ppcp_msg *out)
 {
@@ -1348,7 +1448,11 @@ ppcp_result ppcp_msg_decode(const uint8_t *payload, size_t len, ppcp_cbor_limits
     case PPCP_MT_STREAM_OPEN: case PPCP_MT_STREAM_OPEN_ACK: case PPCP_MT_STREAM_CLOSE:
     case PPCP_MT_ARM: case PPCP_MT_DISARM: case PPCP_MT_READINESS:
     case PPCP_MT_INTERRUPTION: case PPCP_MT_HEARTBEAT: case PPCP_MT_HEARTBEAT_ACK:
+    case PPCP_MT_DEVICE_STATUS: case PPCP_MT_BUFFER_STATUS:
         return dec_stream(&r, out);
+    case PPCP_MT_ACTUATOR_COMMAND: case PPCP_MT_ACTUATOR_COMMAND_ACK:
+    case PPCP_MT_ACTUATOR_STATE:
+        return dec_actuator(&r, out);
     case PPCP_MT_SYNC_PROBE: case PPCP_MT_SYNC_REPLY: case PPCP_MT_SYNC_RESIDUAL:
     case PPCP_MT_CANDIDATE: case PPCP_MT_SHOT: case PPCP_MT_CAPTURE_REQUEST:
     case PPCP_MT_ANNOTATION: case PPCP_MT_SHOT_LINK: case PPCP_MT_SESSION_LINK:
@@ -1458,6 +1562,10 @@ static ppcp_result enc_connection(const ppcp_msg *m, msg_wctx *c, enc_scratch *s
         f[n++] = ppcp_wf_sub("timebases", ppcp_peer_timebases_write, &b->peer);
         f[n++] = ppcp_wf_sub("relations", ppcp_peer_relations_write, &b->peer);
         f[n++] = ppcp_wf_sub("sources", ppcp_peer_sources_write, &b->peer);
+        /* 5.19c: no clause obliges an EMPTY `actuators` list the way 3.3d
+         * obliges an empty `sources`, so a peer owning none writes no key. */
+        if (b->peer.actuator_count > 0)
+            f[n++] = ppcp_wf_sub("actuators", ppcp_peer_actuators_write, &b->peer);
         break;
     }
     case PPCP_MT_DECLARE_ACK: {
@@ -1619,6 +1727,20 @@ static ppcp_result enc_stream(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
         f[n++] = ppcp_wf_sub("stream_ids", idlist_w, &s->stream_ids);
         break;
     }
+    case PPCP_MT_DEVICE_STATUS: {
+        const ppcp_device_status *d = &m->body.device_status.status;
+        ppcp_result vrc = ppcp_device_status_validate(d);
+        if (vrc != PPCP_OK) return vrc;
+        n = ppcp_device_status_wfields(f, d);
+        break;
+    }
+    case PPCP_MT_BUFFER_STATUS: {
+        const ppcp_buffer_margin *bm = &m->body.buffer_status.margin;
+        ppcp_result vrc = ppcp_buffer_margin_validate(bm);
+        if (vrc != PPCP_OK) return vrc;
+        n = ppcp_buffer_margin_wfields(f, bm);
+        break;
+    }
     case PPCP_MT_HEARTBEAT:
         f[n++] = ppcp_wf_uint("seq", m->body.heartbeat.seq);
         break;
@@ -1633,6 +1755,61 @@ static ppcp_result enc_stream(const ppcp_msg *m, msg_wctx *c, enc_scratch *s)
             f[n++] = ppcp_wf_uint("battery_pct", b->battery_pct);
         if (b->has_charging)
             f[n++] = ppcp_wf_bool("charging", b->charging);
+        break;
+    }
+    default:
+        return PPCP_ERR_INVALID;
+    }
+    c->n = n;
+    return PPCP_OK;
+}
+
+static ppcp_result enc_actuator(const ppcp_msg *m, msg_wctx *c)
+{
+    ppcp_wfield *f = c->f;
+    size_t       n = 0;
+
+    switch (m->type) {
+    case PPCP_MT_ACTUATOR_COMMAND: {
+        const ppcp_body_actuator_command *b = &m->body.actuator_command;
+        ppcp_result rc = ppcp_actuator_setting_validate(&b->setting);
+        if (rc != PPCP_OK) return rc;          /* 12.1a / I39 */
+        f[n++] = ppcp_wf_id("actuator_id", &b->actuator_id);
+        if (b->setting.has_on)
+            f[n++] = ppcp_wf_bool("on", b->setting.on);
+        else
+            f[n++] = ppcp_wf_double("level", b->setting.level);
+        break;
+    }
+    case PPCP_MT_ACTUATOR_COMMAND_ACK: {
+        const ppcp_body_actuator_command_ack *b = &m->body.actuator_command_ack;
+        /* 12.1b and 12.1c1, both iffs, refused at the encoder rather than put
+         * on the wire for the far end to reject. */
+        if ((b->verdict == PPCP_ACTUATOR_REFUSED) != b->has_reason)
+            return PPCP_ERR_INVALID;
+        if ((b->verdict == PPCP_ACTUATOR_APPLIED) != b->has_state)
+            return PPCP_ERR_INVALID;
+        if (b->has_state) {
+            ppcp_result rc = ppcp_actuator_setting_validate(&b->state);
+            if (rc != PPCP_OK) return rc;
+        }
+        f[n++] = ppcp_wf_id("actuator_id", &b->actuator_id);
+        f[n++] = ppcp_wf_enum("verdict", actuator_verdict_map, (int)b->verdict);
+        if (b->has_reason)
+            f[n++] = ppcp_wf_id("reason", &b->reason);
+        if (b->has_state)
+            f[n++] = ppcp_wf_sub("state", ppcp_actuator_setting_write, &b->state);
+        break;
+    }
+    case PPCP_MT_ACTUATOR_STATE: {
+        const ppcp_body_actuator_state *b = &m->body.actuator_state;
+        ppcp_result rc = ppcp_actuator_setting_validate(&b->state);
+        if (rc != PPCP_OK) return rc;          /* 12.2a1 / I39 */
+        rc = ppcp_instant_validate(&b->since);
+        if (rc != PPCP_OK) return rc;
+        f[n++] = ppcp_wf_id("actuator_id", &b->actuator_id);
+        f[n++] = ppcp_wf_sub("state", ppcp_actuator_setting_write, &b->state);
+        f[n++] = ppcp_wf_sub("since", ppcp_sub_write_instant, &b->since);
         break;
     }
     default:
@@ -1997,7 +2174,11 @@ ppcp_result ppcp_msg_encode(uint8_t *out, size_t cap, uint8_t channel, const ppc
     case PPCP_MT_STREAM_OPEN: case PPCP_MT_STREAM_OPEN_ACK: case PPCP_MT_STREAM_CLOSE:
     case PPCP_MT_ARM: case PPCP_MT_DISARM: case PPCP_MT_READINESS:
     case PPCP_MT_INTERRUPTION: case PPCP_MT_HEARTBEAT: case PPCP_MT_HEARTBEAT_ACK:
+    case PPCP_MT_DEVICE_STATUS: case PPCP_MT_BUFFER_STATUS:
         rc = enc_stream(m, &ctx, &scratch); break;
+    case PPCP_MT_ACTUATOR_COMMAND: case PPCP_MT_ACTUATOR_COMMAND_ACK:
+    case PPCP_MT_ACTUATOR_STATE:
+        rc = enc_actuator(m, &ctx); break;
     case PPCP_MT_SYNC_PROBE: case PPCP_MT_SYNC_REPLY: case PPCP_MT_SYNC_RESIDUAL:
     case PPCP_MT_CANDIDATE: case PPCP_MT_SHOT: case PPCP_MT_CAPTURE_REQUEST:
     case PPCP_MT_ANNOTATION: case PPCP_MT_SHOT_LINK: case PPCP_MT_SESSION_LINK:

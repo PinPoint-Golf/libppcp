@@ -124,10 +124,11 @@ The symmetric declaration. **Both peers send it; neither may skip it.**
 ```
 declare {
   generation      uint          monotonically increasing per peer, starting at 1
-  peer            Peer          without `sources`, which follow separately below
+  peer            Peer          without `sources` or `actuators`, which follow separately below
   timebases       [Timebase]
   relations       [TimebaseRelation]
   sources         [Source]      each with its `profiles` and optional `calibration`
+  actuators       [Actuator]    erratum E66; absent entirely where the peer owns none
 }
 ```
 
@@ -136,6 +137,9 @@ declare {
 - **(3.3c) MUST** A peer sends `declare` before it originates any message referencing a Source, Stream or Candidate.
 - **(3.3d) MUST** A host declares its own Sources with the same structure a capture peer uses, including `timing`, `geometry` and `intrinsics` on every profile (I19). **A host owning no Sources sends `declare` with an empty `sources` list** — it does not skip the message.
 - **(3.3e) MUST NOT** A peer that has declared `sources` re-declare with a changed Source while a Stream referencing that Source is open. It closes the Stream first (I5).
+- **(3.3f) MUST** *Erratum E66, 1 September 2026 — CR-02 implementation, `libppcp`.* `Peer.actuators` ([`PPCP-CORE` §5.19](ppcp-core.md#519-actuator)) travels as a **top-level key of `declare`, a sibling of `sources`** — not nested inside the `peer` head. A peer owning no Actuators omits the key entirely rather than sending an empty array (5.19c), so a declaration from a peer that has never heard of Actuators is byte-identical to one from before this erratum.
+
+  [E58](ppcp-core.md#errata-after-revision-9) added `actuators` to the `Peer` entity and never amended this schema block, which leaves two readings that are each defensible and mutually unintelligible: the block lists five fields and `actuators` is not among them, so a literal implementer nests it in `peer` — while `peer`'s own note excludes only `sources`, which is the exception that exists *because* an entity list was hoisted. **Two conformant peers would each declare actuators the other could not see, with nothing malformed on the wire and no error raised at either end** — the same shape of defect as [E28](#41-session_open), found the same way, by an implementation having to pick. Hoisting is chosen because `declare` already hoists the Peer's other entity list and the two are the same shape; nesting would have made `sources` the lone irregular case.
 
 3.3d is the wire-level form of symmetric declaration. Omitting it works for a single-vendor pairing and breaks any third-party host, because the conversion of [`PPCP-CORE` §6.1](ppcp-core.md#61-canonical-instant) can only be applied if both conventions are on the wire.
 
@@ -328,7 +332,7 @@ heartbeat_ack  { seq: uint,
 device_status { source_id, available: bool, reason: Kind (optional), since: Instant }
 ```
 
-- **(5.5a) MUST** Carries `DeviceStatus` verbatim ([`PPCP-CORE` §5.20](ppcp-core.md#520-devicestatus)). Emitted whenever `available` or `reason` changes for a declared Source, unprompted — the same push discipline as `readiness` (5.2a). It is not a reply to a poll and there is no request that solicits one.
+- **(5.5a) MUST** Carries `DeviceStatus` verbatim ([`PPCP-CORE` §5.20](ppcp-core.md#520-devicestatus)). A peer **emits** `device_status` whenever `available` or `reason` changes for a declared Source, unprompted — the same push discipline as `readiness` (5.2a). It is not a reply to a poll and there is no request that solicits one. *Erratum E65, 1 September 2026 — reworded to name the message it requires. As first written the obligation read "Emitted whenever …", which stated the requirement without naming `device_status`, so the [`PPCP-CONF` 5b2](ppcp-conformance.md#5-interoperability) audit could not see that §11's citation of this clause was supported. Same defect and same remedy as the eight clauses E18 reworded; no obligation is added or removed.*
 - **(5.5b) MUST NOT** `reason` be present when `available: true`.
 - **(5.5c) MUST** The originating peer is the Source's owner (`Source.peer_id`). A peer MUST NOT emit `device_status` for a Source it does not own.
 
@@ -640,7 +644,7 @@ Fifty messages — forty-five plus `device_status`, `buffer_status`, `actuator_c
 
 **Eight had an obligation that existed and did not name the message** — 3.7a said "Emitted whenever a step is observed", 6.1d said a peer "runs a separate probe sequence", `ENC` 6a said a payload "is transferred as". No audit could find those and no implementer reading the catalogue would either. Each is reworded to name the message it requires, and the column cites it.
 
-**Twelve are legitimately optional**, marked **opt**, and that is a conclusion rather than an omission: `annotation` is the whole of what Markup carries, `capture_request` is a host asking rather than a peer owing, `session_offer` is a peer volunteering what it stored, and a peer with nothing to say sends no `context_change`. Three more join them — `arm`, `disarm` and `stream_close`, which the audit had counted as required through a clause that *forbids* recording them hostless ([`PPCP-CORE` 7.3b](ppcp-core.md#73-streams-and-capture-control)) and one that *permits* a close from either end (5.1d). Both are reworded so a reader and a script draw the same conclusion. **Fifteen** messages are therefore required by nothing, deliberately.
+**Twelve are legitimately optional**, marked **opt**, and that is a conclusion rather than an omission: `annotation` is the whole of what Markup carries, `capture_request` is a host asking rather than a peer owing, `session_offer` is a peer volunteering what it stored, and a peer with nothing to say sends no `context_change`. Three more join them — `arm`, `disarm` and `stream_close`, which the audit had counted as required through a clause that *forbids* recording them hostless ([`PPCP-CORE` 7.3b](ppcp-core.md#73-streams-and-capture-control)) and one that *permits* a close from either end (5.1d). Both are reworded so a reader and a script draw the same conclusion. **Fifteen** messages are therefore required by nothing, deliberately. *Erratum E65, 1 September 2026 — **seventeen** as of CR-02: `buffer_status` (5.6b is a SHOULD) and the actuator request join them, while `device_status`, `actuator_command_ack` and `actuator_state` are each required by a clause named in the column. The audit asserts this count on every run, so it is stated rather than left to drift.*
 
 The audit now asserts this table against the documents on every run: a message marked **opt** that some clause has begun to require, or a citation no clause supports any more, fails `ctest -R L16-profile-boundary`. A sweep whose answer is written down and never re-checked is the state this column exists to leave behind.
 
@@ -696,7 +700,7 @@ The column names **the clause requiring a peer to originate the message at all**
 | `session_link` | E | control | Offline | **opt** | [9.4](#94-session_link) |
 | `actuator_command` | R | control | **Actuate** | **opt** | [12.1](#121-actuator_command--actuator_command_ack) |
 | `actuator_command_ack` | S | control | **Actuate** | 1c | [12.1](#121-actuator_command--actuator_command_ack) |
-| `actuator_state` | E | control | **Actuate** | **opt** | [12.2](#122-actuator_state) |
+| `actuator_state` | E | control | **Actuate** | 12.2a | [12.2](#122-actuator_state) |
 | `error` | R/S/E | either | — | 1a | [10](#10-errors) |
 
 ---
@@ -742,7 +746,7 @@ actuator_state { actuator_id: Id,
                   since: Instant }
 ```
 
-- **(12.2a) MUST** A peer emits `actuator_state` whenever an Actuator's state changes for a reason **other than** an `actuator_command` it just acknowledged — a platform-driven thermal cutoff, a user toggling a physical control locally. It is not sent to confirm a command the requester already has `actuator_command_ack` for.
+- **(12.2a) MUST** A peer emits `actuator_state` whenever an Actuator's state changes for a reason **other than** a command it just acknowledged — a platform-driven thermal cutoff, a user toggling a physical control locally. It is not sent to confirm a command the requester already has an acknowledgement for. *Erratum E65, 1 September 2026 — the two message names this clause named in passing are written out in prose. The [`PPCP-CONF` 5b2](ppcp-conformance.md#5-interoperability) audit marks **every** catalogued message a qualifying MUST names, so this clause — whose actual obligation is to originate `actuator_state` — was also read as obliging a peer to originate the *command*, contradicting §11's correct **opt** for a message no clause requires anyone to send. The obligation is unchanged, and this note names the command in prose rather than in backticks for exactly the reason it records.*
 - **(12.2a1) MUST** *Erratum E63, 26 August 2026 — CR-02 review round 1.* `actuator_state.state`'s `on`/`level` cardinality is bound by I39 on the same terms as `actuator_command` and `actuator_command_ack.state` (12.1c1).
 - **(12.2b) MUST** `actuator_state` is broadcast (`owner → any`), unlike `actuator_command`'s host-only origination (12a), so an `observer` or a second capture peer in the Session sees current Actuator state without asking the host to relay it.
 

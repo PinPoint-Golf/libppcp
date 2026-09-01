@@ -7,7 +7,7 @@
 | Against | `PPCP-CONF` 1.0 §3–§5; `PPCP-RV` 1.0 §9 |
 | Plan | [`../implementation/implementation-plan.md`](../implementation/implementation-plan.md) §8 defines the cell vocabulary |
 | Claims | `libppcp`: [`claim-libppcp.md`](claim-libppcp.md) · PinPointStudio: `PinPointStudio/docs/ppcp-conformance.md` · PinPointCapture: `PinPointCapture/docs/ppcp-conformance.md` |
-| Last updated | 2026-08-24 — **CR-01 session C1**, rows [RT-18 … RT-27](#5a-rv-6-guided-pairing--rv-9-rows-rt-18--rt-27) added; ⛔ RT-20c unrun, so [9g](../specification/ppcp-rv.md#9-conformance) forbids an RV-6 aggregate anywhere. Previously 2026-08-23 — **S5 wave 2 (L17)**. Both application columns re-read from their S5 claim files: PinPointStudio `5f9d53c` (`docs/ppcp-conformance.md` §10.4, §11), PinPointCapture `b83fdc7` (`docs/ppcp-conformance.md` §3, §4a and `docs/conformance/ppcp-conform.json`). All ten `CONF` §5a pairings pass; see [`freeze-readiness.md`](freeze-readiness.md) for what they do and do not prove |
+| Last updated | 2026-09-01 — **L30**, `actuator_command_ack` moved to the embedding: `MSG` 12.1c makes `state` the **achieved** setting and the engine was echoing the request, so a well-formed command is now handed over as `PPCP_EVENT_ACTUATOR_COMMAND` and answered with `ppcp_peer_actuator_command_applied()` / `_refused()`. The refusals that need no hardware (12.1d, 12.1a, 12a) stay in the library. [CT-I39](#1-invariant-tests--conf-3)'s evidence grew: `test_ct_i39` keeps its six static assertions and adds the achieved-state ones, and `CT-I39-sockets-not-declared` now asserts `actuator_clamped_rx=1` — an ack whose `state` differs from the request. Previously 2026-09-01 — **CR-02 session C2**, row [CT-I39](#1-invariant-tests--conf-3) added and the **Actuate** profile claimed for `libppcp`: `test_ct_i39` (six static assertions, E63) plus `CT-I39-sockets-not-declared` and `CT-I39-sockets-non-host` over real sockets. ⚠ The PinPointStudio and PinPointCapture cells of CT-I39 are **not** filled here — they are those teams' to claim from their own commands. Previously 2026-08-24 — **CR-01 session C1**, rows [RT-18 … RT-27](#5a-rv-6-guided-pairing--rv-9-rows-rt-18--rt-27) added; ⛔ RT-20c unrun, so [9g](../specification/ppcp-rv.md#9-conformance) forbids an RV-6 aggregate anywhere. Previously 2026-08-23 — **S5 wave 2 (L17)**. Both application columns re-read from their S5 claim files: PinPointStudio `5f9d53c` (`docs/ppcp-conformance.md` §10.4, §11), PinPointCapture `b83fdc7` (`docs/ppcp-conformance.md` §3, §4a and `docs/conformance/ppcp-conform.json`). All ten `CONF` §5a pairings pass; see [`freeze-readiness.md`](freeze-readiness.md) for what they do and do not prove |
 
 Cells: `—` not started · `impl` code exists, not passing · `pass` passing, command in the claim file · `n/a` profile not declared, negative test passes · `rig` needs the LED timecode rig · `review` RV review method, reviewer and commit recorded · `blocked: …`
 
@@ -15,7 +15,7 @@ Cells: `—` not started · `impl` code exists, not passing · `pass` passing, c
 
 **Since L13 (S3 wave 2) the eight rows that warning named are also run over real loopback sockets** — two processes, two TCP connections, a `link_bind` on each, and a counterpart presenting a declaration from a JSON file that no C test wrote. See [§6](#6-the-socket-paired-rows) for the row-to-command map. The warning still stands for the *third-party* half of `CONF` 5c: both ends are still `libppcp`, and the foreignness is in the declaration rather than in the implementation. What has changed is that a hardcoded convention, an assumed-zero offset or a missing profile check now has something to disagree with.
 
-Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) declares Core, Capture, Detect, Arbitrate, Live, Offline, Markup. PinPointCapture (device) declares Core, Capture, Detect, Mint, Live, Offline, Markup.
+Profile columns: `libppcp` declares all nine profiles. PinPointStudio (host) declares Core, Capture, Detect, Arbitrate, Live, Offline, Markup, **Actuate**. PinPointCapture (device) declares Core, Capture, Detect, Mint, Live, Offline, Markup, **Actuate**.
 
 ## 1. Invariant tests — `CONF` §3
 
@@ -60,6 +60,7 @@ Profile columns: `libppcp` declares all eight profiles. PinPointStudio (host) de
 | CT-I36a | I36 | Capture | paired | L7, H4, D4 | pass (conform) | pass (conform) | pass (own half) |
 | CT-I37 | I37 | Markup | static | L11, H7, D8 | pass | pass | pass (device) |
 | CT-I38 | I38 | Capture | paired | L7, D6 | impl | — | pass (own half) |
+| CT-I39 | I39 | **Actuate** | static + paired | L23–**L30**, H12–H14, D13, D15 | pass | — | — |
 
 ## 2. Silent-failure tests — `CONF` §4
 
@@ -215,6 +216,8 @@ The declarations are in [`../../tools/scenarios/`](../../tools/scenarios/) and i
 | `CT-I6-sockets` | `arbiter-no-detect` ↔ `nominating-capture` | A peer without Mint parses a device-authority `shot` and issues none on its own authority (`minted_shots_rx=0`) |
 | `CT-I22-sockets-capture-request` | `requesting-host` ↔ `nominating-capture` | A host **asks** (8.4a): the device half of I22 — a window in the host's convention converted into the peer's own buffer — is drivable from outside for the first time (F-S5-2) |
 | `F-S5-3-sockets-offer-during-live-session` | `reference-host` ↔ `offer-session` | An offered Session replayed onto a live link does **not** rebind the live Session's `timebase_ref` (`live_ref_rebound=0`, `imported_frames_rx>=1`) — erratum E28 |
+| `CT-I39-sockets-not-declared` | `torch-capture` ↔ `actuating-host` | 12.1d — a command naming an Actuator the counterpart never declared is answered `error` / `not_declared`; a command at a **declared** one in the shape its `control` names is `applied`, so the row cannot pass by nothing happening. ⭐ **12.1c rides on it (L30)**: `actuator_acks_tx=1` says the responder's **embedding** wrote that ack (the library writes none for a well-formed command), and `actuator_clamped_rx=1` says the `state` the host read back **differs** from the level it asked for — the device's driver moves in discrete steps and reaches 0.25 for a request of 0.5. An implementation that echoed the request fails that cell |
+| `CT-I39-sockets-non-host` | `torch-capture` ↔ `actuating-nonhost` | 12a — a well-formed command at a declared Actuator from a peer that is **not** the Session's `role: host` is **refused** (`actuator_refused_rx=1`, `actuator_applied_rx=0`), not acted on. `actuator_acks_tx=0` is the other half: 12a needs no hardware, so the **library** answers it and the embedding is never asked |
 | `RT-4-psk-ke-only-refused` | `ppcp-sim` ↔ `openssl s_server -tls1_3` | A DHE-requiring peer refuses a `psk_ke`-only ClientHello |
 | `RT-4-psk-ke-only-accepted-is-a-failure` | the same, `-allow_no_dhe_kex` | A peer that **accepts** `psk_ke` is reported as an RT-4 failure — which is also what proves the hand-built ClientHello and its PSK binder are correct |
 
@@ -228,14 +231,14 @@ The two RT-4 rows are skipped where the OpenSSL CLI is absent; it is the peer un
 
 ```sh
 # the reference run, both roles; ctest -R L14-conform runs exactly this
-ppcp-conform --self --role host    --profiles core,capture,detect,mint,arbitrate,live,offline,markup \
+ppcp-conform --self --role host    --profiles core,capture,detect,mint,arbitrate,live,offline,markup,actuate \
              --column libppcp --json host.json --markdown host.md
-ppcp-conform --self --role capture --profiles core,capture,detect,mint,arbitrate,live,offline,markup \
+ppcp-conform --self --role capture --profiles core,capture,detect,mint,arbitrate,live,offline,markup,actuate \
              --column libppcp --json capture.json
 
 # an application, over its own loopback transport
 ppcp-conform --connect 127.0.0.1:9000 --role host \
-             --profiles core,capture,detect,arbitrate,live,offline,markup \
+             --profiles core,capture,detect,arbitrate,live,offline,markup,actuate \
              --column PinPointStudio --json pps.json --markdown pps.md
 ```
 

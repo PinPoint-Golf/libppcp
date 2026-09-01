@@ -42,6 +42,9 @@
  * so I26 can be enforced on `candidate` without holding the caller's whole
  * declaration alive. */
 #define PPCP_PEER_MAX_OWN_SOURCES 16u
+/* 5.19a — an Actuator must be DECLARED before an `actuator_command` may name
+ * it, so the engine keeps this peer's own list to answer 12.1d with. */
+#define PPCP_PEER_MAX_OWN_ACTUATORS 8u
 #define PPCP_PEER_MAX_OWN_TIMEBASES 8u
 
 typedef struct tx_queue {
@@ -145,6 +148,10 @@ struct ppcp_peer {
     /* this peer's own declaration, reduced to what I26 needs (5.12a, 7.1a) */
     struct { ppcp_id source_id; ppcp_id timebase_id; } own_sources[PPCP_PEER_MAX_OWN_SOURCES];
     size_t   own_source_count;
+    /* Whole Actuators and not just their ids, because 12.1a needs `control`
+     * to decide whether the command's shape is the one this Actuator takes. */
+    ppcp_actuator own_actuators[PPCP_PEER_MAX_OWN_ACTUATORS];
+    size_t   own_actuator_count;
     ppcp_id  own_timebases[PPCP_PEER_MAX_OWN_TIMEBASES];
     size_t   own_timebase_count;
 
@@ -987,6 +994,9 @@ ppcp_result ppcp_peer_declare(ppcp_peer *p, const ppcp_peer_desc *self)
         size_t i;
         p->own_source_count   = 0;
         p->own_timebase_count = 0;
+        p->own_actuator_count = 0;
+        for (i = 0; i < self->actuator_count && i < PPCP_PEER_MAX_OWN_ACTUATORS; i++)
+            p->own_actuators[p->own_actuator_count++] = self->actuators[i];
         for (i = 0; i < self->source_count && i < PPCP_PEER_MAX_OWN_SOURCES; i++) {
             p->own_sources[p->own_source_count].source_id   = self->sources[i].id;
             p->own_sources[p->own_source_count].timebase_id = self->sources[i].timebase_id;
@@ -1322,6 +1332,241 @@ ppcp_result ppcp_peer_readiness(ppcp_peer *p, const ppcp_readiness *r,
     for (i = 0; i < count; i++)
         m.body.readiness.stream_ids[i] = stream_ids[i];
     m.body.readiness.stream_id_count = count;
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+static const ppcp_actuator *peer_own_actuator(const ppcp_peer *p, const ppcp_id *id)
+{
+    size_t i;
+    for (i = 0; i < p->own_actuator_count; i++)
+        if (ppcp_id_equal(&p->own_actuators[i].id, id))
+            return &p->own_actuators[i];
+    return NULL;
+}
+
+/* MSG 5.5c — the originator is the Source's OWNER, and this engine knows
+ * which Sources those are because 3.3a made the declaration a snapshot it
+ * kept.  A peer emitting for a Source it does not own is refused here rather
+ * than on the far side. */
+ppcp_result ppcp_peer_device_status(ppcp_peer *p, const ppcp_device_status *d)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+
+    if (p == NULL || d == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_device_status_validate(d);
+    if (rc != PPCP_OK)
+        return rc;
+    if (!ppcp_peer_owns_source(p, &d->source_id, NULL))
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_DEVICE_STATUS, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.device_status.status = *d;
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+/* MSG 5.6a — sent only for a Stream whose `continuity` is `shot_windowed`
+ * (5.21c: a `continuous` Stream already accounts for its whole open interval
+ * through `gaps` and `absent`, so there is no undisclosed margin to report). */
+ppcp_result ppcp_peer_buffer_status(ppcp_peer *p, const ppcp_buffer_margin *b)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+    size_t      i;
+    bool        windowed = false;
+
+    if (p == NULL || b == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_buffer_margin_validate(b);
+    if (rc != PPCP_OK)
+        return rc;
+    for (i = 0; i < p->stream_count; i++) {
+        if (ppcp_id_equal(&p->streams[i].id, &b->stream_id)) {
+            windowed = (p->streams[i].continuity == PPCP_SHOT_WINDOWED);
+            break;
+        }
+    }
+    if (i == p->stream_count || !windowed)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_msg_init(&m, PPCP_MT_BUFFER_STATUS, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.buffer_status.margin = *b;
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+/* MSG 12.1 / 12a / 12.1d.  ⚠ Success here means QUEUED.  The answer is the
+ * ack, and a control that lights on this call rather than on the ack is
+ * reporting the click. */
+ppcp_result ppcp_peer_actuator_command(ppcp_peer *p, const char *actuator_id,
+                                       const ppcp_actuator_setting *setting)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+    ppcp_id     aid;
+    size_t      i;
+    const ppcp_actuator *remote = NULL;
+
+    if (p == NULL || actuator_id == NULL || setting == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_actuator_setting_validate(setting);
+    if (rc != PPCP_OK)
+        return rc;
+    /* 12a — only the host originates one. */
+    if (p->role != PPCP_ROLE_HOST)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_id_set_z(&aid, actuator_id);
+    if (rc != PPCP_OK)
+        return rc;
+    /* 12.1d — MUST NOT send one naming an Actuator absent from the target's
+     * last-known `Peer.actuators`.  The responder answers `not_declared` if
+     * one arrives; this is the half that stops it being sent at all. */
+    if (!p->has_remote_desc)
+        return PPCP_ERR_INVALID;
+    for (i = 0; i < p->remote.actuator_count; i++) {
+        if (ppcp_id_equal(&p->remote.actuators[i].id, &aid)) {
+            remote = &p->remote.actuators[i];
+            break;
+        }
+    }
+    if (remote == NULL)
+        return PPCP_ERR_NOT_FOUND;
+    /* 12.1a / I39 against the DECLARED `control`, before a byte is queued. */
+    if (!ppcp_actuator_setting_matches(setting, remote))
+        return PPCP_ERR_INVALID;
+
+    rc = ppcp_msg_init(&m, PPCP_MT_ACTUATOR_COMMAND, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.actuator_command.actuator_id = aid;
+    m.body.actuator_command.setting     = *setting;
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+/* MSG 12.1c / 1c — THE RESPONDER'S ANSWER, WRITTEN BY THE EMBEDDING.
+ *
+ * 12.1c: `actuator_command_ack.state` reports what the Actuator is ACTUALLY
+ * doing after the command is applied, not an echo of the request, and where a
+ * platform clamps a requested level it carries the ACHIEVED value.  Nothing in
+ * a sans-I/O library can know that, so the engine raises
+ * PPCP_EVENT_ACTUATOR_COMMAND and this is how the answer gets sent.
+ *
+ * One body for both verdicts, and two public functions over it, because 12.1b
+ * and I39 are the SHAPE of the answer: `achieved != NULL` is an `applied` ack
+ * and cannot omit its state; `reason != NULL` is a `refused` one and cannot
+ * carry one.
+ */
+static ppcp_result peer_actuator_ack(ppcp_peer *p, const char *actuator_id,
+                                     const ppcp_actuator_setting *achieved,
+                                     const char *reason, uint64_t in_reply_to)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+    ppcp_id     aid;
+    const ppcp_actuator *own;
+
+    if (p == NULL || actuator_id == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_id_set_z(&aid, actuator_id);
+    if (rc != PPCP_OK)
+        return rc;
+    /* 5.19a / 12.1d — an Actuator this peer never declared is one the engine
+     * has already answered `not_declared` for; there is nothing here to ack. */
+    own = peer_own_actuator(p, &aid);
+    if (own == NULL)
+        return PPCP_ERR_NOT_FOUND;
+    if (achieved != NULL) {
+        rc = ppcp_actuator_setting_validate(achieved);
+        if (rc != PPCP_OK)
+            return rc;
+        /* 12.1c1 / I39 — the ACHIEVED state is bound by the declared `control`
+         * on exactly the terms the request is, checked before a byte is
+         * queued.  An embedding cannot put a malformed ack on the wire. */
+        if (!ppcp_actuator_setting_matches(achieved, own))
+            return PPCP_ERR_INVALID;
+    }
+
+    rc = ppcp_msg_init(&m, PPCP_MT_ACTUATOR_COMMAND_ACK, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.actuator_command_ack.actuator_id = aid;
+    if (achieved != NULL) {
+        m.body.actuator_command_ack.verdict   = PPCP_ACTUATOR_APPLIED;
+        m.body.actuator_command_ack.has_state = true;
+        m.body.actuator_command_ack.state     = *achieved;
+    } else {
+        /* 12.1b — `reason` iff `refused`, and never a `state`. */
+        rc = ppcp_id_set_z(&m.body.actuator_command_ack.reason, reason);
+        if (rc != PPCP_OK)
+            return rc;
+        m.body.actuator_command_ack.verdict    = PPCP_ACTUATOR_REFUSED;
+        m.body.actuator_command_ack.has_reason = true;
+    }
+    /* MSG 1c — the ack is a correlation.  `in_reply_to` is the command's
+     * `msg_id`, which the event carried as `e.msg->env.msg_id`. */
+    rc = ppcp_msg_set_reply_to(&m, in_reply_to);
+    if (rc != PPCP_OK)
+        return rc;
+    return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
+}
+
+ppcp_result ppcp_peer_actuator_command_applied(ppcp_peer *p, const char *actuator_id,
+                                               const ppcp_actuator_setting *achieved,
+                                               uint64_t in_reply_to)
+{
+    if (achieved == NULL)
+        return PPCP_ERR_INVALID;
+    return peer_actuator_ack(p, actuator_id, achieved, NULL, in_reply_to);
+}
+
+ppcp_result ppcp_peer_actuator_command_refused(ppcp_peer *p, const char *actuator_id,
+                                               const char *reason, uint64_t in_reply_to)
+{
+    /* 12.1b makes `reason` REQUIRED; ppcp_id_set_z refuses an empty one. */
+    if (reason == NULL)
+        return PPCP_ERR_INVALID;
+    return peer_actuator_ack(p, actuator_id, NULL, reason, in_reply_to);
+}
+
+/* MSG 12.2a — emitted when an Actuator moves for a reason OTHER than a command
+ * just acknowledged.  It is not the way to confirm a command: the requester
+ * already has the ack. */
+ppcp_result ppcp_peer_actuator_state(ppcp_peer *p, const char *actuator_id,
+                                     const ppcp_actuator_setting *state,
+                                     const ppcp_instant *since)
+{
+    ppcp_msg    m;
+    ppcp_result rc;
+    ppcp_id     aid;
+    const ppcp_actuator *own;
+
+    if (p == NULL || actuator_id == NULL || state == NULL || since == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_actuator_setting_validate(state);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_instant_validate(since);
+    if (rc != PPCP_OK)
+        return rc;
+    rc = ppcp_id_set_z(&aid, actuator_id);
+    if (rc != PPCP_OK)
+        return rc;
+    /* 5.19a — an Actuator this peer never declared has no state to report, and
+     * 12.2a1 binds the shape to the `control` it declared for it. */
+    own = peer_own_actuator(p, &aid);
+    if (own == NULL)
+        return PPCP_ERR_NOT_FOUND;
+    if (!ppcp_actuator_setting_matches(state, own))
+        return PPCP_ERR_INVALID;
+
+    rc = ppcp_msg_init(&m, PPCP_MT_ACTUATOR_STATE, 1);
+    if (rc != PPCP_OK)
+        return rc;
+    m.body.actuator_state.actuator_id = aid;
+    m.body.actuator_state.state       = *state;
+    m.body.actuator_state.since       = *since;
     return peer_queue(p, PPCP_CHANNEL_CONTROL, &m);
 }
 
@@ -2228,6 +2473,10 @@ static const char *responder_profile(ppcp_msg_type t)
     case PPCP_MT_CAPTURE_REQUEST: return PPCP_PROFILE_CAPTURE;
     case PPCP_MT_PAYLOAD_RESUME:  return PPCP_PROFILE_CAPTURE;
     case PPCP_MT_SESSION_OFFER:   return PPCP_PROFILE_OFFLINE;
+    /* §12's three messages are all Actuate, but only the REQUEST is in this
+     * table: C3 is about what a responder owes, and the ack and the event are
+     * comprehended and ignored by a peer that does not implement them. */
+    case PPCP_MT_ACTUATOR_COMMAND: return PPCP_PROFILE_ACTUATE;
     default:                      return NULL;
     }
 }
@@ -2278,6 +2527,11 @@ static ppcp_event_kind event_for(ppcp_msg_type t)
     case PPCP_MT_ANNOTATION:         return PPCP_EVENT_ANNOTATION;
     case PPCP_MT_SHOT_LINK:          return PPCP_EVENT_SHOT_LINK;
     case PPCP_MT_SESSION_LINK:       return PPCP_EVENT_SESSION_LINK;
+    case PPCP_MT_DEVICE_STATUS:      return PPCP_EVENT_DEVICE_STATUS;
+    case PPCP_MT_BUFFER_STATUS:      return PPCP_EVENT_BUFFER_STATUS;
+    case PPCP_MT_ACTUATOR_COMMAND:   return PPCP_EVENT_ACTUATOR_COMMAND;
+    case PPCP_MT_ACTUATOR_COMMAND_ACK: return PPCP_EVENT_ACTUATOR_COMMAND_ACK;
+    case PPCP_MT_ACTUATOR_STATE:     return PPCP_EVENT_ACTUATOR_STATE;
     case PPCP_MT_ERROR:              return PPCP_EVENT_ERROR;
     case PPCP_MT_UNKNOWN:            return PPCP_EVENT_UNKNOWN;
     default:                         return PPCP_EVENT_NONE;
@@ -2541,6 +2795,79 @@ static ppcp_result peer_on_stream_open(ppcp_peer *p, const ppcp_msg *m)
     return peer_queue(p, PPCP_CHANNEL_CONTROL, &r);
 }
 
+/* MSG §12 — the responder half of actuator control.
+ *
+ * ⚠ THIS ENGINE NO LONGER ANSWERS A WELL-FORMED COMMAND.  Until L30 it built
+ * an `applied` ack here and queued it BEFORE the embedding had seen the event,
+ * with `state` set to the setting that had just arrived.  That is precisely
+ * the echo 12.1c forbids: `state` reports what the Actuator is ACTUALLY doing
+ * once the command is applied, and where a platform clamps a requested level
+ * it carries the achieved value.  A sans-I/O library owns no hardware and can
+ * know neither, so it answered on the embedding's behalf with the only thing
+ * it had — the request — and a host lit its torch control from its own click.
+ * Both application teams found it independently, and neither could satisfy
+ * 12.1c while the engine was answering first.
+ *
+ * So the command is HANDED OVER: PPCP_EVENT_ACTUATOR_COMMAND is raised with
+ * `status` PPCP_OK, and MSG 1c's answer is owed by the embedding, through
+ * ppcp_peer_actuator_command_applied() or _refused() (peer.h, MSG §12).
+ *
+ * What stays here is every refusal that needs no hardware to decide, each
+ * answered before the event is raised so the embedding can see from `status`
+ * that it owes nothing:
+ *
+ *   12.1d  a command naming an Actuator this peer never declared is
+ *          `error` / `not_declared`.
+ *   12.1a  a command whose shape does not match the named Actuator's declared
+ *          `control` is `error` / `malformed` (I39).
+ *   12a    a command from a peer that is not the host is REFUSED, not acted
+ *          on — `permission_denied` from 12.1b's registry.  Narrower than
+ *          `stream_open`'s `any -> owner`, deliberately: this is the one
+ *          message that changes what another peer's hardware does.
+ */
+static ppcp_result peer_on_actuator_command(ppcp_peer *p, const ppcp_msg *m)
+{
+    const ppcp_body_actuator_command *b = &m->body.actuator_command;
+    const ppcp_actuator *a;
+    ppcp_msg    r;
+    ppcp_result rc;
+
+    /* 12.1d — before anything else, because "which Actuator" is what every
+     * other question here is about. */
+    a = peer_own_actuator(p, &b->actuator_id);
+    if (a == NULL) {
+        (void)ppcp_peer_error(p, PPCP_CHANNEL_CONTROL, PPCP_ERRCODE_NOT_DECLARED,
+                              "no such actuator", true, m->env.msg_id);
+        return PPCP_ERR_INVALID;
+    }
+    /* 12.1a — the shape must be the one this Actuator's `control` names. */
+    if (!ppcp_actuator_setting_matches(&b->setting, a)) {
+        (void)ppcp_peer_error(p, PPCP_CHANNEL_CONTROL, PPCP_ERRCODE_MALFORMED,
+                              "control shape", true, m->env.msg_id);
+        return PPCP_ERR_MALFORMED;
+    }
+
+    /* 12a — a refusal this peer can reach without touching the hardware. */
+    if (!p->has_remote_hello || p->remote_role != PPCP_ROLE_HOST) {
+        rc = ppcp_msg_init(&r, PPCP_MT_ACTUATOR_COMMAND_ACK, 1);
+        if (rc != PPCP_OK)
+            return rc;
+        r.body.actuator_command_ack.actuator_id = b->actuator_id;
+        r.body.actuator_command_ack.verdict    = PPCP_ACTUATOR_REFUSED;
+        r.body.actuator_command_ack.has_reason = true;
+        (void)ppcp_id_set_z(&r.body.actuator_command_ack.reason, "permission_denied");
+        rc = ppcp_msg_set_reply_to(&r, m->env.msg_id);
+        if (rc != PPCP_OK)
+            return rc;
+        (void)peer_queue(p, PPCP_CHANNEL_CONTROL, &r);
+        return PPCP_ERR_INVALID;
+    }
+
+    /* Well-formed, declared, host-originated: the embedding's to answer.  The
+     * event carries the message, so `msg_id` is recoverable for `reply_to`. */
+    return PPCP_OK;
+}
+
 /* MSG 6.1 — the responder half.  `t2` is read as close to reception as this
  * engine can see, which is the moment the frame is handled, and `t3` as close
  * to transmission, which is the moment before it is queued.  6.1c permits them
@@ -2754,6 +3081,7 @@ static void peer_handle(ppcp_peer *p, uint8_t channel, const ppcp_msg *m)
     case PPCP_MT_SESSION_OPEN: rc = peer_on_session_open(p, m); break;
     case PPCP_MT_SESSION_RESUME: rc = peer_on_session_resume(p, m); break;
     case PPCP_MT_STREAM_OPEN:  rc = peer_on_stream_open(p, m); break;
+    case PPCP_MT_ACTUATOR_COMMAND: rc = peer_on_actuator_command(p, m); break;
     case PPCP_MT_STREAM_CLOSE:
         /* 5.1d: either peer may close a Stream, so the engine removes it
          * whichever end sent this. */

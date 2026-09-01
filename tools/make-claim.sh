@@ -24,7 +24,7 @@ TMP=$(mktemp -d 2>/dev/null || mktemp -d -t ppcpclaim)
 trap 'rm -rf "$TMP"' EXIT
 
 CONFORM=$BUILD/tools/ppcp-conform/ppcp-conform
-ALL=core,capture,detect,mint,arbitrate,live,offline,markup
+ALL=core,capture,detect,mint,arbitrate,live,offline,markup,actuate
 
 [ -x "$CONFORM" ] || { echo "make-claim.sh: no ppcp-conform at $CONFORM — build first" >&2; exit 2; }
 

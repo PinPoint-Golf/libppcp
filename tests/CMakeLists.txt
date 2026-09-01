@@ -24,6 +24,7 @@ set(PPCP_TESTS
     test_ct_s4
     test_ct_i35
     test_ct_i37
+    test_ct_i39
     test_ct_s6
     test_umbrella
     test_fixtures
@@ -332,6 +333,51 @@ if(TARGET ppcp-sim)
                        "--psk-ke-only are not registered")
     endif()
 
+    # ⭐ CT-I39's paired half — MSG 12.1d and 12a, over two processes.
+    #
+    # WHY THESE ARE PAIRED AND NOT STATIC.  Both refusals are the RESPONDER's,
+    # and `libppcp`'s own originator refuses each of them before a byte is
+    # queued — correctly, and so completely that neither can be driven through
+    # the public sender at all.  A peer WITHOUT those checks is what the
+    # responder has to answer, and `ppcp-sim` is the only thing that can be one
+    # (CONF §2c: an implementation tested only against itself passes I19, I22,
+    # I24 and I31 by accident).  The static half is test_ct_i39.
+    #
+    # 12.1d — a well-formed command naming an Actuator the counterpart never
+    # declared is answered `error` / `not_declared`.  Two commands cross: one
+    # well-formed at a DECLARED Actuator, which must be `applied`, and one at
+    # `act:never-declared`, which must not be.  The applied one is not padding:
+    # a row where nothing worked would satisfy "no action was taken" trivially.
+    #
+    # ⭐ 12.1c RIDES ON THIS ROW.  `actuator_acks_tx=1` says the responder's
+    # EMBEDDING wrote the applied ack — the engine writes none for a
+    # well-formed command, and answers only the `not_declared` one — and
+    # `actuator_clamped_rx=1` says the `state` the host read back DIFFERS from
+    # the level it asked for: the device's simulated driver moves in discrete
+    # steps and reaches 0.25 for a request of 0.5.  An implementation that
+    # echoed the request, as this library did until L30, fails that cell.
+    ppcp_pair_row(CT-I39-sockets-not-declared
+        torch-capture.json torch-capture
+        "actuator_commands_rx=2,actuator_acks_tx=1,actuator_states_rx=0,violations=0"
+        actuating-host.json actuating-host
+        "actuator_commands_tx=2,actuator_acks_rx=1,actuator_applied_rx=1,actuator_clamped_rx=1,actuator_not_declared_rx=1,violations=0"
+        4000)
+
+    # 12a — a command from a peer that is NOT the Session's `role: host` is
+    # REFUSED rather than acted on.  The command is well-formed and names a
+    # declared Actuator in the shape its `control` names, so the ONLY thing
+    # standing between it and the hardware is 12a: `actuator_applied_rx=0` with
+    # `actuator_refused_rx=1` is the whole assertion.
+    # `actuator_acks_tx=0` is the other half of the same statement: 12a is a
+    # refusal the library reaches WITHOUT hardware, so it answers it itself and
+    # the embedding is never asked.  The device never touched its torch.
+    ppcp_pair_row(CT-I39-sockets-non-host
+        torch-capture.json torch-capture
+        "actuator_commands_rx=1,actuator_acks_tx=0,violations=0"
+        actuating-nonhost.json actuating-nonhost
+        "actuator_commands_tx=1,actuator_acks_rx=1,actuator_refused_rx=1,actuator_applied_rx=0,violations=0"
+        3000)
+
     ppcp_pair_row(IOP-9-sockets-preview
         reference-host.json reference-host
         "captures_unique=2,violations=0"
@@ -350,9 +396,9 @@ if(TARGET ppcp-sim)
     # Two rows because the row table is keyed on the role of the peer under
     # test: a host and a capture peer are asked different questions.  Negative
     # rows (CONF 1d) are NOT run here and the tool refuses to pretend otherwise
-    # — libppcp declares all eight profiles, so it has no undeclared one to
+    # — libppcp declares all NINE profiles, so it has no undeclared one to
     # prove anything about.
-    set(PPCP_ALL_PROFILES core,capture,detect,mint,arbitrate,live,offline,markup)
+    set(PPCP_ALL_PROFILES core,capture,detect,mint,arbitrate,live,offline,markup,actuate)
     add_test(NAME L14-conform-self-host
              COMMAND $<TARGET_FILE:ppcp-conform> --self --role host --quiet
                      --profiles ${PPCP_ALL_PROFILES} --column libppcp)

@@ -191,7 +191,9 @@ static void test_arbitration(void)
     bool           excluded = false;
     const int64_t  t = 1000000000;
 
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:arb", "tb:host",
+    ppcp_instant opened_at_194;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_194, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:arb", "tb:host", &opened_at_194,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     host_with_session(&host, HPROF, 5, &s);
@@ -377,7 +379,9 @@ static void test_device_minted(void)
     ppcp_instant   dev_t0;
     const int64_t  t = 1000000000;
 
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:race", "tb:host",
+    ppcp_instant opened_at_380;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_380, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:race", "tb:host", &opened_at_380,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     host_with_session(&host, HPROF, 5, &s);
@@ -597,7 +601,9 @@ static void test_orphan_capture_request(void)
     uint64_t     req_id = 0;
     bool         saw_request = false, saw_absent = false, saw_error = false;
 
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:orphan", "tb:host",
+    ppcp_instant opened_at_600;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_600, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:orphan", "tb:host", &opened_at_600,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     host_with_session(&host, HPROF, 5, &s);

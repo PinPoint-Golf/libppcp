@@ -97,10 +97,18 @@ typedef enum ppcp_msg_type {
     PPCP_MT_PAYLOAD_BEGIN,      PPCP_MT_PAYLOAD_CHUNK,      PPCP_MT_PAYLOAD_ACK,
     PPCP_MT_PAYLOAD_END,        PPCP_MT_PAYLOAD_ABORT,      PPCP_MT_PAYLOAD_RESUME,
     PPCP_MT_SESSION_OFFER,      PPCP_MT_SESSION_ACCEPT,     PPCP_MT_SESSION_MANIFEST,
-    PPCP_MT_SHOT_LINK,          PPCP_MT_SESSION_LINK,       PPCP_MT_ERROR
+    PPCP_MT_SHOT_LINK,          PPCP_MT_SESSION_LINK,       PPCP_MT_ERROR,
+
+    /* Erratum E58–E60 — CR-02.  APPENDED rather than interleaved into MSG
+     * §11's order, so the numbering the two applications already compiled
+     * against does not move.  `msg_table` carries §11's order; nothing here
+     * indexes it by enumerator. */
+    PPCP_MT_DEVICE_STATUS,      PPCP_MT_BUFFER_STATUS,
+    PPCP_MT_ACTUATOR_COMMAND,   PPCP_MT_ACTUATOR_COMMAND_ACK,
+    PPCP_MT_ACTUATOR_STATE
 } ppcp_msg_type;
 
-#define PPCP_MSG_COUNT 45
+#define PPCP_MSG_COUNT 50
 
 typedef struct ppcp_msg_info {
     const char      *type;                 /* the wire spelling */
@@ -331,6 +339,16 @@ typedef struct ppcp_body_readiness {
     size_t         stream_id_count;
 } ppcp_body_readiness;
 
+/* MSG 5.5 / 5.6 — each carries its entity VERBATIM: the body's keys are the
+ * entity's own keys, flat.  The struct nests only so the union arm has a name. */
+typedef struct ppcp_body_device_status {
+    ppcp_device_status status;
+} ppcp_body_device_status;
+
+typedef struct ppcp_body_buffer_status {
+    ppcp_buffer_margin margin;
+} ppcp_body_buffer_status;
+
 typedef struct ppcp_body_interruption {
     ppcp_id       kind;
     ppcp_interval interval;
@@ -499,6 +517,38 @@ typedef struct ppcp_body_session_link { ppcp_session_link link; } ppcp_body_sess
 
 #define PPCP_ERROR_MESSAGE_MAX 256
 
+/* ------------------------------------------- MSG §12 — actuator control
+ *
+ * Erratum E58 — CR-02.  I39, as extended by E63, is carried by
+ * ppcp_actuator_setting: one type, two constructors, no third shape.  Nothing
+ * below re-checks "never neither, never both" because nothing below can build
+ * a value that breaks it.
+ */
+typedef struct ppcp_body_actuator_command {
+    ppcp_id               actuator_id;
+    ppcp_actuator_setting setting;   /* the body's own `on` / `level`, flat */
+} ppcp_body_actuator_command;
+
+typedef enum ppcp_actuator_verdict { PPCP_ACTUATOR_APPLIED = 0, PPCP_ACTUATOR_REFUSED }
+    ppcp_actuator_verdict;
+
+typedef struct ppcp_body_actuator_command_ack {
+    ppcp_id               actuator_id;
+    ppcp_actuator_verdict verdict;
+    bool                  has_reason;   /* 12.1b: present iff `refused` */
+    ppcp_id               reason;       /* no_actuator, busy, thermal_limit, … */
+    /* 12.1c: what the Actuator is ACTUALLY doing after the command applied —
+     * never an echo of the request.  Present iff `applied` (12.1b, 12.1c1). */
+    bool                  has_state;
+    ppcp_actuator_setting state;
+} ppcp_body_actuator_command_ack;
+
+typedef struct ppcp_body_actuator_state {
+    ppcp_id               actuator_id;
+    ppcp_actuator_setting state;
+    ppcp_instant          since;
+} ppcp_body_actuator_state;
+
 typedef struct ppcp_body_error {
     ppcp_id  code;
     char     message[PPCP_ERROR_MESSAGE_MAX + 1];
@@ -572,6 +622,11 @@ typedef struct ppcp_msg {
         ppcp_body_shot_link          shot_link;
         ppcp_body_session_link       session_link;
         ppcp_body_error              error;
+        ppcp_body_device_status        device_status;
+        ppcp_body_buffer_status        buffer_status;
+        ppcp_body_actuator_command     actuator_command;
+        ppcp_body_actuator_command_ack actuator_command_ack;
+        ppcp_body_actuator_state       actuator_state;
     } body;
 } ppcp_msg;
 

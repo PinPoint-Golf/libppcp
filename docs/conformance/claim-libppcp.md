@@ -13,14 +13,20 @@
 | | |
 |---|---|
 | Implementation | `libppcp`, the MIT reference implementation |
-| Against | `PPCP-CORE` revision 9 + errata E1–E4, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF` 1.0; **`PPCP-RV` revision 9 as amended by errata E30–E55** |
+| Against | `PPCP-CORE` revision 9 + errata E1–E4 and **E56–E66 (CR-02)**, `PPCP-MSG`, `PPCP-ENC`, `PPCP-CONF` 1.0; **`PPCP-RV` revision 9 as amended by errata E30–E55** |
 | Wire version | `ppcp/1.0` |
-| Sessions | S1 — L0–L3, L12 · S2 — L4–L8 · S3 — L9–L11, L13 · S4 — L14, L15, L16 · S5 — L17 · **CR-01: C1 — L18, L19, L20 · C2 — L21, L22** |
+| Sessions | S1 — L0–L3, L12 · S2 — L4–L8 · S3 — L9–L11, L13 · S4 — L14, L15, L16 · S5 — L17 · CR-01: C1 — L18, L19, L20 · C2 — L21, L22 · **CR-02: C1 — L23–L28 · C2 — L29, L30** |
 | Matrix | [`matrix.md`](matrix.md) — this file is the human-readable form of the `libppcp` column |
 
 ## The claim
 
-> *`libppcp` implements the **Core, Capture, Detect, Mint, Arbitrate, Live, Markup and Offline** profiles of PPCP 1.0 — all eight — and passes every test in `PPCP-CONF` §3 and §4 carrying those profiles.*
+> *`libppcp` implements the **Core, Capture, Detect, Mint, Arbitrate, Live, Markup, Offline and Actuate** profiles of PPCP 1.0 — all nine — and passes every test in `PPCP-CONF` §3 and §4 carrying those profiles.*
+
+**Actuate is new in CR-02** (errata E58–E66), and `CT-I39` is the row that carries it. Its static half is `test_ct_i39` — six assertions, because E63 repeats the `control` iff against `actuator_command_ack.state` and `actuator_state.state` as well as against the command. Its **paired** half is `CT-I39-sockets-not-declared` (12.1d) and `CT-I39-sockets-non-host` (12a); both had to be paired because this library's own originator refuses each case before a byte is queued, so only a peer that is not this library can present one.
+
+⭐ **12.1c, and what L30 changed about who answers.** `actuator_command_ack.state` reports what the Actuator is **actually** doing after the command is applied, *not an echo of the request*. Until L30 this engine wrote that ack itself, from the setting that had just arrived, and queued it before the embedding had seen the command — so `state` was the request, every time, and a host lit its torch control from its own click. Both application teams reported it independently and neither could satisfy 12.1c while the library was answering first. The specification was right; the implementation was wrong, so there is no erratum: a well-formed, declared, host-originated command is now handed over as `PPCP_EVENT_ACTUATOR_COMMAND` and answered by the embedding through `ppcp_peer_actuator_command_applied()` or `ppcp_peer_actuator_command_refused()`. The refusals that need **no hardware** stay in the library and are still answered before the event is raised — 12.1d (`not_declared`), 12.1a (`malformed`, I39) and 12a (a `refused` ack) — and the event's `status` says which is which, so nothing is answered twice.
+
+**The evidence moved with it.** `test_ct_i39` keeps its six static assertions and adds the achieved-state ones: a device whose simulated driver moves a `level` Actuator in discrete steps answers a request of `0.5` with `state: {level: 0.25}`. `CT-I39-sockets-not-declared` now carries the same claim over real sockets — `actuator_acks_tx=1` (the responder's **embedding** wrote the ack) and `actuator_clamped_rx=1` (the `state` the host read back **differs** from what it asked for). An implementation that echoes the request cannot pass that cell, which is the point: before L30 the row could not tell the two apart.
 
 **Not yet, and the gap is now small enough to name exactly.** `CONF` 1b and 1c require every test carrying a declared profile to pass, and the rows below say which do. What is left is not missing code: it is rows whose *method* is `rig` (physical ground truth nobody has measured), rows that are an application's to answer rather than a library's, and `CONF` 5c — a pairing against an implementation this team did not write, which no amount of work inside this repository can supply.
 
@@ -72,10 +78,10 @@ cmake --preset dev && cmake --build --preset dev -j3 && ctest --preset dev
 ```sh
 # the paired and injected rows, through the same instrument the applications use
 build/dev/tools/ppcp-conform/ppcp-conform --self --role host \
-    --profiles core,capture,detect,mint,arbitrate,live,offline,markup \
+    --profiles core,capture,detect,mint,arbitrate,live,offline,markup,actuate \
     --column libppcp --json host.json --markdown host.md
 build/dev/tools/ppcp-conform/ppcp-conform --self --role capture \
-    --profiles core,capture,detect,mint,arbitrate,live,offline,markup \
+    --profiles core,capture,detect,mint,arbitrate,live,offline,markup,actuate \
     --column libppcp --json capture.json --markdown capture.md
 ```
 
@@ -95,9 +101,9 @@ The same suite passes under `san` (AddressSanitizer + UndefinedBehaviorSanitizer
 
 ## The evidence
 
-Generated 2026-08-24 from commit `d579a7f` by `tools/make-claim.sh`.
+Generated 2026-09-01 from commit `a9785bb` by `tools/make-claim.sh`.
 
-### The suite — 56 rows, all passing
+### The suite — 59 rows, all passing
 
 Every row below is a command: `ctest --preset dev -R <name>`.
 
@@ -121,6 +127,7 @@ Every row below is a command: `ctest --preset dev -R <name>`.
 | `test_ct_s4` | Passed |
 | `test_ct_i35` | Passed |
 | `test_ct_i37` | Passed |
+| `test_ct_i39` | Passed |
 | `test_ct_s6` | Passed |
 | `test_umbrella` | Passed |
 | `test_fixtures` | Passed |
@@ -152,6 +159,8 @@ Every row below is a command: `ctest --preset dev -R <name>`.
 | `IOP-5-sockets-unrelated` | Passed |
 | `RT-4-psk-ke-only-refused` | Passed |
 | `RT-4-psk-ke-only-accepted-is-a-failure` | Passed |
+| `CT-I39-sockets-not-declared` | Passed |
+| `CT-I39-sockets-non-host` | Passed |
 | `IOP-9-sockets-preview` | Passed |
 | `L14-conform-self-host` | Passed |
 | `L14-conform-self-capture` | Passed |
@@ -223,7 +232,7 @@ ask of a wire format, and this is where it is asked.
 | Profile boundary (5b1) | `ctest --preset dev -R L16-profile-boundary` | pass |
 | Adjacent-MUST sweep (5b2) | `ctest --preset dev -R L16-adjacent-must` | generator runs; the sweep itself is L17 |
 
-  45 messages, 45 profile bindings checked against both tables, 0 unconferred origination MUSTs
+  50 messages, 50 profile bindings checked against both tables, 0 unconferred origination MUSTs
 
 <!-- ===== end of the generated evidence ===== -->
 

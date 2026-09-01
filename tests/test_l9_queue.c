@@ -72,7 +72,9 @@ static void test_partial_write(void)
     CHECK_EQ_I(ppcp_peer_hello(p), PPCP_OK);
     {
         ppcp_session s;
-        CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:1", "tb:dev"), PPCP_OK);
+        ppcp_instant opened_at_75;
+        CHECK_EQ_I(ppcp_instant_make_z(&opened_at_75, "tb:dev", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_session_make_hostless(&s, "sess:1", "tb:dev", &opened_at_75), PPCP_OK);
         CHECK_EQ_I(ppcp_peer_session_open(p, &s), PPCP_OK);
         CHECK_EQ_I(ppcp_peer_session_state(p, PPCP_SESSION_OPEN, PPCP_COMPLETE), PPCP_OK);
     }

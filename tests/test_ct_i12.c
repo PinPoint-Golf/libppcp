@@ -164,7 +164,9 @@ static void write_session(buf *out, const char *stream_kind, bool with_payload,
 
     /* CORE 4.1b: the hostless peer records `session_open` itself, with its own
      * timebase as `timebase_ref` and WITHOUT the two arbitration parameters. */
-    CHECK_EQ_I(ppcp_session_make_hostless(&sess, "sess:1", "tb:dev"), PPCP_OK);
+    ppcp_instant opened_at_167;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_167, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hostless(&sess, "sess:1", "tb:dev", &opened_at_167), PPCP_OK);
     CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_SESSION_OPEN, 1), PPCP_OK);
     m.body.session_open.session_id   = sess.id;
     m.body.session_open.timebase_ref = sess.timebase_ref;
@@ -303,7 +305,9 @@ static void test_writer_refusals(void)
     CHECK_EQ_I(emit(w, &out, PPCP_CHANNEL_BULK, &m), PPCP_ERR_INVALID);
 
     TEST("CORE 7.3b — no `arm` once a hostless `session_open` is recorded");
-    CHECK_EQ_I(ppcp_session_make_hostless(&sess, "sess:1", "tb:dev"), PPCP_OK);
+    ppcp_instant opened_at_306;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_306, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hostless(&sess, "sess:1", "tb:dev", &opened_at_306), PPCP_OK);
     CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_SESSION_OPEN, 1), PPCP_OK);
     m.body.session_open.session_id   = sess.id;
     m.body.session_open.timebase_ref = sess.timebase_ref;
@@ -323,7 +327,9 @@ static void test_writer_refusals(void)
         o2.n = 0;
         CHECK_EQ_I(ppcp_bundle_writer_begin(w2, o2.b, sizeof(o2.b), &n), PPCP_OK);
         o2.n += n;
-        CHECK_EQ_I(ppcp_session_make_hosted(&sess, "sess:1", "tb:host",
+        ppcp_instant opened_at_326;
+        CHECK_EQ_I(ppcp_instant_make_z(&opened_at_326, "tb:host", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_session_make_hosted(&sess, "sess:1", "tb:host", &opened_at_326,
                                             PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                             PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
         CHECK_EQ_I(ppcp_msg_init(&m, PPCP_MT_SESSION_OPEN, 1), PPCP_OK);
@@ -637,7 +643,9 @@ static void test_frames_from_engine(void)
     cfg.profile_count = 4;
     CHECK_EQ_I(ppcp_peer_new(pm, ppcp_peer_sizeof(), &cfg, &dev), PPCP_OK);
 
-    CHECK_EQ_I(ppcp_session_make_hostless(&sess, "sess:1", "tb:dev"), PPCP_OK);
+    ppcp_instant opened_at_640;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_640, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hostless(&sess, "sess:1", "tb:dev", &opened_at_640), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(dev, &sess), PPCP_OK);
     {
         ppcp_readiness r;

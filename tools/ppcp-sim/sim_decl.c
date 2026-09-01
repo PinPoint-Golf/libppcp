@@ -307,6 +307,33 @@ static bool load_source(const sj_doc *doc, const sj_node *n, sim_decl *d, size_t
     return true;
 }
 
+/* Erratum E58 with E66 — one Actuator of `Peer.actuators`.  `control` is what
+ * I39 binds every command, ack and event naming this Actuator to, so it is
+ * read from the file rather than inferred: a simulator that could only present
+ * `on_off` could not drive the `level` half of the row at all. */
+static bool load_actuator(const sj_doc *doc, const sj_node *n, sim_decl *d, size_t index,
+                          char *err, size_t err_len)
+{
+    const char *id = sj_str_or(sj_get(doc, n, "id"), "act:0");
+
+    if (ppcp_actuator_make(&d->act[index], id, d->peer_id,
+                           sj_str_or(sj_get(doc, n, "kind"),
+                                     PPCP_ACTUATOR_KIND_TORCH),
+                           sj_str_or(sj_get(doc, n, "control"),
+                                     PPCP_ACTUATOR_CONTROL_ON_OFF)) != PPCP_OK) {
+        snprintf(err, err_len, "the library refused Actuator `%s` (5.19a, I39)", id);
+        return false;
+    }
+    if (sj_get(doc, n, "label") != NULL)
+        (void)ppcp_actuator_set_label(&d->act[index],
+                                      sj_str_or(sj_get(doc, n, "label"), ""));
+    if (ppcp_actuator_validate(&d->act[index]) != PPCP_OK) {
+        snprintf(err, err_len, "Actuator `%s` is not valid", id);
+        return false;
+    }
+    return true;
+}
+
 static bool load_relation(const sj_doc *doc, const sj_node *n, ppcp_timebase_relation *out,
                           char *err, size_t err_len)
 {
@@ -462,6 +489,20 @@ bool sim_decl_load(sim_decl *d, const char *path, char *err, size_t err_len)
     }
     d->src_count = (size_t)(count > 0 ? count : 0);
 
+    /* actuators — a TOP-LEVEL key and a sibling of `sources` (erratum E66,
+     * MSG 3.3f).  Omitted where a peer owns none, so no existing file moves. */
+    arr   = sj_get(&doc, root, "actuators");
+    count = sj_len(&doc, arr);
+    if (count > (int)SIM_MAX_ACT) {
+        snprintf(err, err_len, "at most %d Actuators", SIM_MAX_ACT);
+        goto fail;
+    }
+    for (i = 0; i < count; i++) {
+        if (!load_actuator(&doc, sj_at(&doc, arr, i), d, (size_t)i, err, err_len))
+            goto fail;
+    }
+    d->act_count = (size_t)(count > 0 ? count : 0);
+
     /* the declaration itself.  MSG 3.3d: a peer owning no Source declares an
      * empty list, and that is a complete declaration. */
     if (ppcp_peer_desc_make(&d->desc, d->peer_id, d->role,
@@ -480,6 +521,13 @@ bool sim_decl_load(sim_decl *d, const char *path, char *err, size_t err_len)
     if (d->rel_count > 0 &&
         ppcp_peer_desc_set_relations(&d->desc, d->rel, d->rel_count) != PPCP_OK) {
         snprintf(err, err_len, "the library refused the relation list");
+        goto fail;
+    }
+    if (d->act_count > 0 &&
+        ppcp_peer_desc_set_actuators(&d->desc, d->act, d->act_count) != PPCP_OK) {
+        /* 5.19b is the likeliest reason: an Actuator's `kind` collided with a
+         * Source's, or two Actuators share an id. */
+        snprintf(err, err_len, "the library refused the Actuator list (5.19b)");
         goto fail;
     }
     n = sj_get(&doc, root, "product");

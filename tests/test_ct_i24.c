@@ -348,7 +348,9 @@ static void test_handshake(void)
     TEST("CORE §7.2 / MSG §4 — the Session opens and the peer joins");
     {
         ppcp_session sess;
-        CHECK_EQ_I(ppcp_session_make_hosted(&sess, "sess:1", "tb:host",
+        ppcp_instant opened_at_351;
+        CHECK_EQ_I(ppcp_instant_make_z(&opened_at_351, "tb:host", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_session_make_hosted(&sess, "sess:1", "tb:host", &opened_at_351,
                                             PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                             PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
         CHECK_EQ_I(ppcp_peer_session_open(host, &sess), PPCP_OK);
@@ -367,7 +369,9 @@ static void test_handshake(void)
     TEST("CT-I16 / 4.1a — `timebase_ref` is immutable, and a second one is refused");
     {
         ppcp_session sess2;
-        CHECK_EQ_I(ppcp_session_make_hosted(&sess2, "sess:1", "tb:elsewhere",
+        ppcp_instant opened_at_370;
+        CHECK_EQ_I(ppcp_instant_make_z(&opened_at_370, "tb:elsewhere", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_session_make_hosted(&sess2, "sess:1", "tb:elsewhere", &opened_at_370,
                                             PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                             PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
         CHECK_EQ_I(ppcp_peer_session_open(host, &sess2), PPCP_OK);
@@ -778,12 +782,16 @@ static void test_hostless(void)
                     NULL, NULL, NULL, 0, NULL);
 
     TEST("CORE 4.1b — a capture peer records the hostless session_open itself");
-    CHECK_EQ_I(ppcp_session_make_hostless(&hostless, "sess:offline", "tb:dev"), PPCP_OK);
+    ppcp_instant opened_at_781;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_781, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hostless(&hostless, "sess:offline", "tb:dev", &opened_at_781), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(dev, &hostless), PPCP_OK);
     CHECK(ppcp_peer_session_id(dev) != NULL);
 
     TEST("4.1d / 5.10e — and cannot record the hosted form, which asserts arbitration");
-    CHECK_EQ_I(ppcp_session_make_hosted(&hosted, "sess:live", "tb:dev",
+    ppcp_instant opened_at_786;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_786, "tb:dev", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&hosted, "sess:live", "tb:dev", &opened_at_786,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(dev, &hosted), PPCP_ERR_INVALID);

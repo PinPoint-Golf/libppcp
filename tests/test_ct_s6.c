@@ -15,7 +15,7 @@
  *
  * The four things asserted here:
  *
- *   1. the catalogue is complete and self-consistent (45 rows, no duplicate
+ *   1. the catalogue is complete and self-consistent (50 rows, no duplicate
  *      name, no duplicate id, every row reachable both ways);
  *   2. every message round-trips encode -> decode;
  *   3. MSG §2's two channel rules refuse the two violations they name, and
@@ -448,6 +448,45 @@ static ppcp_result build(ppcp_msg *m, ppcp_msg_type t, scratch *s)
                                            50.0, 0.4, "interval_alignment", "peer:host");
         if (rc != PPCP_OK) return rc;
         break;
+    /* --------------------------------------------------------- CR-02 */
+    case PPCP_MT_DEVICE_STATUS: {
+        ppcp_instant at = inst("tb:dev", 4000);
+        rc = ppcp_device_status_unavailable(&m->body.device_status.status, "src:1",
+                                            "in_use", &at);
+        if (rc != PPCP_OK) return rc;
+        break;
+    }
+    case PPCP_MT_BUFFER_STATUS: {
+        ppcp_instant from = inst("tb:dev", 3000);
+        ppcp_instant disc = inst("tb:dev", 3500);
+        rc = ppcp_buffer_margin_make(&m->body.buffer_status.margin, "st:1", &from, 17);
+        if (rc != PPCP_OK) return rc;
+        rc = ppcp_buffer_margin_set_retention_target(&m->body.buffer_status.margin,
+                                                     2000000000);
+        if (rc != PPCP_OK) return rc;
+        rc = ppcp_buffer_margin_set_last_discard(&m->body.buffer_status.margin, &disc,
+                                                 40000000);
+        if (rc != PPCP_OK) return rc;
+        break;
+    }
+    case PPCP_MT_ACTUATOR_COMMAND:
+        set_id(&m->body.actuator_command.actuator_id, "act:torch");
+        rc = ppcp_actuator_setting_on_off(&m->body.actuator_command.setting, true);
+        if (rc != PPCP_OK) return rc;
+        break;
+    case PPCP_MT_ACTUATOR_COMMAND_ACK:
+        set_id(&m->body.actuator_command_ack.actuator_id, "act:torch");
+        m->body.actuator_command_ack.verdict   = PPCP_ACTUATOR_APPLIED;
+        m->body.actuator_command_ack.has_state = true;
+        rc = ppcp_actuator_setting_on_off(&m->body.actuator_command_ack.state, true);
+        if (rc != PPCP_OK) return rc;
+        break;
+    case PPCP_MT_ACTUATOR_STATE:
+        set_id(&m->body.actuator_state.actuator_id, "act:torch");
+        rc = ppcp_actuator_setting_level(&m->body.actuator_state.state, 0.5);
+        if (rc != PPCP_OK) return rc;
+        m->body.actuator_state.since = inst("tb:dev", 5000);
+        break;
     case PPCP_MT_ERROR:
         set_id(&m->body.error.code, PPCP_ERRCODE_PROFILE_NOT_SUPPORTED);
         memcpy(m->body.error.message, "no detect", 9);
@@ -480,9 +519,9 @@ int main(void)
 
     /* ---------------------------------------------------- the catalogue */
 
-    TEST("MSG §11 — forty-five messages, no duplicate name, no duplicate id");
+    TEST("MSG §11 — fifty messages, no duplicate name, no duplicate id");
     CHECK_EQ_I(ppcp_msg_count(), PPCP_MSG_COUNT);
-    CHECK_EQ_I(PPCP_MSG_COUNT, 45);
+    CHECK_EQ_I(PPCP_MSG_COUNT, 50);
     for (i = 0; i < ppcp_msg_count(); i++) {
         const ppcp_msg_info *a = ppcp_msg_at(i);
         ppcp_msg_info        found;
@@ -505,7 +544,7 @@ int main(void)
         CHECK_EQ_I(ppcp_msg_lookup("com.example.nope", 16, &found), PPCP_ERR_NOT_FOUND);
     }
 
-    /* ------------------------------------- CT-S6.4 — all forty-five decode */
+    /* ------------------------------------------ CT-S6.4 — all fifty decode */
 
     for (i = 0; i < ppcp_msg_count(); i++) {
         const ppcp_msg_info *info = ppcp_msg_at(i);

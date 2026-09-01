@@ -42,6 +42,7 @@ static bool sim_build_bundle(sim *s)
     ppcp_msg            m;
     ppcp_stream         st;
     ppcp_instant        at;
+    ppcp_instant        opened;
     size_t              n = 0;
     char                sid[80], stid[80], capid[80];
     static const uint8_t clip[] = { 0x50, 0x50, 0x43, 0x50, 0x01, 0x02 };
@@ -71,7 +72,9 @@ static bool sim_build_bundle(sim *s)
 
     /* CORE 4.1b / 7.3b — a hostless Session records `session_open` without the
      * two arbitration parameters and NO `arm`: nobody was controlling. */
-    if (ppcp_session_make_hostless(&sess, sid, s->d->tb[0].id.v) != PPCP_OK)
+    if (ppcp_instant_make_z(&opened, s->d->tb[0].id.v, 0) != PPCP_OK)
+        goto fail;
+    if (ppcp_session_make_hostless(&sess, sid, s->d->tb[0].id.v, &opened) != PPCP_OK)
         goto fail;
     if (ppcp_msg_init(&m, PPCP_MT_SESSION_OPEN, 1) != PPCP_OK)
         goto fail;
@@ -233,6 +236,7 @@ typedef enum sim_step_id {
     STEP_SYNC,
     STEP_STREAMS,
     STEP_ARM,
+    STEP_ACTUATE,
     STEP_OFFER,
     STEP_NOMINATE,
     STEP_CAPTURES,
@@ -417,6 +421,90 @@ static void announce_captures(sim *s)
     }
 }
 
+/* ------------------------------------------------ MSG §12 — CT-I39's paired half
+ *
+ * Three commands, and only one of them goes out through the public sender.
+ *
+ * ⚠ 12.1d and 12a are both refused by `ppcp_peer_actuator_command()` BEFORE a
+ * byte is queued — which is correct, and which is exactly why the two paired
+ * assertions cannot be driven through it.  The row asks what the RESPONDER
+ * answers when a peer WITHOUT those checks sends one anyway, and a peer that
+ * cannot be that peer is a peer that tests only itself (CONF §2c).  So the two
+ * nonconformant commands are queued with `ppcp_peer_send()`, the escape hatch
+ * peer.h documents, and the assertion is entirely on the far end.
+ *
+ * ⚠ THE ANSWER IS THE RESPONDER'S EMBEDDING, not its engine — see the
+ * PPCP_EVENT_ACTUATOR_COMMAND case in sim_run.c.  12.1c makes
+ * `actuator_command_ack.state` the ACHIEVED setting, so the simulated driver
+ * there reaches a discrete step at or below what was asked and the host counts
+ * the difference as `actuator_clamped_rx`.
+ */
+static void send_actuator_commands(sim *s)
+{
+    const ppcp_peer_desc *cp = ppcp_peer_counterpart(s->p);
+    const ppcp_actuator  *pick;
+    ppcp_actuator_setting set;
+    size_t                i;
+
+    if (cp == NULL || cp->actuator_count == 0) {
+        /* E66 again: if `actuators` were nested in the `peer` head at one end
+         * and hoisted beside `sources` at the other, this is where it would
+         * show — as nothing at all, with no frame malformed. */
+        sim_violation("the counterpart declared no Actuator to command "
+                      "(E66: `actuators` is a top-level key of `declare`)");
+        return;
+    }
+    /* ⭐ 12.1c — a `level` Actuator is COMMANDED IN PREFERENCE to an `on_off`
+     * one, because the achieved value is only distinguishable from the request
+     * where there is something between the two.  A switch has nothing between
+     * on and off, so a torch could never demonstrate "not an echo of the
+     * request"; an indicator LED driven in discrete steps can, and does. */
+    pick = &cp->actuators[0];
+    for (i = 0; i < cp->actuator_count; i++) {
+        if (ppcp_actuator_control_is_level(&cp->actuators[i])) {
+            pick = &cp->actuators[i];
+            break;
+        }
+    }
+    /* I39 — the shape is the one the DECLARED `control` names.  The simulator
+     * READS it rather than assuming `on_off`, so a `level` Actuator is
+     * commanded in the level shape and neither side has to know which file
+     * the counterpart was built from. */
+    if (ppcp_actuator_control_is_level(pick)) {
+        if (ppcp_actuator_setting_level(&set, 0.5) != PPCP_OK)
+            return;
+    } else if (ppcp_actuator_setting_on_off(&set, true) != PPCP_OK) {
+        return;
+    }
+    /* Kept so the ack can be compared against what was ASKED for (12.1c). */
+    s->actuator_request      = set;
+    s->actuator_request_sent = true;
+
+    if ((s->sc->flags & SIM_F_ACTUATE) != 0) {
+        if (ppcp_peer_actuator_command(s->p, pick->id.v, &set) != PPCP_OK)
+            sim_violation("the engine refused a well-formed `actuator_command`");
+        else
+            s->c.actuator_commands_tx++;
+    }
+
+    if ((s->sc->flags & (SIM_F_ACTUATE_UNKNOWN | SIM_F_ACTUATE_NONHOST)) != 0) {
+        ppcp_msg    m;
+        const char *aid = ((s->sc->flags & SIM_F_ACTUATE_UNKNOWN) != 0)
+                              ? "act:never-declared"
+                              : pick->id.v;
+        if (ppcp_msg_init(&m, PPCP_MT_ACTUATOR_COMMAND, 1) != PPCP_OK ||
+            ppcp_id_set_z(&m.body.actuator_command.actuator_id, aid) != PPCP_OK) {
+            sim_violation("could not build the `actuator_command`");
+            return;
+        }
+        m.body.actuator_command.setting = set;
+        if (ppcp_peer_send(s->p, PPCP_CHANNEL_CONTROL, &m) != PPCP_OK)
+            sim_violation("the engine refused to queue the `actuator_command`");
+        else
+            s->c.actuator_commands_tx++;
+    }
+}
+
 /* True when this peer has what the scenario needs before it acts. */
 static bool script_ready(const sim *s)
 {
@@ -461,7 +549,11 @@ static void sim_tick(sim *s)
                 ppcp_session sess;
                 /* 5.10e made structural: a hosted Session carries both
                  * arbitration parameters and a hostless one carries neither. */
-                if (ppcp_session_make_hosted(&sess, s->d->session_id, s->d->timebase_ref,
+                /* 5.10h — mandatory, and expressed in `timebase_ref`. */
+                ppcp_instant opened;
+                if (ppcp_instant_make_z(&opened, s->d->timebase_ref, 0) != PPCP_OK ||
+                    ppcp_session_make_hosted(&sess, s->d->session_id, s->d->timebase_ref,
+                                             &opened,
                                              s->d->coincidence_window_ns,
                                              s->d->issue_hold_ns) != PPCP_OK ||
                     ppcp_session_set_heartbeat_interval(&sess, s->d->heartbeat_ms)
@@ -510,6 +602,13 @@ static void sim_tick(sim *s)
                     sim_violation("the engine refused `arm` (7.3a: host only)");
             }
             delay_ms = 40;
+            break;
+
+        case STEP_ACTUATE:
+            if ((s->sc->flags & (SIM_F_ACTUATE | SIM_F_ACTUATE_UNKNOWN |
+                                 SIM_F_ACTUATE_NONHOST)) != 0)
+                send_actuator_commands(s);
+            delay_ms = 60;
             break;
 
         case STEP_OFFER:

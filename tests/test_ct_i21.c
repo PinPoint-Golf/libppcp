@@ -452,7 +452,9 @@ static void test_liveness(void)
     rig_peer_new(&device, PPCP_ROLE_CAPTURE, "peer:dev", prof, 4, "tb:dev", true);
 
     TEST("4.1d / 5.10e — a hosted Session carries both arbitration parameters");
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:1", "tb:host",
+    ppcp_instant opened_at_455;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_455, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:1", "tb:host", &opened_at_455,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_session_open(host.p, &s), PPCP_OK);
@@ -555,7 +557,9 @@ static void test_liveness(void)
         memset(&solo, 0, sizeof(solo));
         rig_add(&solo.clock, "tb:dev", 0, 0.0);
         rig_peer_new(&solo, PPCP_ROLE_CAPTURE, "peer:solo", prof, 4, "tb:dev", true);
-        CHECK_EQ_I(ppcp_session_make_hostless(&hs, "sess:2", "tb:dev"), PPCP_OK);
+        ppcp_instant opened_at_558;
+        CHECK_EQ_I(ppcp_instant_make_z(&opened_at_558, "tb:dev", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_session_make_hostless(&hs, "sess:2", "tb:dev", &opened_at_558), PPCP_OK);
         CHECK_EQ_I(ppcp_peer_session_open(solo.p, &hs), PPCP_OK);
         /* The peer that RECORDED the hostless session_open is the one that
          * must mint; it learns that from its own frame arriving back through a
@@ -781,7 +785,9 @@ static void test_resume_and_stamps(void)
     rig_add(&device.clock, "tb:dev", 0, 0.0);
     rig_peer_new(&device, PPCP_ROLE_CAPTURE, "peer:dev", prof, 4, "tb:dev", true);
 
-    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:resume", "tb:host",
+    ppcp_instant opened_at_784;
+    CHECK_EQ_I(ppcp_instant_make_z(&opened_at_784, "tb:host", 0), PPCP_OK);
+    CHECK_EQ_I(ppcp_session_make_hosted(&s, "sess:resume", "tb:host", &opened_at_784,
                                         PPCP_DEFAULT_COINCIDENCE_WINDOW_NS,
                                         PPCP_DEFAULT_ISSUE_HOLD_NS), PPCP_OK);
     CHECK_EQ_I(ppcp_peer_sync_add_timebase(device.p, "tb:dev", NULL), PPCP_OK);

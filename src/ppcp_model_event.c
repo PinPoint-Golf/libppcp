@@ -939,6 +939,295 @@ ppcp_result ppcp_readiness_decode(ppcp_cbor_reader *r, ppcp_readiness *out)
     return PPCP_OK;
 }
 
+/* ------------------------------------------------------------ DeviceStatus */
+
+ppcp_result ppcp_device_status_available(ppcp_device_status *out, const char *source_id,
+                                         const ppcp_instant *since)
+{
+    ppcp_result rc;
+    if (out == NULL || since == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_instant_validate(since);
+    if (rc != PPCP_OK)
+        return rc;
+    memset(out, 0, sizeof(*out));
+    rc = ppcp_id_set_z(&out->source_id, source_id);
+    if (rc != PPCP_OK)
+        return rc;
+    /* MSG 5.5b: `reason` MUST NOT be present when `available: true`, and this
+     * constructor gives no way to attach one.  The unavailable case takes its
+     * reason as a parameter for the same reason. */
+    out->available = true;
+    out->since     = *since;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_device_status_unavailable(ppcp_device_status *out, const char *source_id,
+                                           const char *reason, const ppcp_instant *since)
+{
+    ppcp_result rc;
+    if (out == NULL || since == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_instant_validate(since);
+    if (rc != PPCP_OK)
+        return rc;
+    memset(out, 0, sizeof(*out));
+    rc = ppcp_id_set_z(&out->source_id, source_id);
+    if (rc != PPCP_OK)
+        return rc;
+    /* 5.20a / 5.15a: `reason` says WHY the Source cannot be used, never what
+     * it is presently doing.  It is an open registry (5.20d notes `no_source`
+     * is deliberately not in it), so the spelling is not checked here. */
+    rc = ppcp_id_set_z(&out->reason, reason);
+    if (rc != PPCP_OK)
+        return rc;
+    out->available  = false;
+    out->has_reason = true;
+    out->since      = *since;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_device_status_validate(const ppcp_device_status *d)
+{
+    if (d == NULL)
+        return PPCP_ERR_INVALID;
+    if (!ppcp_id_is_set(&d->source_id))
+        return PPCP_ERR_INVALID;
+    /* MSG 5.5b, both ways: a reason without unavailability contradicts the
+     * clause, and unavailability without a reason drops the only field that
+     * makes the report actionable. */
+    if (d->available && d->has_reason)
+        return PPCP_ERR_INVALID;
+    if (!d->available && !d->has_reason)
+        return PPCP_ERR_INVALID;
+    if (d->has_reason && !ppcp_id_is_set(&d->reason))
+        return PPCP_ERR_INVALID;
+    return ppcp_instant_validate(&d->since);
+}
+
+size_t ppcp_device_status_wfields(ppcp_wfield *f, const ppcp_device_status *d)
+{
+    size_t n = 0;
+    f[n++] = ppcp_wf_id("source_id", &d->source_id);
+    f[n++] = ppcp_wf_bool("available", d->available);
+    if (d->has_reason)
+        f[n++] = ppcp_wf_id("reason", &d->reason);
+    f[n++] = ppcp_wf_sub("since", ppcp_sub_write_instant, &d->since);
+    return n;
+}
+
+size_t ppcp_device_status_rfields(ppcp_rfield *f, ppcp_device_status *d,
+                                  ppcp_device_status_seen *s)
+{
+    size_t n = 0;
+    memset(d, 0, sizeof(*d));
+    memset(s, 0, sizeof(*s));
+    f[n++] = ppcp_rf("source_id", PPCP_F_ID, &d->source_id, &s->source_id);
+    f[n++] = ppcp_rf("available", PPCP_F_BOOL, &d->available, &s->available);
+    f[n++] = ppcp_rf("reason", PPCP_F_ID, &d->reason, &d->has_reason);
+    f[n++] = ppcp_rf_sub("since", ppcp_sub_read_instant, &d->since, NULL, &s->since);
+    return n;
+}
+
+ppcp_result ppcp_device_status_finish(ppcp_device_status *d, const ppcp_device_status_seen *s)
+{
+    if (!s->source_id || !s->available || !s->since)
+        return PPCP_ERR_MALFORMED;
+    if (ppcp_device_status_validate(d) != PPCP_OK)
+        return PPCP_ERR_MALFORMED;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_device_status_encode(ppcp_cbor_writer *w, const ppcp_device_status *d)
+{
+    ppcp_wfield f[4];
+    size_t      n;
+    ppcp_result rc = ppcp_device_status_validate(d);
+    if (rc != PPCP_OK)
+        return rc;
+    n = ppcp_device_status_wfields(f, d);
+    return ppcp_rec_write(w, f, n);
+}
+
+ppcp_result ppcp_device_status_decode(ppcp_cbor_reader *r, ppcp_device_status *out)
+{
+    ppcp_rfield             f[4];
+    ppcp_device_status_seen seen;
+    size_t                  n;
+    ppcp_result             rc;
+
+    if (out == NULL)
+        return PPCP_ERR_INVALID;
+    n  = ppcp_device_status_rfields(f, out, &seen);
+    rc = ppcp_rec_read(r, f, n);
+    if (rc != PPCP_OK)
+        return rc;
+    return ppcp_device_status_finish(out, &seen);
+}
+
+/* ------------------------------------------------------------ BufferMargin */
+
+ppcp_result ppcp_buffer_margin_make(ppcp_buffer_margin *out, const char *stream_id,
+                                    const ppcp_instant *retained_from,
+                                    uint64_t discarded_since_open)
+{
+    ppcp_result rc;
+    if (out == NULL || retained_from == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_instant_validate(retained_from);
+    if (rc != PPCP_OK)
+        return rc;
+    memset(out, 0, sizeof(*out));
+    rc = ppcp_id_set_z(&out->stream_id, stream_id);
+    if (rc != PPCP_OK)
+        return rc;
+    out->retained_from        = *retained_from;
+    out->discarded_since_open = discarded_since_open;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_buffer_margin_set_retention_target(ppcp_buffer_margin *b,
+                                                    ppcp_duration_ns target_ns)
+{
+    if (b == NULL || target_ns <= 0)
+        return PPCP_ERR_INVALID;
+    b->has_retention_target = true;
+    b->retention_target_ns  = target_ns;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_buffer_margin_set_last_discard(ppcp_buffer_margin *b,
+                                                const ppcp_instant *since,
+                                                ppcp_duration_ns duration_ns)
+{
+    ppcp_result rc;
+    if (b == NULL || since == NULL || duration_ns < 0)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_instant_validate(since);
+    if (rc != PPCP_OK)
+        return rc;
+    /* 5.21: `last_discard` is ONE statement — a span, sized and timestamped —
+     * so there is no setter for half of it. */
+    b->has_last_discard          = true;
+    b->last_discard_since        = *since;
+    b->last_discard_duration_ns  = duration_ns;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_buffer_margin_validate(const ppcp_buffer_margin *b)
+{
+    ppcp_result rc;
+    if (b == NULL)
+        return PPCP_ERR_INVALID;
+    if (!ppcp_id_is_set(&b->stream_id))
+        return PPCP_ERR_INVALID;
+    rc = ppcp_instant_validate(&b->retained_from);
+    if (rc != PPCP_OK)
+        return rc;
+    if (b->has_retention_target && b->retention_target_ns <= 0)
+        return PPCP_ERR_INVALID;
+    if (b->has_last_discard) {
+        if (b->last_discard_duration_ns < 0)
+            return PPCP_ERR_INVALID;
+        rc = ppcp_instant_validate(&b->last_discard_since);
+        if (rc != PPCP_OK)
+            return rc;
+    }
+    return PPCP_OK;
+}
+
+static ppcp_result last_discard_write(ppcp_cbor_writer *w, const void *ctx)
+{
+    const ppcp_buffer_margin *b = (const ppcp_buffer_margin *)ctx;
+    ppcp_wfield f[2];
+    f[0] = ppcp_wf_sub("since", ppcp_sub_write_instant, &b->last_discard_since);
+    f[1] = ppcp_wf_int("duration", b->last_discard_duration_ns);
+    return ppcp_rec_write(w, f, 2);
+}
+
+static ppcp_result last_discard_read(ppcp_cbor_reader *r, void *dst, void *ctx)
+{
+    ppcp_buffer_margin *b = (ppcp_buffer_margin *)dst;
+    ppcp_rfield f[2];
+    bool        s_since = false, s_dur = false;
+    ppcp_result rc;
+    (void)ctx;
+    f[0] = ppcp_rf_sub("since", ppcp_sub_read_instant, &b->last_discard_since, NULL, &s_since);
+    f[1] = ppcp_rf("duration", PPCP_F_INT, &b->last_discard_duration_ns, &s_dur);
+    rc = ppcp_rec_read(r, f, 2);
+    if (rc != PPCP_OK)
+        return rc;
+    if (!s_since || !s_dur)
+        return PPCP_ERR_MALFORMED;
+    return PPCP_OK;
+}
+
+size_t ppcp_buffer_margin_wfields(ppcp_wfield *f, const ppcp_buffer_margin *b)
+{
+    size_t n = 0;
+    f[n++] = ppcp_wf_id("stream_id", &b->stream_id);
+    f[n++] = ppcp_wf_sub("retained_from", ppcp_sub_write_instant, &b->retained_from);
+    if (b->has_retention_target)
+        f[n++] = ppcp_wf_int("retention_target", b->retention_target_ns);
+    f[n++] = ppcp_wf_uint("discarded_since_open", b->discarded_since_open);
+    if (b->has_last_discard)
+        f[n++] = ppcp_wf_sub("last_discard", last_discard_write, b);
+    return n;
+}
+
+size_t ppcp_buffer_margin_rfields(ppcp_rfield *f, ppcp_buffer_margin *b,
+                                  ppcp_buffer_margin_seen *s)
+{
+    size_t n = 0;
+    memset(b, 0, sizeof(*b));
+    memset(s, 0, sizeof(*s));
+    f[n++] = ppcp_rf("stream_id", PPCP_F_ID, &b->stream_id, &s->stream_id);
+    f[n++] = ppcp_rf_sub("retained_from", ppcp_sub_read_instant, &b->retained_from, NULL,
+                         &s->retained_from);
+    f[n++] = ppcp_rf("retention_target", PPCP_F_INT, &b->retention_target_ns,
+                     &b->has_retention_target);
+    f[n++] = ppcp_rf("discarded_since_open", PPCP_F_UINT, &b->discarded_since_open,
+                     &s->discarded_since_open);
+    f[n++] = ppcp_rf_sub("last_discard", last_discard_read, b, NULL, &b->has_last_discard);
+    return n;
+}
+
+ppcp_result ppcp_buffer_margin_finish(ppcp_buffer_margin *b, const ppcp_buffer_margin_seen *s)
+{
+    if (!s->stream_id || !s->retained_from || !s->discarded_since_open)
+        return PPCP_ERR_MALFORMED;
+    if (ppcp_buffer_margin_validate(b) != PPCP_OK)
+        return PPCP_ERR_MALFORMED;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_buffer_margin_encode(ppcp_cbor_writer *w, const ppcp_buffer_margin *b)
+{
+    ppcp_wfield f[5];
+    size_t      n;
+    ppcp_result rc = ppcp_buffer_margin_validate(b);
+    if (rc != PPCP_OK)
+        return rc;
+    n = ppcp_buffer_margin_wfields(f, b);
+    return ppcp_rec_write(w, f, n);
+}
+
+ppcp_result ppcp_buffer_margin_decode(ppcp_cbor_reader *r, ppcp_buffer_margin *out)
+{
+    ppcp_rfield             f[5];
+    ppcp_buffer_margin_seen seen;
+    size_t                  n;
+    ppcp_result             rc;
+
+    if (out == NULL)
+        return PPCP_ERR_INVALID;
+    n  = ppcp_buffer_margin_rfields(f, out, &seen);
+    rc = ppcp_rec_read(r, f, n);
+    if (rc != PPCP_OK)
+        return rc;
+    return ppcp_buffer_margin_finish(out, &seen);
+}
+
 /* --------------------------------------------------------------- ShotLink */
 
 bool ppcp_shot_link_basis_is_retrospective(const char *basis, size_t len)

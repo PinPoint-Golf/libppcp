@@ -83,6 +83,10 @@ ppcp_result ppcp_peer_relations_read(ppcp_cbor_reader *r, ppcp_arena *a,
                                      struct ppcp_peer_desc *out);
 ppcp_result ppcp_peer_sources_read(ppcp_cbor_reader *r, ppcp_arena *a,
                                    struct ppcp_peer_desc *out);
+/* CORE 5.19 / erratum E58 — `Peer.actuators`, carried by `declare` as a
+ * top-level key of its own exactly as `sources` is. */
+ppcp_result ppcp_peer_actuators_read(ppcp_cbor_reader *r, ppcp_arena *a,
+                                     struct ppcp_peer_desc *out);
 
 /* A Capture whose AchievedSummary carries a thermal timeline needs somewhere
  * to put it; ppcp_capture_decode passes NULL and rejects one. */
@@ -95,6 +99,7 @@ ppcp_result ppcp_capture_mark_confirmed(struct ppcp_capture *c);
 ppcp_result ppcp_peer_timebases_write(ppcp_cbor_writer *w, const void *ctx);
 ppcp_result ppcp_peer_relations_write(ppcp_cbor_writer *w, const void *ctx);
 ppcp_result ppcp_peer_sources_write(ppcp_cbor_writer *w, const void *ctx);
+ppcp_result ppcp_peer_actuators_write(ppcp_cbor_writer *w, const void *ctx);
 ppcp_result ppcp_enum_from_text(const ppcp_enum_map *m, const char *s, size_t len, int *out);
 
 typedef enum ppcp_f_kind {
@@ -196,6 +201,38 @@ ppcp_result ppcp_rec_write_array(ppcp_cbor_writer *w, const void *base, size_t e
                                  size_t count, ppcp_elem_write fn);
 
 /* --------------------------------------------------- small shared decoders */
+
+/* MSG 5.5 and 5.6 carry `DeviceStatus` and `BufferMargin` VERBATIM: the body's
+ * keys ARE the entity's keys, flat, not nested under one.  So the field tables
+ * are shared between the entity codec and the message codec rather than
+ * written twice — one table, one place for a key to change. */
+struct ppcp_device_status;
+struct ppcp_buffer_margin;
+
+typedef struct ppcp_device_status_seen {
+    bool source_id, available, since;
+} ppcp_device_status_seen;
+
+typedef struct ppcp_buffer_margin_seen {
+    bool stream_id, retained_from, discarded_since_open;
+} ppcp_buffer_margin_seen;
+
+size_t      ppcp_device_status_wfields(ppcp_wfield *f, const struct ppcp_device_status *d);
+size_t      ppcp_device_status_rfields(ppcp_rfield *f, struct ppcp_device_status *d,
+                                       ppcp_device_status_seen *s);
+ppcp_result ppcp_device_status_finish(struct ppcp_device_status *d,
+                                      const ppcp_device_status_seen *s);
+
+size_t      ppcp_buffer_margin_wfields(ppcp_wfield *f, const struct ppcp_buffer_margin *b);
+size_t      ppcp_buffer_margin_rfields(ppcp_rfield *f, struct ppcp_buffer_margin *b,
+                                       ppcp_buffer_margin_seen *s);
+ppcp_result ppcp_buffer_margin_finish(struct ppcp_buffer_margin *b,
+                                      const ppcp_buffer_margin_seen *s);
+
+/* MSG 12.1 / 12.2 `state` — the `{ on }` or `{ level }` object of I39. */
+ppcp_result ppcp_actuator_setting_write(ppcp_cbor_writer *w, const void *ctx);
+ppcp_result ppcp_actuator_setting_read(ppcp_cbor_reader *r, void *dst, void *ctx);
+
 
 /* Sub-readers with the ppcp_sub_read signature, for use in field tables. */
 ppcp_result ppcp_sub_read_instant(ppcp_cbor_reader *r, void *dst, void *ctx);

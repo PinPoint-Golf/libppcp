@@ -50,6 +50,7 @@
 #define SIM_MAX_SRC      8
 #define SIM_MAX_CP       4
 #define SIM_MAX_PROF     8
+#define SIM_MAX_ACT      4
 #define SIM_ERR_LEN    256
 
 /* One clock, several timebases.  A peer declaring three timebases is one
@@ -85,6 +86,15 @@ typedef struct sim_decl {
     size_t                 cp_count[SIM_MAX_SRC];
     ppcp_source            src[SIM_MAX_SRC];
     size_t                 src_count;
+
+    /* Erratum E58 / E66 — `Peer.actuators`, a TOP-LEVEL key of the declaration
+     * and a sibling of `sources`.  E66 exists because E58 put the field on the
+     * entity and left `MSG` 3.3's schema block untouched, so nesting it in the
+     * `peer` head and hoisting it beside `sources` were both defensible
+     * readings — and two conformant peers would each have declared Actuators
+     * the other could not see, with nothing malformed at either end. */
+    ppcp_actuator          act[SIM_MAX_ACT];
+    size_t                 act_count;
 
     ppcp_peer_desc         desc;
 
@@ -130,6 +140,13 @@ bool sim_decl_load(sim_decl *d, const char *path, char *err, size_t err_len);
  * of I22 — converting a request window expressed in the host's convention into
  * its own buffer's timebase — could not be driven from outside at all. */
 #define SIM_F_REQUEST        0x00010000u  /* a host requests a Capture per Shot */
+/* ---------------------------------------- MSG §12, CT-I39's paired half.
+ * Each of these sends ONE `actuator_command` and then stops, because what the
+ * row asserts is the ANSWER and a second command would only make the counters
+ * ambiguous. */
+#define SIM_F_ACTUATE        0x00020000u  /* a well-formed command, public sender */
+#define SIM_F_ACTUATE_UNKNOWN 0x00040000u /* 12.1d — names an undeclared Actuator */
+#define SIM_F_ACTUATE_NONHOST 0x00080000u /* 12a — sent by a peer that is not the host */
 
 typedef struct sim_scenario {
     const char *name;
@@ -186,6 +203,19 @@ typedef struct sim_counter {
     int64_t probe_timebases, probes_tx, replies_rx;
     int64_t heartbeats_rx;
     int64_t errors_rx;
+    /* MSG §12 / CT-I39.  `actuator_not_declared_rx` and
+     * `actuator_refused_rx` are the two paired assertions of the row: 12.1d's
+     * `error` / `not_declared`, and 12a's REFUSAL rather than an action. */
+    int64_t actuator_commands_tx, actuator_commands_rx;
+    int64_t actuator_acks_rx, actuator_applied_rx, actuator_refused_rx;
+    int64_t actuator_not_declared_rx, actuator_states_rx;
+    /* MSG 12.1c — the two counters that make "not an echo of the request"
+     * assertable from outside.  `actuator_acks_tx` is the answers this peer's
+     * EMBEDDING wrote (the engine writes none for a well-formed command since
+     * L30), and `actuator_clamped_rx` is `applied` acks whose `state` differs
+     * from what this peer asked for.  A row asserting `actuator_clamped_rx=1`
+     * cannot be passed by an engine that echoes. */
+    int64_t actuator_acks_tx, actuator_clamped_rx;
     int64_t minted, retained, issued, late_issues, arbiter_observed;
     int64_t offers_rx, offers_tx, accepts_rx, replays;
     int64_t sessions_joined, streams_rx, arms_rx;

@@ -336,7 +336,18 @@ typedef enum ppcp_event_kind {
     PPCP_EVENT_CAPTURE_REQUEST,  /* L10 — 8.4: answer it, never with an error */
     PPCP_EVENT_SESSION_OFFER,    /* L9 queue — a device offers a stored Session */
     PPCP_EVENT_SESSION_ACCEPT,
-    PPCP_EVENT_SESSION_MANIFEST
+    PPCP_EVENT_SESSION_MANIFEST,
+
+    /* CR-02, errata E58–E60.  Appended for the same reason the L9 block above
+     * was: the numbering the two applications compiled against does not move. */
+    PPCP_EVENT_DEVICE_STATUS,        /* MSG 5.5 — a Source became (un)usable */
+    PPCP_EVENT_BUFFER_STATUS,        /* MSG 5.6 — a ring buffer's standing margin */
+    /* ⚠ MSG 12.1 — the engine does NOT answer this one: 12.1c is the
+     * embedding's to answer, with ppcp_peer_actuator_command_applied() or
+     * ppcp_peer_actuator_command_refused().  See MSG §12 below. */
+    PPCP_EVENT_ACTUATOR_COMMAND,
+    PPCP_EVENT_ACTUATOR_COMMAND_ACK, /* MSG 12.1 — the verdict; the click is not it */
+    PPCP_EVENT_ACTUATOR_STATE        /* MSG 12.2 — an Actuator moved without a command */
 } ppcp_event_kind;
 
 #define PPCP_PEER_EVENT_QUEUE 4
@@ -477,6 +488,93 @@ PPCP_API ppcp_result ppcp_peer_readiness(ppcp_peer *p, const ppcp_readiness *r,
 PPCP_API ppcp_result ppcp_peer_interruption(ppcp_peer *p, const char *kind,
                                             const ppcp_interval *interval, bool recovered,
                                             const ppcp_id *stream_ids, size_t count);
+
+/* MSG 5.5 / 5.6 — the two CR-02 measurements, on `readiness`'s push
+ * discipline: emitted when the thing they report CHANGES, never polled and
+ * never on a cadence (5.5a, 5.6c).  5.5c binds `device_status` to the Source's
+ * owner, and 5.6a to a `shot_windowed` Stream; the engine checks both against
+ * what this peer actually declared and opened. */
+PPCP_API ppcp_result ppcp_peer_device_status(ppcp_peer *p, const ppcp_device_status *d);
+PPCP_API ppcp_result ppcp_peer_buffer_status(ppcp_peer *p, const ppcp_buffer_margin *b);
+
+/* ------------------------------------------------ MSG §12 — actuator control
+ *
+ * I39 rides on ppcp_actuator_setting, which has two constructors and no third
+ * shape, so "never neither, never both" is unconstructible rather than
+ * checked here.
+ *
+ * ⚠ These queue.  `ppcp_peer_actuator_command` returning PPCP_OK says the
+ * command is ON THIS PEER'S QUEUE, not that a torch came on: the answer is
+ * `actuator_command_ack`, arriving later as PPCP_EVENT_ACTUATOR_COMMAND_ACK.
+ * A control that lights on the call rather than on the ack is wrong.
+ *
+ * 12a — only a host originates a command, so a peer whose role is not `host`
+ * is refused here.  12.1d — the named Actuator must be in the counterpart's
+ * last-known `Peer.actuators`, and I39's iff is checked against that
+ * Actuator's declared `control` before a byte is queued. */
+PPCP_API ppcp_result ppcp_peer_actuator_command(ppcp_peer *p, const char *actuator_id,
+                                                const ppcp_actuator_setting *setting);
+
+/* ------------------------------------- 12.1c — THE RESPONDER OWES THE ANSWER
+ *
+ * ⚠ A well-formed command from the host raises PPCP_EVENT_ACTUATOR_COMMAND and
+ * the engine answers NOTHING.  MSG 1c: a peer that receives a Request MUST
+ * answer it — with `actuator_command_ack` or with `error`, never with silence
+ * — so the embedding owes ONE of the two calls below per event, and a peer
+ * that never answers is nonconformant rather than slow.
+ *
+ * WHY THE ENGINE CANNOT ANSWER FOR YOU.  12.1c: `state` reports what the
+ * Actuator is ACTUALLY doing once the command is applied, "not an echo of the
+ * request", and where a platform clamps a requested level `state` carries the
+ * ACHIEVED value.  This library is sans-I/O and owns no hardware, so an ack it
+ * wrote itself could only ever be the echo 12.1c forbids — which is what it
+ * was until L30, and which both application teams hit independently.  A host
+ * lighting its torch control from an echoed ack is the same "queued is not
+ * achieved" defect already fixed for `arm` and for `stream_open`.
+ *
+ * WHAT THE ENGINE STILL DECIDES, because none of it needs hardware.  Each of
+ * these is ANSWERED BEFORE the event is raised, and the event's `status` says
+ * so: anything but PPCP_OK means the engine has already answered and you owe
+ * nothing.
+ *
+ *   12.1d  an Actuator absent from this peer's OWN declared `Peer.actuators`
+ *          — `error` / `not_declared`;
+ *   12.1a  a command whose `on`/`level` shape is not the one that Actuator's
+ *          declared `control` names — `error` / `malformed` (I39);
+ *   12a    a command from a peer that is not the Session's `role: host` — a
+ *          `refused` ack, because this is the one message that changes what
+ *          another peer's hardware does.
+ *
+ * `in_reply_to` is the command's `msg_id`, straight off the event
+ * (`e.msg->env.msg_id`); MSG 1c is a correlation, not a broadcast.
+ *
+ * I39 and 12.1b are preserved BY SHAPE, which is why this is two functions and
+ * not one with two optional arguments: an `applied` ack is unconstructible
+ * without a `ppcp_actuator_setting`, whose two constructors admit no third
+ * shape, and a `refused` ack can carry neither a state nor an absent `reason`.
+ * The achieved setting is checked against the named Actuator's DECLARED
+ * `control` before a byte is queued — the same I39 check the originator runs
+ * — so an embedding whose driver reports the wrong shape is refused here
+ * rather than putting a malformed ack on the wire. */
+PPCP_API ppcp_result ppcp_peer_actuator_command_applied(ppcp_peer *p,
+                                                        const char *actuator_id,
+                                                        const ppcp_actuator_setting *achieved,
+                                                        uint64_t in_reply_to);
+/* 12.1b — `reason` is REQUIRED and comes from the open registry `no_actuator`,
+ * `busy`, `thermal_limit`, `permission_denied`, `unsupported`.  A refusal
+ * carries no `state`: nothing was applied, so there is no achieved value to
+ * report.  An Actuator that MOVED without the command being applied — a
+ * thermal cutoff — is `ppcp_peer_actuator_state` (12.2a), separately. */
+PPCP_API ppcp_result ppcp_peer_actuator_command_refused(ppcp_peer *p,
+                                                        const char *actuator_id,
+                                                        const char *reason,
+                                                        uint64_t in_reply_to);
+/* 12.2a — the Actuator moved for a reason OTHER than a command just
+ * acknowledged: a thermal cutoff, a local physical control.  Broadcast
+ * (`owner → any`, 12.2b), so an observer sees it without the host relaying. */
+PPCP_API ppcp_result ppcp_peer_actuator_state(ppcp_peer *p, const char *actuator_id,
+                                              const ppcp_actuator_setting *state,
+                                              const ppcp_instant *since);
 
 /* ---------------------------------------- MSG §8 — Captures and bulk transfer
  *

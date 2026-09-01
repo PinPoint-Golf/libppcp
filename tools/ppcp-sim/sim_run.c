@@ -162,7 +162,41 @@ static const sim_scenario g_scenarios[] = {
       "CT-I34",
       "The same offer, replayed twice. An importer keyed on `Capture.id` scoped "
       "by session and peer sees every Capture once.",
-      SIM_F_OFFER | SIM_F_REPLAY_TWICE, 0, 0, 0, 0 }
+      SIM_F_OFFER | SIM_F_REPLAY_TWICE, 0, 0, 0, 0 },
+
+    /* ------------------------------------------- MSG §12, CT-I39's paired half */
+
+    { "torch-capture", "capture",
+      "CT-I39",
+      "A capture peer that OWNS an Actuator: a torch declared `control: on_off` "
+      "and an indicator LED declared `control: level`, so both halves of I39's "
+      "iff have a real declaration to be read against. It commands nothing; it "
+      "answers — and since L30 the ANSWER IS ITS OWN, because 12.1c makes "
+      "`state` the achieved value and no sans-I/O engine can read hardware. "
+      "Its simulated driver moves a `level` Actuator in four discrete steps "
+      "and reports the step at or below the request, so 0.5 is answered 0.25.",
+      SIM_F_SYNC, 0, 0, 0, 0 },
+
+    { "actuating-host", "host",
+      "CT-I39 (12.1d)",
+      "A host that commands the counterpart's first `level` Actuator — "
+      "preferred over an `on_off` one because a switch has nothing between on "
+      "and off for 12.1c's clamp to show up in — in the shape that Actuator's "
+      "`control` names, and then names one that was never declared at all. The second is 12.1d, and it goes out through "
+      "ppcp_peer_send() precisely BECAUSE ppcp_peer_actuator_command() refuses "
+      "it — the row is about what the RESPONDER answers, and a peer whose "
+      "originator lacks that check is the peer this exists to be.",
+      SIM_F_SESSION_OPEN | SIM_F_SYNC | SIM_F_HEARTBEAT | SIM_F_ARM |
+      SIM_F_ACTUATE | SIM_F_ACTUATE_UNKNOWN,
+      0, 0, 0, 0 },
+
+    { "actuating-nonhost", "capture",
+      "CT-I39 (12a)",
+      "A well-formed command from a peer that is NOT the Session's `role: host`. "
+      "12a is narrower than `stream_open`'s any-to-owner on purpose: this is the "
+      "one message that changes what another peer's hardware does, so it must be "
+      "REFUSED rather than acted on.",
+      SIM_F_SYNC | SIM_F_ACTUATE_NONHOST, 0, 0, 0, 0 }
 };
 
 const sim_scenario *sim_scenario_find(const char *name)
@@ -251,6 +285,11 @@ typedef struct sim {
 
     ppcp_id probed[SIM_MAX_TB];
     size_t  probed_count;
+
+    /* MSG 12.1c — what this peer ASKED an Actuator for, kept so the `applied`
+     * ack it reads back can be compared against it rather than assumed. */
+    bool                  actuator_request_sent;
+    ppcp_actuator_setting actuator_request;
 } sim;
 
 /* --------------------------------------------------------------- callbacks */
@@ -720,8 +759,100 @@ static void handle_event(sim *s, const ppcp_event *e)
         }
         break;
 
+    /* ⭐ MSG §12 / CT-I39 / 12.1c — THE SIMULATOR ANSWERS THIS ITSELF.
+     *
+     * Since L30 the engine writes no ack for a well-formed, declared,
+     * host-originated command: 12.1c says `state` is what the Actuator is
+     * ACTUALLY doing and not an echo of the request, and no sans-I/O library
+     * can know that.  So this is the embedding's answer (MSG 1c: a Request is
+     * answered, never met with silence), and the simulated driver below is
+     * what makes the row prove anything — it reaches a DIFFERENT value from
+     * the one it was asked for, exactly as 12.1c's own example does.
+     *
+     * `e->status` is how a command the engine already answered is told from
+     * one this peer owes an answer to: 12.1d, 12.1a and 12a are all decided
+     * inside the library and arrive here as a non-OK status, and answering
+     * those again would be two replies to one request. */
+    case PPCP_EVENT_ACTUATOR_COMMAND:
+        s->c.actuator_commands_rx++;
+        if (e->msg != NULL && e->status == PPCP_OK) {
+            const ppcp_body_actuator_command *c = &e->msg->body.actuator_command;
+            ppcp_actuator_setting achieved;
+            bool                  built;
+            if (c->setting.has_on) {
+                /* A switch has nothing between on and off, so the achieved
+                 * state IS the request.  That is a fact about switches. */
+                built = (ppcp_actuator_setting_on_off(&achieved, c->setting.on) == PPCP_OK);
+            } else {
+                /* 12.1c's own example: "a torch driver rounding to a discrete
+                 * step".  Four steps, and the achieved one is at or BELOW what
+                 * was asked — never brighter than the request.  0.5 achieves
+                 * 0.25, and an engine that echoed could not produce that. */
+                double want = c->setting.level, got = 0.0;
+                if (want >= 1.0)       got = 1.0;
+                else if (want >= 0.75) got = 0.75;
+                else if (want >= 0.25) got = 0.25;
+                built = (ppcp_actuator_setting_level(&achieved, got) == PPCP_OK);
+            }
+            if (!built) {
+                sim_violation("could not build the achieved `actuator_setting`");
+            } else if (ppcp_peer_actuator_command_applied(s->p, c->actuator_id.v,
+                                                          &achieved,
+                                                          e->msg->env.msg_id) != PPCP_OK) {
+                sim_violation("12.1c: the engine refused the embedding's "
+                              "`actuator_command_ack`");
+            } else {
+                s->c.actuator_acks_tx++;
+            }
+        }
+        break;
+
+    case PPCP_EVENT_ACTUATOR_COMMAND_ACK:
+        s->c.actuator_acks_rx++;
+        if (e->msg != NULL) {
+            const ppcp_body_actuator_command_ack *a = &e->msg->body.actuator_command_ack;
+            if (a->verdict == PPCP_ACTUATOR_APPLIED) {
+                s->c.actuator_applied_rx++;
+                /* 12.1c1 / E63 — an `applied` ack carries a `state`, and that
+                 * state carries exactly one of `on` and `level`.  Asserted on
+                 * the WIRE rather than in a decoder unit test, which is the
+                 * whole point of a paired row. */
+                if (!a->has_state ||
+                    ppcp_actuator_setting_validate(&a->state) != PPCP_OK)
+                    sim_violation("12.1c1: an `applied` ack whose `state` is "
+                                  "neither shape, or both");
+                /* 12.1c — and the counter that says the answer was not an
+                 * echo: the ACHIEVED value differs from the one this peer
+                 * asked for.  A row can then assert the difference happened
+                 * rather than assume it could have. */
+                else if (s->actuator_request_sent &&
+                         (a->state.has_on != s->actuator_request.has_on ||
+                          (a->state.has_on &&
+                           a->state.on != s->actuator_request.on) ||
+                          (a->state.has_level &&
+                           a->state.level != s->actuator_request.level)))
+                    s->c.actuator_clamped_rx++;
+            } else {
+                s->c.actuator_refused_rx++;
+                if (!a->has_reason)
+                    sim_violation("12.1b: a `refused` ack with no `reason`");
+            }
+        }
+        break;
+
+    case PPCP_EVENT_ACTUATOR_STATE:
+        s->c.actuator_states_rx++;
+        if (e->msg != NULL &&
+            ppcp_actuator_setting_validate(&e->msg->body.actuator_state.state) != PPCP_OK)
+            sim_violation("12.2a1: an `actuator_state` that is neither shape, or both");
+        break;
+
     case PPCP_EVENT_ERROR:
         s->c.errors_rx++;
+        if (e->msg != NULL && e->msg->type == PPCP_MT_ERROR &&
+            ppcp_cbor_key_is(e->msg->body.error.code.v, e->msg->body.error.code.len,
+                             PPCP_ERRCODE_NOT_DECLARED))
+            s->c.actuator_not_declared_rx++;
         if (e->msg != NULL && e->status == PPCP_ERR_FATAL_LIMIT)
             sim_violation("a fatal `error` arrived: %s", e->msg->body.error.code.v);
         break;
@@ -786,6 +917,10 @@ static int64_t counter_value(const sim_counter *c, const char *name)
     ROW(relations_rx); ROW(relations_tx);
     ROW(probe_timebases); ROW(probes_tx); ROW(replies_rx);
     ROW(heartbeats_rx); ROW(errors_rx);
+    ROW(actuator_commands_tx); ROW(actuator_commands_rx);
+    ROW(actuator_acks_rx); ROW(actuator_applied_rx); ROW(actuator_refused_rx);
+    ROW(actuator_not_declared_rx); ROW(actuator_states_rx);
+    ROW(actuator_acks_tx); ROW(actuator_clamped_rx);
     ROW(minted); ROW(retained); ROW(issued); ROW(late_issues); ROW(arbiter_observed);
     ROW(offers_rx); ROW(offers_tx); ROW(accepts_rx); ROW(replays);
     ROW(sessions_joined); ROW(streams_rx); ROW(arms_rx); ROW(violations);
@@ -801,7 +936,9 @@ static void report(const sim *s)
             "shots rx/tx %lld/%lld  max shot candidates %lld  minted %lld  retained %lld  "
             "issued %lld  late %lld  arbiter observed %lld  relations rx/tx %lld/%lld  "
             "probe timebases %lld  replies %lld  captures rx/unique/dup %lld/%lld/%lld  "
-            "payload frames %lld  offers rx/tx %lld/%lld  replays %lld  errors %lld\n",
+            "payload frames %lld  offers rx/tx %lld/%lld  replays %lld  errors %lld  "
+            "actuator cmd tx/rx %lld/%lld  acks %lld (applied %lld, refused %lld)  "
+            "not_declared %lld  actuator_state %lld  acks_tx %lld  clamped %lld\n",
             s->o->log_prefix,
             (long long)s->c.frames_rx, (long long)s->c.frames_tx,
             (long long)s->c.declares_rx,
@@ -817,7 +954,14 @@ static void report(const sim *s)
             (long long)s->c.captures_duplicate,
             (long long)s->c.payload_frames_rx,
             (long long)s->c.offers_rx, (long long)s->c.offers_tx,
-            (long long)s->c.replays, (long long)s->c.errors_rx);
+            (long long)s->c.replays, (long long)s->c.errors_rx,
+            (long long)s->c.actuator_commands_tx, (long long)s->c.actuator_commands_rx,
+            (long long)s->c.actuator_acks_rx, (long long)s->c.actuator_applied_rx,
+            (long long)s->c.actuator_refused_rx,
+            (long long)s->c.actuator_not_declared_rx,
+            (long long)s->c.actuator_states_rx,
+            (long long)s->c.actuator_acks_tx,
+            (long long)s->c.actuator_clamped_rx);
 }
 
 int sim_run(const sim_opts *o, sim_decl *d, const sim_scenario *sc)

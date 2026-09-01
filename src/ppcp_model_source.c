@@ -1023,6 +1023,192 @@ ppcp_result ppcp_source_decode(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_source *
     return PPCP_OK;
 }
 
+/* -------------------------------------------------------------- Actuator */
+
+ppcp_result ppcp_actuator_make(ppcp_actuator *out, const char *id, const char *peer_id,
+                               const char *kind, const char *control)
+{
+    ppcp_result rc;
+    if (out == NULL)
+        return PPCP_ERR_INVALID;
+    memset(out, 0, sizeof(*out));
+    rc = ppcp_id_set_z(&out->id, id);           if (rc != PPCP_OK) return rc;
+    rc = ppcp_id_set_z(&out->peer_id, peer_id); if (rc != PPCP_OK) return rc;
+    rc = ppcp_id_set_z(&out->kind, kind);       if (rc != PPCP_OK) return rc;
+    /* 5.19: `control` is cardinality 1 and it is what makes MSG 12.1a and I39
+     * decidable at all, so it is a constructor parameter and not a setter. */
+    rc = ppcp_id_set_z(&out->control, control); if (rc != PPCP_OK) return rc;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_actuator_set_label(ppcp_actuator *a, const char *label)
+{
+    ppcp_result rc;
+    if (a == NULL)
+        return PPCP_ERR_INVALID;
+    rc = ppcp_id_set_z(&a->label, label);
+    if (rc != PPCP_OK)
+        return rc;
+    a->has_label = true;
+    return PPCP_OK;
+}
+
+bool ppcp_actuator_control_is_on_off(const ppcp_actuator *a)
+{
+    if (a == NULL)
+        return false;
+    return ppcp_cbor_key_is(a->control.v, a->control.len, PPCP_ACTUATOR_CONTROL_ON_OFF);
+}
+
+bool ppcp_actuator_control_is_level(const ppcp_actuator *a)
+{
+    if (a == NULL)
+        return false;
+    return ppcp_cbor_key_is(a->control.v, a->control.len, PPCP_ACTUATOR_CONTROL_LEVEL);
+}
+
+ppcp_result ppcp_actuator_validate(const ppcp_actuator *a)
+{
+    if (a == NULL)
+        return PPCP_ERR_INVALID;
+    if (!ppcp_id_is_set(&a->id) || !ppcp_id_is_set(&a->peer_id) ||
+        !ppcp_id_is_set(&a->kind) || !ppcp_id_is_set(&a->control))
+        return PPCP_ERR_INVALID;
+    /* `control` is an OPEN registry (5.19), so an unrecognised spelling is not
+     * an error here — CORE 10.3a.  What the library refuses is a command whose
+     * SHAPE it cannot bind to a control it understands, which is MSG 12.1a and
+     * lives with the command rather than with the declaration. */
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_actuator_encode(ppcp_cbor_writer *w, const ppcp_actuator *a)
+{
+    ppcp_wfield f[5];
+    size_t      n  = 0;
+    ppcp_result rc = ppcp_actuator_validate(a);
+    if (rc != PPCP_OK)
+        return rc;
+    f[n++] = ppcp_wf_id("id", &a->id);
+    f[n++] = ppcp_wf_id("peer_id", &a->peer_id);
+    f[n++] = ppcp_wf_id("kind", &a->kind);
+    f[n++] = ppcp_wf_id("control", &a->control);
+    if (a->has_label)
+        f[n++] = ppcp_wf_id("label", &a->label);
+    return ppcp_rec_write(w, f, n);
+}
+
+ppcp_result ppcp_actuator_decode(ppcp_cbor_reader *r, ppcp_actuator *out)
+{
+    ppcp_rfield f[5];
+    bool        s_id = false, s_peer = false, s_kind = false, s_ctl = false;
+    ppcp_result rc;
+
+    if (out == NULL)
+        return PPCP_ERR_INVALID;
+    memset(out, 0, sizeof(*out));
+    f[0] = ppcp_rf("id", PPCP_F_ID, &out->id, &s_id);
+    f[1] = ppcp_rf("peer_id", PPCP_F_ID, &out->peer_id, &s_peer);
+    f[2] = ppcp_rf("kind", PPCP_F_ID, &out->kind, &s_kind);
+    f[3] = ppcp_rf("control", PPCP_F_ID, &out->control, &s_ctl);
+    f[4] = ppcp_rf("label", PPCP_F_ID, &out->label, &out->has_label);
+    rc = ppcp_rec_read(r, f, 5);
+    if (rc != PPCP_OK)
+        return rc;
+    if (!s_id || !s_peer || !s_kind || !s_ctl)
+        return PPCP_ERR_MALFORMED;
+    if (ppcp_actuator_validate(out) != PPCP_OK)
+        return PPCP_ERR_MALFORMED;
+    return PPCP_OK;
+}
+
+/* ------------------------------------------------- the Actuator's setting */
+
+ppcp_result ppcp_actuator_setting_on_off(ppcp_actuator_setting *out, bool on)
+{
+    if (out == NULL)
+        return PPCP_ERR_INVALID;
+    memset(out, 0, sizeof(*out));
+    out->has_on = true;
+    out->on     = on;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_actuator_setting_level(ppcp_actuator_setting *out, double level)
+{
+    if (out == NULL)
+        return PPCP_ERR_INVALID;
+    /* MSG 12.1 gives `level` the domain 0.0..1.0.  That is the field's DOMAIN
+     * and not a judgement about it (I14): the library refuses a value outside
+     * the range the specification defines, and refuses to clamp one inside it,
+     * because 12.1c puts the ACHIEVED value on the wire instead. */
+    if (!(level >= 0.0) || !(level <= 1.0))
+        return PPCP_ERR_INVALID;
+    memset(out, 0, sizeof(*out));
+    out->has_level = true;
+    out->level     = level;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_actuator_setting_validate(const ppcp_actuator_setting *s)
+{
+    if (s == NULL)
+        return PPCP_ERR_INVALID;
+    /* I39, E63 — never neither, never both.  `state: {}` is malformed. */
+    if (s->has_on == s->has_level)
+        return PPCP_ERR_INVALID;
+    if (s->has_level && (!(s->level >= 0.0) || !(s->level <= 1.0)))
+        return PPCP_ERR_INVALID;
+    return PPCP_OK;
+}
+
+bool ppcp_actuator_setting_matches(const ppcp_actuator_setting *s, const ppcp_actuator *a)
+{
+    if (s == NULL || a == NULL)
+        return false;
+    if (ppcp_actuator_setting_validate(s) != PPCP_OK)
+        return false;
+    /* The iff of I39 read against the Actuator's DECLARED `control`.  An
+     * Actuator whose `control` is neither spelling matches nothing: the
+     * registry is open, but a command this peer cannot bind to a shape it
+     * understands is 12.1a's mismatch. */
+    if (ppcp_actuator_control_is_on_off(a))
+        return s->has_on;
+    if (ppcp_actuator_control_is_level(a))
+        return s->has_level;
+    return false;
+}
+
+ppcp_result ppcp_actuator_setting_write(ppcp_cbor_writer *w, const void *ctx)
+{
+    const ppcp_actuator_setting *s = (const ppcp_actuator_setting *)ctx;
+    ppcp_wfield f[1];
+    ppcp_result rc = ppcp_actuator_setting_validate(s);
+    if (rc != PPCP_OK)
+        return rc;
+    if (s->has_on)
+        f[0] = ppcp_wf_bool("on", s->on);
+    else
+        f[0] = ppcp_wf_double("level", s->level);
+    return ppcp_rec_write(w, f, 1);
+}
+
+ppcp_result ppcp_actuator_setting_read(ppcp_cbor_reader *r, void *dst, void *ctx)
+{
+    ppcp_actuator_setting *s = (ppcp_actuator_setting *)dst;
+    ppcp_rfield f[2];
+    ppcp_result rc;
+    (void)ctx;
+    memset(s, 0, sizeof(*s));
+    f[0] = ppcp_rf("on", PPCP_F_BOOL, &s->on, &s->has_on);
+    f[1] = ppcp_rf("level", PPCP_F_DOUBLE, &s->level, &s->has_level);
+    rc = ppcp_rec_read(r, f, 2);
+    if (rc != PPCP_OK)
+        return rc;
+    if (ppcp_actuator_setting_validate(s) != PPCP_OK)
+        return PPCP_ERR_MALFORMED;
+    return PPCP_OK;
+}
+
 /* ------------------------------------------------------------------ Peer */
 
 ppcp_result ppcp_peer_desc_make(ppcp_peer_desc *out, const char *id, ppcp_role role,
@@ -1069,6 +1255,19 @@ ppcp_result ppcp_peer_desc_set_sources(ppcp_peer_desc *p, const ppcp_source *sou
      * field.  So zero is legal and is not the same as never having called. */
     p->sources      = sources;
     p->source_count = count;
+    return PPCP_OK;
+}
+
+ppcp_result ppcp_peer_desc_set_actuators(ppcp_peer_desc *p, const ppcp_actuator *actuators,
+                                         size_t count)
+{
+    if (p == NULL || (count > 0 && actuators == NULL))
+        return PPCP_ERR_INVALID;
+    /* 5.19c: zero is legal and needs no special case, exactly as zero Sources
+     * is.  Unlike `sources` (3.3d) there is no clause obliging a peer to send
+     * an EMPTY list, so an absent one and an empty one mean the same thing. */
+    p->actuators      = actuators;
+    p->actuator_count = count;
     return PPCP_OK;
 }
 
@@ -1157,6 +1356,27 @@ ppcp_result ppcp_peer_desc_validate(const ppcp_peer_desc *p)
         }
         if (j == p->timebase_count)
             return PPCP_ERR_INVALID;
+    }
+    /* 5.19b — a Source is not declared as an Actuator, nor an Actuator as a
+     * Source, and `Source.kind` and `Actuator.kind` are DISJOINT open
+     * registries.  Both halves are checked here because both are only visible
+     * from the Peer: neither entity can see the other on its own. */
+    for (i = 0; i < p->actuator_count; i++) {
+        ppcp_result rc = ppcp_actuator_validate(&p->actuators[i]);
+        if (rc != PPCP_OK)
+            return rc;
+        if (!ppcp_id_equal(&p->actuators[i].peer_id, &p->id))
+            return PPCP_ERR_INVALID;
+        for (j = 0; j < i; j++) {
+            if (ppcp_id_equal(&p->actuators[i].id, &p->actuators[j].id))
+                return PPCP_ERR_INVALID;   /* 5.19: unique within the owning peer */
+        }
+        for (j = 0; j < p->source_count; j++) {
+            if (ppcp_id_equal(&p->actuators[i].id, &p->sources[j].id))
+                return PPCP_ERR_INVALID;   /* the same thing declared as both */
+            if (ppcp_id_equal(&p->actuators[i].kind, &p->sources[j].kind))
+                return PPCP_ERR_INVALID;   /* the two registries overlap */
+        }
     }
     return PPCP_OK;
 }
@@ -1315,9 +1535,34 @@ static ppcp_result peer_sources_read(ppcp_cbor_reader *r, void *dst, void *ctx)
     return PPCP_OK;
 }
 
+static ppcp_result actuator_elem_read(ppcp_cbor_reader *r, void *dst, void *ctx)
+{
+    (void)ctx;
+    return ppcp_actuator_decode(r, (ppcp_actuator *)dst);
+}
+
+static ppcp_result peer_actuators_read(ppcp_cbor_reader *r, void *dst, void *ctx)
+{
+    peer_read_ctx *c = (peer_read_ctx *)ctx;
+    void *base = NULL; size_t count = 0;
+    ppcp_result rc;
+    (void)dst;
+    rc = ppcp_rec_read_array_arena(r, c->arena, sizeof(ppcp_actuator), sizeof(void *),
+                                   &base, &count, actuator_elem_read, NULL);
+    if (rc != PPCP_OK) return rc;
+    c->out->actuators      = (const ppcp_actuator *)base;
+    c->out->actuator_count = count;
+    return PPCP_OK;
+}
+
 static ppcp_result source_elem_write(ppcp_cbor_writer *w, const void *elem)
 {
     return ppcp_source_encode(w, (const ppcp_source *)elem);
+}
+
+static ppcp_result actuator_elem_write(ppcp_cbor_writer *w, const void *elem)
+{
+    return ppcp_actuator_encode(w, (const ppcp_actuator *)elem);
 }
 
 /* The three list writers `declare` also uses, declared in ppcp_codec.h. */
@@ -1345,6 +1590,14 @@ ppcp_result ppcp_peer_sources_read(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_peer
     return peer_sources_read(r, NULL, &ctx);
 }
 
+ppcp_result ppcp_peer_actuators_read(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_peer_desc *out)
+{
+    peer_read_ctx ctx;
+    ctx.arena = a;
+    ctx.out   = out;
+    return peer_actuators_read(r, NULL, &ctx);
+}
+
 ppcp_result ppcp_peer_timebases_write(ppcp_cbor_writer *w, const void *ctx)
 {
     const ppcp_peer_desc *p = (const ppcp_peer_desc *)ctx;
@@ -1364,6 +1617,13 @@ ppcp_result ppcp_peer_sources_write(ppcp_cbor_writer *w, const void *ctx)
     const ppcp_peer_desc *p = (const ppcp_peer_desc *)ctx;
     return ppcp_rec_write_array(w, p->sources, sizeof(ppcp_source),
                                 p->source_count, source_elem_write);
+}
+
+ppcp_result ppcp_peer_actuators_write(ppcp_cbor_writer *w, const void *ctx)
+{
+    const ppcp_peer_desc *p = (const ppcp_peer_desc *)ctx;
+    return ppcp_rec_write_array(w, p->actuators, sizeof(ppcp_actuator),
+                                p->actuator_count, actuator_elem_write);
 }
 
 static void peer_common_fields(ppcp_wfield *f, const ppcp_peer_desc *p, size_t *n)
@@ -1392,7 +1652,7 @@ ppcp_result ppcp_peer_head_encode(ppcp_cbor_writer *w, const ppcp_peer_desc *p)
 
 ppcp_result ppcp_peer_desc_encode(ppcp_cbor_writer *w, const ppcp_peer_desc *p)
 {
-    ppcp_wfield f[8];
+    ppcp_wfield f[9];
     idlist_ref  prof;
     size_t      n = 0;
     ppcp_result rc = ppcp_peer_desc_validate(p);
@@ -1406,6 +1666,10 @@ ppcp_result ppcp_peer_desc_encode(ppcp_cbor_writer *w, const ppcp_peer_desc *p)
     if (p->relation_count > 0)
         f[n++] = ppcp_wf_sub("relations", ppcp_peer_relations_write, p);
     f[n++] = ppcp_wf_sub("sources", ppcp_peer_sources_write, p);
+    /* 3.3d obliges an EMPTY `sources` list; no clause says the same of
+     * `actuators` (5.19c), so an owner of none writes no key at all. */
+    if (p->actuator_count > 0)
+        f[n++] = ppcp_wf_sub("actuators", ppcp_peer_actuators_write, p);
     if (p->product.present)
         f[n++] = ppcp_wf_sub("product", ppcp_product_write, &p->product);
     return ppcp_rec_write(w, f, n);
@@ -1414,7 +1678,7 @@ ppcp_result ppcp_peer_desc_encode(ppcp_cbor_writer *w, const ppcp_peer_desc *p)
 static ppcp_result peer_decode_common(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_peer_desc *out,
                                       bool with_lists)
 {
-    ppcp_rfield   f[8];
+    ppcp_rfield   f[9];
     size_t        n = 0;
     peer_read_ctx ctx;
     bool          s_id = false, s_role = false, s_proto = false, s_prof = false;
@@ -1434,6 +1698,7 @@ static ppcp_result peer_decode_common(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_p
         f[n++] = ppcp_rf_sub("timebases", peer_timebases_read, NULL, &ctx, NULL);
         f[n++] = ppcp_rf_sub("relations", peer_relations_read, NULL, &ctx, NULL);
         f[n++] = ppcp_rf_sub("sources", peer_sources_read, NULL, &ctx, NULL);
+        f[n++] = ppcp_rf_sub("actuators", peer_actuators_read, NULL, &ctx, NULL);
     }
     rc = ppcp_rec_read(r, f, n);
     if (rc != PPCP_OK)

@@ -177,8 +177,14 @@ static void preamble(ppcp_bundle_writer *w, buf *o, decl *d, const char *src_kin
     ppcp_session s;
     ppcp_msg     m;
 
-    if (ppcp_session_make_hostless(&s, "sess:fixture", "tb:dev") != PPCP_OK)
-        die("bad session");
+    {
+        /* 5.10h — mandatory, in `timebase_ref`.  The Session entity is not
+         * itself encoded into any fixture; this value never reaches the wire
+         * here, and no checked-in byte moves because of it. */
+        ppcp_instant opened = inst("tb:dev", 0);
+        if (ppcp_session_make_hostless(&s, "sess:fixture", "tb:dev", &opened) != PPCP_OK)
+            die("bad session");
+    }
     if (ppcp_msg_init(&m, PPCP_MT_SESSION_OPEN, 1) != PPCP_OK) die("msg");
     m.body.session_open.session_id   = s.id;
     m.body.session_open.timebase_ref = s.timebase_ref;

@@ -1,0 +1,13 @@
+{
+  "peer_id": "sim:bystander",
+  "role": "capture",
+  "protocol_version": "1.0",
+  "profiles": ["core", "capture", "live", "actuate"],
+  "product": { "vendor": "ppcp-sim", "model": "actuating-nonhost", "version": "1" },
+  "timebases": [
+    { "id": "tb:bystander", "kind": "monotonic", "epoch_stable": true, "resolution_ns": 1000 }
+  ],
+  "sync_timebase": "tb:bystander",
+  "sources": [],
+  "session": { "id": "ses:sim", "timebase_ref": "tb:bystander" }
+}

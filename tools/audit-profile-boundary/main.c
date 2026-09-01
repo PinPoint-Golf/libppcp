@@ -246,6 +246,7 @@ static const struct { const char *macro; const char *name; } profile_names[] = {
     { "PPCP_PROFILE_LIVE",      "Live"      },
     { "PPCP_PROFILE_OFFLINE",   "Offline"   },
     { "PPCP_PROFILE_MARKUP",    "Markup"    },
+    { "PPCP_PROFILE_ACTUATE",   "Actuate"   },
     { NULL, NULL }
 };
 

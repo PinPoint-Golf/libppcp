@@ -271,16 +271,25 @@ ppcp_result ppcp_stream_decode(ppcp_cbor_reader *r, ppcp_stream *out)
 /* --------------------------------------------------------------- Session */
 
 static ppcp_result session_make_common(ppcp_session *out, const char *id,
-                                       const char *timebase_ref)
+                                       const char *timebase_ref,
+                                       const ppcp_instant *opened_at)
 {
     ppcp_result rc;
-    if (out == NULL)
+    if (out == NULL || opened_at == NULL)
         return PPCP_ERR_INVALID;
+    rc = ppcp_instant_validate(opened_at);
+    if (rc != PPCP_OK) return rc;
     memset(out, 0, sizeof(*out));
     rc = ppcp_id_set_z(&out->id, id);
     if (rc != PPCP_OK) return rc;
     rc = ppcp_id_set_z(&out->timebase_ref, timebase_ref);
     if (rc != PPCP_OK) return rc;
+    /* 5.10h: `opened_at` is IN `timebase_ref`.  Checked here rather than
+     * trusted, because an instant in some other clock is the fabricated start
+     * time the erratum exists to rule out. */
+    if (!ppcp_id_equal(&opened_at->tb, &out->timebase_ref))
+        return PPCP_ERR_INVALID;
+    out->opened_at              = *opened_at;
     out->state                  = PPCP_SESSION_OPEN;
     out->completeness           = PPCP_UNKNOWN;
     out->has_heartbeat_interval = false;
@@ -288,24 +297,26 @@ static ppcp_result session_make_common(ppcp_session *out, const char *id,
 }
 
 ppcp_result ppcp_session_make_hostless(ppcp_session *out, const char *id,
-                                       const char *timebase_ref)
+                                       const char *timebase_ref,
+                                       const ppcp_instant *opened_at)
 {
     /* 5.10e: no host, therefore no arbitration parameters — and no way to add
      * them afterwards.  Offline `timebase_ref` is the capturing peer's own
      * (5.10a); the offline case is the same structure with a different value,
      * not a special mode. */
-    return session_make_common(out, id, timebase_ref);
+    return session_make_common(out, id, timebase_ref, opened_at);
 }
 
 ppcp_result ppcp_session_make_hosted(ppcp_session *out, const char *id,
                                      const char *timebase_ref,
+                                     const ppcp_instant *opened_at,
                                      ppcp_duration_ns coincidence_window_ns,
                                      ppcp_duration_ns issue_hold_ns)
 {
     ppcp_result rc;
     if (coincidence_window_ns <= 0 || issue_hold_ns <= 0)
         return PPCP_ERR_INVALID;
-    rc = session_make_common(out, id, timebase_ref);
+    rc = session_make_common(out, id, timebase_ref, opened_at);
     if (rc != PPCP_OK)
         return rc;
     /* 4.1c / 8.2: a TOLERANCE and a DEADLINE are different quantities and are
@@ -452,6 +463,14 @@ ppcp_result ppcp_session_validate(const ppcp_session *s)
         if (rc != PPCP_OK)
             return rc;
     }
+    /* 5.10h — cardinality 1, and expressed in `timebase_ref`. */
+    {
+        ppcp_result rc = ppcp_instant_validate(&s->opened_at);
+        if (rc != PPCP_OK)
+            return rc;
+        if (!ppcp_id_equal(&s->opened_at.tb, &s->timebase_ref))
+            return PPCP_ERR_INVALID;
+    }
     /* I12: any subset of Streams is valid, including none.  There is
      * deliberately no minimum here. */
     return PPCP_OK;
@@ -544,13 +563,14 @@ static ppcp_result shots_write(ppcp_cbor_writer *w, const void *ctx)
 
 ppcp_result ppcp_session_encode(ppcp_cbor_writer *w, const ppcp_session *s)
 {
-    ppcp_wfield f[12];
+    ppcp_wfield f[13];
     size_t      n  = 0;
     ppcp_result rc = ppcp_session_validate(s);
     if (rc != PPCP_OK)
         return rc;
     f[n++] = ppcp_wf_id("id", &s->id);
     f[n++] = ppcp_wf_id("timebase_ref", &s->timebase_ref);
+    f[n++] = ppcp_wf_sub("opened_at", ppcp_sub_write_instant, &s->opened_at);
     f[n++] = ppcp_wf_enum("state", session_state_map, (int)s->state);
     f[n++] = ppcp_wf_enum("completeness", session_completeness_map, (int)s->completeness);
     f[n++] = ppcp_wf_sub("peers", peers_write, s);
@@ -654,10 +674,11 @@ static ppcp_result shots_read(ppcp_cbor_reader *r, void *dst, void *ctx)
 
 ppcp_result ppcp_session_decode(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_session *out)
 {
-    ppcp_rfield   f[12];
+    ppcp_rfield   f[13];
     size_t        n = 0;
     sess_read_ctx ctx;
     bool          s_id = false, s_tb = false, s_state = false, s_comp = false;
+    bool          s_open = false;
     bool          s_cw = false, s_ih = false;
     int           state = 0, comp = 0;
     uint64_t      hb = 0;
@@ -671,6 +692,7 @@ ppcp_result ppcp_session_decode(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_session
 
     f[n++] = ppcp_rf("id", PPCP_F_ID, &out->id, &s_id);
     f[n++] = ppcp_rf("timebase_ref", PPCP_F_ID, &out->timebase_ref, &s_tb);
+    f[n++] = ppcp_rf_sub("opened_at", ppcp_sub_read_instant, &out->opened_at, NULL, &s_open);
     f[n++] = ppcp_rf_enum("state", session_state_map, &state, &s_state);
     f[n++] = ppcp_rf_enum("completeness", session_completeness_map, &comp, &s_comp);
     f[n++] = ppcp_rf_sub("peers", peers_read, NULL, &ctx, NULL);
@@ -685,8 +707,8 @@ ppcp_result ppcp_session_decode(ppcp_cbor_reader *r, ppcp_arena *a, ppcp_session
     rc = ppcp_rec_read(r, f, n);
     if (rc != PPCP_OK)
         return rc;
-    if (!s_id || !s_tb || !s_state || !s_comp)
-        return PPCP_ERR_MALFORMED;
+    if (!s_id || !s_tb || !s_state || !s_comp || !s_open)
+        return PPCP_ERR_MALFORMED;   /* 5.10h: cardinality 1 */
     /* 5.10e both ways: one parameter without the other is malformed whatever
      * the roster says, because they are two halves of one statement. */
     if (s_cw != s_ih)
