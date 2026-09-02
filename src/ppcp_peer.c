@@ -34,7 +34,8 @@
  * one replaces it.  It therefore gets an arena of its own that the ordinary
  * per-frame decode never touches. */
 #define PPCP_PEER_DECL_ARENA    (32u * 1024u)
-#define PPCP_PEER_SCRATCH_ARENA (8u * 1024u)
+/* PPCP_PEER_SCRATCH_ARENA: public, in peer.h, because its size is a
+ * protocol capacity a consumer can test against. */
 /* I21 — one estimator, and so one probe sequence, per LOCAL timebase.  Four is
  * a host with three cameras on independent clocks plus its own. */
 #define PPCP_PEER_MAX_SYNC      4u

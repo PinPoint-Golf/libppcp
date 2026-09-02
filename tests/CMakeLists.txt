@@ -32,7 +32,8 @@ set(PPCP_TESTS
     test_rv_bootstrap
     test_rv_sas_uniform
     test_bs_frame
-    test_bs_engine)
+    test_bs_engine
+    test_payload_begin_arena)
 
 foreach(t ${PPCP_TESTS})
     add_executable(${t} ${t}.c)

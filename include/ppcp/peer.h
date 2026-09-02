@@ -352,6 +352,19 @@ typedef enum ppcp_event_kind {
 
 #define PPCP_PEER_EVENT_QUEUE 4
 
+/* The arena one decoded frame is unpacked into.  ⛔ SIZED FOR THE LARGEST
+ * LEGITIMATE MESSAGE, WHICH IS A CLIP'S `payload_begin`, NOT A HANDSHAKE.
+ * 5.8d/5.8e make `achieved_frames` carry every frame's instant and exposure,
+ * and REQ-OPT-7 adds per-frame intrinsics where the profile says so: at
+ * 240 fps a ten-second ring (CORE 5.21) is 2400 frames, each an instant, an
+ * exposure, an ISO and a 3x3 of doubles -- ~230 KiB decoded.  This was 8 KiB
+ * until 1 September 2026, which held a two-second clip (~495 frames) and
+ * refused a three-second one (~720): the frame decoded as "undecodable", the
+ * engine raised PPCP_EVENT_ERROR, and the 22 MB of chunks that followed
+ * arrived as events for a payload no receiver had opened.  Measured on
+ * hardware; every host-requested clip was lost to it. */
+#define PPCP_PEER_SCRATCH_ARENA (512u * 1024u)
+
 typedef struct ppcp_event {
     ppcp_event_kind kind;
     /* The channel the frame arrived on.  CORE 5.11h puts preview payload on a
