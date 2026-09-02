@@ -67,11 +67,27 @@ extern "C" {
  */
 
 #define PPCP_SYNC_WINDOW      32u   /* exchanges retained per timebase */
-/* Minimum-RTT filtering (6.3f): the fit runs over the lowest-RTT half of the
- * window, never fewer than two.  A fraction rather than a latency constant,
- * because a USB tunnel and congested 2.4 GHz WiFi have nothing in common
- * except that their left tails are the honest part. */
-#define PPCP_SYNC_ADMIT_DIV   2u
+/* Minimum-RTT filtering (6.3f / 6.3f1, erratum E69): the fit runs over the
+ * exchanges whose RTT is within a margin of the LOWEST seen — the greater of
+ * one minimum RTT and PPCP_SYNC_ADMIT_MARGIN_NS above it — never fewer than
+ * PPCP_SYNC_ADMIT_MIN, which are filled from the next-lowest.  Relative to
+ * the minimum rather than a latency constant, because a USB tunnel and
+ * congested 2.4 GHz WiFi have nothing in common except that their left tails
+ * are the honest part.  ⛔ It used to be "the lowest-RTT HALF of the window,
+ * by count": a burst taken while the peer was busy (camera warming, channels
+ * opening) filled the window with 16 exchanges at 10-40 ms RTT, and half of
+ * noisy is still noisy — the fit could not be clean until sixteen clean
+ * exchanges existed, 80 s at the five-second cadence.  With the gate relative
+ * to the minimum, the first clean exchange starts excluding the busy ones and
+ * the fourth gives a residual. */
+#define PPCP_SYNC_ADMIT_MARGIN_NS 1000000LL
+#define PPCP_SYNC_ADMIT_MIN       4u
+/* 6.3g1 — the cadence stays at PPCP_SYNC_SETTLE_MS until this many exchanges
+ * are inside the RTT gate (or PPCP_SYNC_SETTLE_MAX_MS has passed since the
+ * burst), then relaxes to PPCP_SYNC_MAINTENANCE_MS. */
+#define PPCP_SYNC_SETTLE_ADMITTED 8u
+#define PPCP_SYNC_SETTLE_MS       1000u
+#define PPCP_SYNC_SETTLE_MAX_MS   60000u
 /* 6.3e — filtered, never stepped.  Each fit moves the published offset by a
  * quarter of the difference from where the previous fit predicted it would
  * be, so an outlier that survived the RTT gate cannot put a step into fused
@@ -80,11 +96,44 @@ extern "C" {
 /* 6.3c — "a burst of 10–20 exchanges", so the burst is a count and not a
  * quality judgement; it is the specification's own number (CT-I14). */
 #define PPCP_SYNC_BURST       16u
-#define PPCP_SYNC_BURST_GAP_MS   20u    /* spacing inside a burst */
+/* 6.3c1 (erratum E68) — the burst is SPREAD, not fired back to back.  Sixteen
+ * exchanges 20 ms apart spanned 320 ms, over which a least-squares slope is
+ * noise (skew sigma of ~600,000 ppm was measured on every connect) and the
+ * residual was 25-40 ms; nobody could be under a 5 ms gate before the first
+ * maintenance exchange five seconds later.  At 125 ms the same sixteen span
+ * ~1.9 s and stand on their own. */
+#define PPCP_SYNC_BURST_GAP_MS   125u   /* spacing inside a burst */
+/* 6.3g1 (erratum E68) — the ramp after the burst.  The first maintenance
+ * exchanges follow at these gaps, then settle to PPCP_SYNC_MAINTENANCE_MS.
+ * It is the first seconds only: a higher STEADY rate was measured to make
+ * things worse on a shared radio (probes contend with preview video). */
+#define PPCP_SYNC_RAMP_STEPS     4u
+#define PPCP_SYNC_RAMP_MS_0      500u
+#define PPCP_SYNC_RAMP_MS_1      1000u
+#define PPCP_SYNC_RAMP_MS_2      2000u
+#define PPCP_SYNC_RAMP_MS_3      3000u
 /* 6.3g — "at least one exchange per five seconds while the session is open". */
 #define PPCP_SYNC_MAINTENANCE_MS 5000u
+/* 6.3f1 (erratum E69) — retention by QUALITY.  A full window used to evict
+ * its oldest exchange, so a burst taken while the peer was busy (camera
+ * warming, channels opening) sat in the fit until sixteen clean maintenance
+ * exchanges had arrived to displace it — 80 s at one per five seconds, which
+ * was the whole of the "two minutes to converge" this was measured against.
+ * A full window now evicts its highest-RTT exchange, or first anything older
+ * than this bound, so the fit's span stays honest and a noisy connect is
+ * forgotten as soon as clean exchanges exist. */
+#define PPCP_SYNC_MAX_AGE_NS     120000000000LL
 
 typedef struct ppcp_sync_estimator ppcp_sync_estimator;
+
+/* 5.4d (erratum E67) — an affine relation read from its `to` end.  Exact, with
+ * both sigmas carried over; false for `unrelated` or an invalid relation.
+ * `ppcp_relations_convert()` and `ppcp_relations_sigma_ns()` use it themselves:
+ * a conversion resolves to the declared relation in that direction or the
+ * inverse of the one declared the other way, whichever has the smaller sigma
+ * at the instant being converted. */
+PPCP_API bool ppcp_relation_invert(const ppcp_timebase_relation *r,
+                                   ppcp_timebase_relation *out);
 
 PPCP_API size_t ppcp_sync_estimator_sizeof(void);
 
@@ -130,6 +179,9 @@ PPCP_API void   ppcp_sync_estimator_restart(ppcp_sync_estimator *e);
 PPCP_API size_t ppcp_sync_estimator_count(const ppcp_sync_estimator *e);
 PPCP_API bool   ppcp_sync_estimator_has_estimate(const ppcp_sync_estimator *e);
 PPCP_API int64_t ppcp_sync_estimator_min_rtt_ns(const ppcp_sync_estimator *e);
+/* 6.3f1 — how many retained exchanges are inside the RTT gate: the exchanges
+ * the current fit actually rests on.  The schedule reads it (6.3g1). */
+PPCP_API size_t  ppcp_sync_estimator_admitted(const ppcp_sync_estimator *e);
 PPCP_API const ppcp_id *ppcp_sync_estimator_local_tb(const ppcp_sync_estimator *e);
 PPCP_API const ppcp_id *ppcp_sync_estimator_remote_tb(const ppcp_sync_estimator *e);
 

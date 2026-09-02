@@ -72,6 +72,8 @@ typedef struct sync_sched {
     bool     probe_remote;
     uint64_t probe_seq;
     uint32_t burst_left;
+    uint32_t ramp_left;     /* 6.3g1 / E68 — early maintenance steps still owed */
+    int64_t  burst_at_ns;   /* when the burst began; INT64_MIN until the first pump */
     int64_t  next_due_ns;
     /* 6.1a — the `t1` of each outstanding probe, so an echo that is not the
      * one we sent is detectable rather than folded into the fit. */
@@ -2153,6 +2155,8 @@ ppcp_result ppcp_peer_sync_trigger(ppcp_peer *p, ppcp_sync_trigger why)
         return PPCP_ERR_INVALID;
     for (i = 0; i < p->sync_count; i++) {
         p->sched[i].burst_left  = PPCP_SYNC_BURST;
+        p->sched[i].ramp_left   = PPCP_SYNC_RAMP_STEPS;
+        p->sched[i].burst_at_ns = INT64_MIN;
         p->sched[i].next_due_ns = INT64_MIN;
         /* 6.3c — a network change or a thermal event makes the FIT stale, not
          * merely the offset: oscillator frequency shifts with temperature, so
@@ -2183,9 +2187,28 @@ ppcp_result ppcp_peer_sync_pump(ppcp_peer *p, int64_t now_ns, size_t *out_probes
         if (peer_sync_probe_at(p, i) != PPCP_OK)
             continue;
         sent++;
+        if (p->sched[i].burst_at_ns == INT64_MIN)
+            p->sched[i].burst_at_ns = now_ns;
         if (p->sched[i].burst_left > 0) {
             p->sched[i].burst_left--;
             gap = (int64_t)PPCP_SYNC_BURST_GAP_MS * 1000000;
+        } else if (p->sched[i].ramp_left > 0) {
+            /* 6.3g1 — the first maintenance exchanges come quickly, so the
+             * fit's span grows past the burst in seconds rather than at the
+             * five-second cadence. */
+            static const uint32_t ramp_ms[PPCP_SYNC_RAMP_STEPS] = {
+                PPCP_SYNC_RAMP_MS_0, PPCP_SYNC_RAMP_MS_1,
+                PPCP_SYNC_RAMP_MS_2, PPCP_SYNC_RAMP_MS_3 };
+            gap = (int64_t)ramp_ms[PPCP_SYNC_RAMP_STEPS - p->sched[i].ramp_left] * 1000000;
+            p->sched[i].ramp_left--;
+        } else if (ppcp_sync_estimator_admitted(&p->sync[i]) < PPCP_SYNC_SETTLE_ADMITTED &&
+                   now_ns - p->sched[i].burst_at_ns <
+                       (int64_t)PPCP_SYNC_SETTLE_MAX_MS * 1000000) {
+            /* 6.3g1 — not settled: the fit rests on fewer clean exchanges than
+             * it wants, so keep asking at a second's cadence — bounded, because
+             * a link that never yields a clean exchange must not be probed at
+             * this rate for ever. */
+            gap = (int64_t)PPCP_SYNC_SETTLE_MS * 1000000;
         } else {
             /* 6.3g — maintenance, and 6.3d: this number is the sync cadence
              * and has nothing to do with `heartbeat_interval_ms`. */

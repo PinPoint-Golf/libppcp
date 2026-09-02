@@ -162,8 +162,35 @@ const ppcp_id *ppcp_sync_estimator_remote_tb(const ppcp_sync_estimator *e)
     return &e->remote_tb;
 }
 
+/* 6.3f1 — the RTT gate, relative to the lowest RTT seen: the greater of one
+ * minimum above it and PPCP_SYNC_ADMIT_MARGIN_NS.  `order` is the window
+ * sorted by ascending RTT (or NULL to count without one). */
+static size_t sync_admitted(const ppcp_sync_estimator *e, const size_t *order)
+{
+    size_t  i, n = 0;
+    int64_t margin, gate;
+    if (e->count == 0 || e->min_rtt_ns == INT64_MAX)
+        return 0;
+    margin = (e->min_rtt_ns > PPCP_SYNC_ADMIT_MARGIN_NS) ? e->min_rtt_ns
+                                                          : PPCP_SYNC_ADMIT_MARGIN_NS;
+    gate = e->min_rtt_ns + margin;
+    for (i = 0; i < e->count; i++) {
+        int64_t rtt = e->s[order ? order[i] : i].rtt_ns;
+        if (rtt <= gate)
+            n++;
+        else if (order != NULL)
+            break;   /* sorted: nothing after this is inside either */
+    }
+    return n;
+}
+
+size_t ppcp_sync_estimator_admitted(const ppcp_sync_estimator *e)
+{
+    return (e == NULL) ? 0 : sync_admitted(e, NULL);
+}
+
 /* The fit.  Least squares of offset against local time over the retained
- * (lowest-RTT) half of the window — 6.3a's "offset AND rate", 6.3f's
+ * exchanges inside the RTT gate — 6.3a's "offset AND rate", 6.3f's
  * minimum-RTT filtering. */
 static void sync_refit(ppcp_sync_estimator *e)
 {
@@ -192,7 +219,9 @@ static void sync_refit(ppcp_sync_estimator *e)
         }
     }
 
-    keep = (e->count + PPCP_SYNC_ADMIT_DIV - 1u) / PPCP_SYNC_ADMIT_DIV;
+    keep = sync_admitted(e, order);
+    if (keep < PPCP_SYNC_ADMIT_MIN)
+        keep = PPCP_SYNC_ADMIT_MIN;
     if (keep < 2)
         keep = 2;
     if (keep > e->count)
@@ -289,12 +318,42 @@ ppcp_result ppcp_sync_estimator_observe(ppcp_sync_estimator *e, int64_t t1, int6
     if (rtt < 0)
         return PPCP_ERR_MALFORMED;
 
-    e->s[e->next].t_local_ns = mid;
-    e->s[e->next].offset_ns  = offset;
-    e->s[e->next].rtt_ns     = rtt;
-    e->next = (e->next + 1u) % PPCP_SYNC_WINDOW;
-    if (e->count < PPCP_SYNC_WINDOW)
-        e->count++;
+    {
+        size_t slot;
+        if (e->count < PPCP_SYNC_WINDOW) {
+            slot = e->next;
+            e->next = (e->next + 1u) % PPCP_SYNC_WINDOW;
+            e->count++;
+        } else {
+            /* 6.3f1 / E69 — the victim is the oldest exchange past the age
+             * bound where one exists, else the highest-RTT one.  Never the
+             * arrival order: a noisy burst would otherwise sit in the fit for
+             * as long as it took the maintenance cadence to walk past it. */
+            size_t  i, victim = 0;
+            bool    aged = false;
+            int64_t oldest = INT64_MAX, worst = -1;
+            for (i = 0; i < e->count; i++) {
+                if (mid - e->s[i].t_local_ns > PPCP_SYNC_MAX_AGE_NS &&
+                    e->s[i].t_local_ns < oldest) {
+                    oldest = e->s[i].t_local_ns;
+                    victim = i;
+                    aged   = true;
+                }
+            }
+            if (!aged) {
+                for (i = 0; i < e->count; i++) {
+                    if (e->s[i].rtt_ns > worst) {
+                        worst  = e->s[i].rtt_ns;
+                        victim = i;
+                    }
+                }
+            }
+            slot = victim;
+        }
+        e->s[slot].t_local_ns = mid;
+        e->s[slot].offset_ns  = offset;
+        e->s[slot].rtt_ns     = rtt;
+    }
     e->observed++;
     if (rtt < e->min_rtt_ns)
         e->min_rtt_ns = rtt;
@@ -370,10 +429,86 @@ ppcp_result ppcp_relations_put(ppcp_relation_set *rs, const ppcp_timebase_relati
     return PPCP_OK;
 }
 
+/* The sigma of one relation at one instant: the offset's own sigma, and the
+ * rate uncertainty accumulated over every nanosecond since it was observed. */
+static double relation_sigma_at(const ppcp_timebase_relation *r, int64_t at_ns)
+{
+    double elapsed     = (double)(at_ns - r->observed_at.ns);
+    double drift_sigma = sync_abs(elapsed) * r->skew_sigma_ppm * 1.0e-6;
+    return sync_sqrt(r->offset_sigma_ns * r->offset_sigma_ns + drift_sigma * drift_sigma);
+}
+
+/* 5.4d (erratum E67) — an affine relation read the other way.  Where
+ *   to = from + offset + skew·(from − observed_at),
+ * the inverse is exact:
+ *   from = to − offset + skew'·(to − observed_at')
+ * with observed_at' = observed_at + offset (the same instant, in `to`) and
+ * skew' = −skew / (1 + skew).  Both sigmas carry over unchanged: they are the
+ * uncertainty of ONE measurement, and reading it from the other end does not
+ * make it a different measurement.  ⚠ This is NOT composition (5.4c, I18):
+ * nothing is chained through a third timebase and nothing is invented. */
+bool ppcp_relation_invert(const ppcp_timebase_relation *r, ppcp_timebase_relation *out)
+{
+    ppcp_instant obs;
+    double       s, s_inv;
+    if (r == NULL || out == NULL || ppcp_relation_validate(r) != PPCP_OK ||
+        r->cls != PPCP_REL_AFFINE)
+        return false;
+    s     = r->skew_ppm * 1.0e-6;
+    s_inv = -s / (1.0 + s);
+    if (ppcp_instant_make(&obs, r->to.v, r->to.len, r->observed_at.ns + r->offset_ns) != PPCP_OK)
+        return false;
+    return ppcp_relation_make_affine(out, r->to.v, r->from.v, -r->offset_ns, s_inv * 1.0e6,
+                                     r->offset_sigma_ns, r->skew_sigma_ppm, r->method,
+                                     &obs) == PPCP_OK;
+}
+
+/* 5.4d — which relation answers a conversion `in` → `to_tb`: the one declared
+ * in that direction, or the inverse of the one declared the other way, whichever
+ * carries the smaller sigma at `in`.  Two peers measuring the same pair of
+ * clocks each publish their own estimate; before this, a conversion was bound
+ * to whichever peer happened to have declared that DIRECTION, and a host with
+ * a 1 ms estimate of the relation waited a minute on the phone's 30 ms one.
+ * Returns NULL with *rc set where nothing affine exists. */
+static const ppcp_timebase_relation *relations_resolve(const ppcp_relation_set *rs,
+                                                       const ppcp_instant *in,
+                                                       const ppcp_id *to_tb,
+                                                       ppcp_timebase_relation *inv_out,
+                                                       ppcp_result *rc)
+{
+    const ppcp_timebase_relation *direct  = ppcp_relations_find(rs, &in->tb, to_tb);
+    const ppcp_timebase_relation *reverse = ppcp_relations_find(rs, to_tb, &in->tb);
+    bool direct_ok, inverse_ok;
+
+    /* `unrelated` is complete, and means no mapping (5.4b) — declared in EITHER
+     * direction it wins over anything measured the other way.  A peer that says
+     * its clock cannot be related is not overruled by a counterpart's fit
+     * (IOP-5, 8.2i1: the Candidate is retained ungrouped, not converted). */
+    if ((direct != NULL && direct->cls != PPCP_REL_AFFINE) ||
+        (reverse != NULL && reverse->cls != PPCP_REL_AFFINE)) {
+        *rc = PPCP_ERR_INVALID;
+        return NULL;
+    }
+    direct_ok  = (direct != NULL);
+    inverse_ok = (reverse != NULL && ppcp_relation_invert(reverse, inv_out));
+
+    if (direct_ok && inverse_ok) {
+        *rc = PPCP_OK;
+        return (relation_sigma_at(inv_out, in->ns) < relation_sigma_at(direct, in->ns))
+               ? inv_out : direct;
+    }
+    if (direct_ok)  { *rc = PPCP_OK; return direct; }
+    if (inverse_ok) { *rc = PPCP_OK; return inv_out; }
+    *rc = PPCP_ERR_NOT_FOUND;        /* not composed, not assumed zero (5.4c, 8.2i1) */
+    return NULL;
+}
+
 ppcp_result ppcp_relations_convert(const ppcp_relation_set *rs, const ppcp_instant *in,
                                    const ppcp_id *to_tb, ppcp_instant *out)
 {
     const ppcp_timebase_relation *r;
+    ppcp_timebase_relation        inv;
+    ppcp_result                   rc;
 
     if (rs == NULL || in == NULL || to_tb == NULL || out == NULL)
         return PPCP_ERR_INVALID;
@@ -387,11 +522,9 @@ ppcp_result ppcp_relations_convert(const ppcp_relation_set *rs, const ppcp_insta
         return PPCP_OK;
     }
 
-    r = ppcp_relations_find(rs, &in->tb, to_tb);
+    r = relations_resolve(rs, in, to_tb, &inv, &rc);
     if (r == NULL)
-        return PPCP_ERR_NOT_FOUND;   /* not composed, not assumed zero (5.4c, 8.2i1) */
-    if (r->cls != PPCP_REL_AFFINE)
-        return PPCP_ERR_INVALID;     /* `unrelated` is complete, and means no mapping */
+        return rc;
     return ppcp_relation_apply(r, in, out);
 }
 
@@ -399,7 +532,8 @@ ppcp_result ppcp_relations_sigma_ns(const ppcp_relation_set *rs, const ppcp_inst
                                     const ppcp_id *to_tb, double *out_sigma_ns)
 {
     const ppcp_timebase_relation *r;
-    double elapsed, drift_sigma;
+    ppcp_timebase_relation        inv;
+    ppcp_result                   rc;
 
     if (rs == NULL || in == NULL || to_tb == NULL || out_sigma_ns == NULL)
         return PPCP_ERR_INVALID;
@@ -407,19 +541,14 @@ ppcp_result ppcp_relations_sigma_ns(const ppcp_relation_set *rs, const ppcp_inst
         *out_sigma_ns = 0.0;
         return PPCP_OK;
     }
-    r = ppcp_relations_find(rs, &in->tb, to_tb);
+    r = relations_resolve(rs, in, to_tb, &inv, &rc);
     if (r == NULL)
-        return PPCP_ERR_NOT_FOUND;
-    if (r->cls != PPCP_REL_AFFINE)
-        return PPCP_ERR_INVALID;
+        return rc;
 
     /* The offset was measured at `observed_at`; every nanosecond since then is
      * a nanosecond over which the rate uncertainty has been accumulating.  A
      * consumer handed only `offset_sigma_ns` would trust a two-minute-old
      * relation exactly as much as a fresh one. */
-    elapsed     = (double)(in->ns - r->observed_at.ns);
-    drift_sigma = sync_abs(elapsed) * r->skew_sigma_ppm * 1.0e-6;
-    *out_sigma_ns = sync_sqrt(r->offset_sigma_ns * r->offset_sigma_ns +
-                              drift_sigma * drift_sigma);
+    *out_sigma_ns = relation_sigma_at(r, in->ns);
     return PPCP_OK;
 }

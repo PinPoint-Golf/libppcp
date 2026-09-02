@@ -905,9 +905,196 @@ static void test_resume_and_stamps(void)
     rig_peer_free(&device);
 }
 
+
+/* ── Errata E67–E69, 2 September 2026 — clock convergence ─────────────────── */
+
+static void test_convergence_errata(void)
+{
+    TEST("5.4d / E67 — an affine relation inverts exactly, sigmas carried over");
+    {
+        ppcp_relation_set      rs;
+        ppcp_timebase_relation ab, inv;
+        ppcp_instant           at, x, y, back;
+        double                 sig_fwd = 0.0, sig_back = 0.0;
+        ppcp_relations_init(&rs);
+        CHECK_EQ_I(ppcp_instant_make_z(&at, "tb:a", 10000000000LL), PPCP_OK);
+        /* to = from + 1.5 ms + 20 ppm·(from − 10 s) */
+        CHECK_EQ_I(ppcp_relation_make_affine(&ab, "tb:a", "tb:b", 1500000, 20.0, 800000.0,
+                                             3.0, PPCP_RELM_ESTIMATED_ONLINE, &at), PPCP_OK);
+        CHECK(ppcp_relation_invert(&ab, &inv));
+        CHECK_EQ_I(ppcp_relation_validate(&inv), PPCP_OK);
+        CHECK(inv.offset_ns == -1500000);
+        CHECK(inv.offset_sigma_ns == 800000.0 && inv.skew_sigma_ppm == 3.0);
+        CHECK_EQ_I(ppcp_relations_put(&rs, &ab), PPCP_OK);
+        /* A → B directly, then B → A through the inverse the set derives. */
+        CHECK_EQ_I(ppcp_instant_make_z(&x, "tb:a", 70000000000LL), PPCP_OK);
+        {
+            ppcp_id b, a;
+            CHECK_EQ_I(ppcp_id_set_z(&b, "tb:b"), PPCP_OK);
+            CHECK_EQ_I(ppcp_id_set_z(&a, "tb:a"), PPCP_OK);
+            CHECK_EQ_I(ppcp_relations_convert(&rs, &x, &b, &y), PPCP_OK);
+            CHECK(y.ns == 70000000000LL + 1500000 + 1200000);   /* 20 ppm over 60 s */
+            CHECK_EQ_I(ppcp_relations_convert(&rs, &y, &a, &back), PPCP_OK);
+            CHECK(back.ns >= x.ns - 1 && back.ns <= x.ns + 1);
+            CHECK_EQ_I(ppcp_relations_sigma_ns(&rs, &x, &b, &sig_fwd), PPCP_OK);
+            CHECK_EQ_I(ppcp_relations_sigma_ns(&rs, &y, &a, &sig_back), PPCP_OK);
+            CHECK(sig_back > sig_fwd * 0.999 && sig_back < sig_fwd * 1.001);
+        }
+    }
+
+    TEST("5.4d / E67 — both directions held: the smaller sigma at the instant answers");
+    {
+        ppcp_relation_set      rs;
+        ppcp_timebase_relation hp, ph;   /* host's own, and the phone's, of one pair */
+        ppcp_instant           at_h, at_p, x, out;
+        ppcp_id                host;
+        double                 sig = 0.0;
+        ppcp_relations_init(&rs);
+        CHECK_EQ_I(ppcp_id_set_z(&host, "tb:host"), PPCP_OK);
+        CHECK_EQ_I(ppcp_instant_make_z(&at_h, "tb:host", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_instant_make_z(&at_p, "tb:phone", 1000000), PPCP_OK);
+        /* host → phone: +1.000 ms, sigma 1 ms (the host's clean fit) */
+        CHECK_EQ_I(ppcp_relation_make_affine(&hp, "tb:host", "tb:phone", 1000000, 0.0,
+                                             1000000.0, 1.0, PPCP_RELM_ESTIMATED_ONLINE,
+                                             &at_h), PPCP_OK);
+        /* phone → host: −1.030 ms, sigma 30 ms (the phone's busy burst) */
+        CHECK_EQ_I(ppcp_relation_make_affine(&ph, "tb:phone", "tb:host", -1030000, 0.0,
+                                             30000000.0, 100.0, PPCP_RELM_ESTIMATED_ONLINE,
+                                             &at_p), PPCP_OK);
+        CHECK_EQ_I(ppcp_relations_put(&rs, &hp), PPCP_OK);
+        CHECK_EQ_I(ppcp_relations_put(&rs, &ph), PPCP_OK);
+        CHECK_EQ_I(ppcp_instant_make_z(&x, "tb:phone", 5000000000LL), PPCP_OK);
+        CHECK_EQ_I(ppcp_relations_sigma_ns(&rs, &x, &host, &sig), PPCP_OK);
+        CHECK(sig < 1100000.0);                       /* the host's, not the phone's 30 ms */
+        CHECK_EQ_I(ppcp_relations_convert(&rs, &x, &host, &out), PPCP_OK);
+        CHECK(out.ns == 5000000000LL - 1000000);      /* through the inverse of host→phone */
+        /* The declared relation is untouched: find() still answers the phone's. */
+        {
+            ppcp_id phone;
+            const ppcp_timebase_relation *d;
+            CHECK_EQ_I(ppcp_id_set_z(&phone, "tb:phone"), PPCP_OK);
+            d = ppcp_relations_find(&rs, &phone, &host);
+            CHECK(d != NULL && d->offset_ns == -1030000);
+        }
+    }
+
+    TEST("5.4d / E67 — `unrelated` in either direction still means no mapping");
+    {
+        ppcp_relation_set      rs;
+        ppcp_timebase_relation ab, ba;
+        ppcp_instant           at_a, at_b, x, out;
+        ppcp_id                b;
+        ppcp_relations_init(&rs);
+        CHECK_EQ_I(ppcp_id_set_z(&b, "tb:b"), PPCP_OK);
+        CHECK_EQ_I(ppcp_instant_make_z(&at_a, "tb:a", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_instant_make_z(&at_b, "tb:b", 0), PPCP_OK);
+        CHECK_EQ_I(ppcp_relation_make_affine(&ab, "tb:a", "tb:b", 5, 0.0, 1.0, 1.0,
+                                             PPCP_RELM_ESTIMATED_ONLINE, &at_a), PPCP_OK);
+        CHECK_EQ_I(ppcp_relation_make_unrelated(&ba, "tb:b", "tb:a",
+                                                PPCP_RELM_ESTIMATED_ONLINE, &at_b), PPCP_OK);
+        CHECK_EQ_I(ppcp_relations_put(&rs, &ab), PPCP_OK);
+        CHECK_EQ_I(ppcp_relations_put(&rs, &ba), PPCP_OK);
+        CHECK_EQ_I(ppcp_instant_make_z(&x, "tb:a", 1000), PPCP_OK);
+        CHECK_EQ_I(ppcp_relations_convert(&rs, &x, &b, &out), PPCP_ERR_INVALID);
+    }
+
+    TEST("6.3f1 / E69 — a noisy burst is excluded by the fourth clean exchange");
+    {
+        void *mem = malloc(ppcp_sync_estimator_sizeof());
+        ppcp_sync_estimator *e = NULL;
+        ppcp_timebase_relation rel;
+        int64_t t;
+        int     i;
+        CHECK(mem != NULL);
+        CHECK_EQ_I(ppcp_sync_estimator_new(mem, ppcp_sync_estimator_sizeof(), "tb:l", "tb:r", &e),
+                   PPCP_OK);
+        /* Sixteen exchanges while busy: 10-40 ms RTT, offsets scattered by
+         * ±15 ms around a true +1.000 ms.  Spread over 2 s (6.3c1). */
+        for (i = 0; i < 16; i++) {
+            int64_t t1   = 1000000000LL + (int64_t)i * 125000000LL;
+            int64_t rtt  = 10000000LL + (int64_t)((i * 7) % 4) * 10000000LL;
+            int64_t bias = (int64_t)((i * 5) % 7 - 3) * 5000000LL;        /* ±15 ms */
+            int64_t t2   = t1 + rtt / 2 + 1000000 + bias;
+            CHECK_EQ_I(ppcp_sync_estimator_observe(e, t1, t2, t2, t1 + rtt), PPCP_OK);
+        }
+        CHECK_EQ_I(ppcp_sync_estimator_relation(e, &rel), PPCP_OK);
+        CHECK(rel.offset_sigma_ns > 5000000.0);       /* honest: it is noisy */
+        /* Then clean exchanges at 2.5 ms RTT, one per second. */
+        t = 4000000000LL;
+        for (i = 0; i < 4; i++, t += 1000000000LL) {
+            int64_t t2 = t + 1250000 + 1000000;
+            CHECK_EQ_I(ppcp_sync_estimator_observe(e, t, t2, t2, t + 2500000), PPCP_OK);
+        }
+        CHECK_EQ_I(ppcp_sync_estimator_admitted(e), 4);
+        CHECK_EQ_I(ppcp_sync_estimator_relation(e, &rel), PPCP_OK);
+        /* Four clean exchanges inside the RTT gate: the fit rests on them alone,
+         * so sigma is the half-RTT floor plus a sub-millisecond residual — not
+         * the burst's 15 ms scatter, which by count is still 16 of 20. */
+        CHECK(rel.offset_sigma_ns < 2000000.0);
+        CHECK(ppcp_sync_estimator_count(e) == 20);        /* exchanges observed, not retained */
+        /* And a full window retires the WORST exchange, not the oldest. */
+        for (i = 0; i < 12; i++, t += 1000000000LL) {
+            int64_t t2 = t + 1250000 + 1000000;
+            CHECK_EQ_I(ppcp_sync_estimator_observe(e, t, t2, t2, t + 2500000), PPCP_OK);
+        }
+        CHECK_EQ_I(ppcp_sync_estimator_admitted(e), 16);   /* the window is full: 16 busy, 16 clean */
+        {
+            int64_t t2 = t + 1250000 + 1000000;
+            CHECK_EQ_I(ppcp_sync_estimator_observe(e, t, t2, t2, t + 2500000), PPCP_OK);
+        }
+        CHECK_EQ_I(ppcp_sync_estimator_admitted(e), 17);   /* 17 clean kept, the worst busy one gone */
+        free(mem);
+    }
+
+    TEST("6.3c1 / 6.3g1 / E68 — spread burst, quick ramp, settle cadence, then maintenance");
+    {
+        static const char *const prof[] = { PPCP_PROFILE_CORE, PPCP_PROFILE_LIVE };
+        rig_peer host;
+        int64_t  sent_at[128];
+        size_t   n = 0;
+        int64_t  now, start;
+        memset(&host, 0, sizeof(host));
+        rig_add(&host.clock, "tb:hostA", 1000000000, 0.0);
+        rig_peer_new(&host, PPCP_ROLE_HOST, "peer:host", prof, 2, "tb:hostA", true);
+        CHECK_EQ_I(ppcp_peer_sync_add_timebase(host.p, "tb:hostA", NULL), PPCP_OK);
+        CHECK_EQ_I(ppcp_peer_sync_trigger(host.p, PPCP_SYNC_ON_CONNECT), PPCP_OK);
+        /* Pump every 5 ms for 70 s; nobody answers, so nothing is ever admitted
+         * and the settle cadence runs to its bound. */
+        start = 1000000000;
+        for (now = start; now < start + 70000000000LL && n < 128; now += 5000000) {
+            size_t probes = 0;
+            (void)ppcp_peer_sync_pump(host.p, now, &probes);
+            if (probes) sent_at[n++] = now;
+            drop_events(host.p);
+            (void)ppcp_peer_pending(host.p, PPCP_CHANNEL_CONTROL);
+        }
+        CHECK(n >= 17 + 4 + 5);
+        /* The first probe goes out at the trigger; PPCP_SYNC_BURST more follow
+         * at the burst gap, so the burst is 17 exchanges over 2 s. */
+        CHECK(sent_at[1]  - sent_at[0]  == 125000000LL);   /* inside the burst */
+        CHECK(sent_at[16] - sent_at[0]  == 16 * 125000000LL);
+        CHECK(sent_at[17] - sent_at[16] == 500000000LL);    /* the ramp */
+        CHECK(sent_at[18] - sent_at[17] == 1000000000LL);
+        CHECK(sent_at[19] - sent_at[18] == 2000000000LL);
+        CHECK(sent_at[20] - sent_at[19] == 3000000000LL);
+        CHECK(sent_at[21] - sent_at[20] == 1000000000LL);   /* settle: nothing admitted */
+        CHECK(sent_at[22] - sent_at[21] == 1000000000LL);
+        /* After the settle bound the cadence relaxes to five seconds. */
+        {
+            size_t k;
+            int64_t last_gap = 0;
+            for (k = 1; k < n; k++)
+                if (sent_at[k] - start > 62000000000LL) { last_gap = sent_at[k] - sent_at[k - 1]; break; }
+            CHECK(last_gap == 5000000000LL);
+        }
+        rig_peer_free(&host);
+    }
+}
+
 int main(void)
 {
     test_sync();
+    test_convergence_errata();
     test_sync_remote_half();
     test_liveness();
     test_resume_and_stamps();
